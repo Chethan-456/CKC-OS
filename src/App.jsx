@@ -5,6 +5,9 @@ import EditorPage from './pages/editor.jsx'
 import DevChat from "./pages/devchat.jsx"
 import SandBox from "./pages/sandbox.jsx";
 
+import DevChat from "./pages/devchat.jsx";
+import ApiTesting from "./pages/api.jsx";
+import PerformanceMonitor from "./pages/performance.jsx";  // ← fixed path
 
 function App() {
   return (
@@ -14,6 +17,8 @@ function App() {
         <Route path="/editor" element={<EditorPage />} />
         <Route path="/devchat" element={<DevChat />} />
         <Route path="/sandbox" element={<SandBox />} />
+        <Route path="/api" element={<ApiTesting />} />
+        <Route path="/performance" element={<PerformanceMonitor />} />  {/* ← added */}
       </Routes>
     </BrowserRouter>
   )
