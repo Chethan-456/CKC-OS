@@ -215,6 +215,8 @@ const MODULES = [
   { idx:"03", title:"Live Server Logs Dashboard",   desc:"Stream server events in real-time. Acts as a mini DevOps monitoring layer with live error surfacing.", accent:"#FFB547" },
   { idx:"04", title:"Collaborative API Testing",    desc:"Like Postman, but real-time. Teams test endpoints, share requests, and view responses together live.", accent:"#FF6B9D", isApi:true },
   { idx:"05", title:"Context-Based Dev Chat",       desc:"Chat linked to specific files, errors, and projects. Threaded discussions with @mention support.", accent:"#A78BFA", isChat:true },
+  { idx:"06", title:"Code Execution Sandbox",       desc:"Run 8 languages in-browser: TypeScript, JavaScript, Python, Java, C++, Rust, Go, SQL — with simulated output.", accent:"#4FC1FF", isExec:true, isSandbox:true },
+  { idx:"07", title:"Performance Monitor",          desc:"Track API response time, errors per second, and execution latency with real-time graph visualization.", accent:"#4EC9B0" },
   { idx:"06", title:"Code Execution Sandbox",       desc:"Run 8 languages in-browser: TypeScript, JavaScript, Python, Java, C++, Rust, Go, SQL — with simulated output.", accent:"#4FC1FF", isExec:true },
   { idx:"07", title:"Performance Monitor",          desc:"Track API response time, errors per second, and execution latency with real-time graph visualization.", accent:"#4EC9B0", isPerf:true },
   { idx:"08", title:"Behavior Tracking Engine",     desc:"Monitors typing speed, backspace frequency, error rate, and idle time to understand developer cognition.", accent:"#FFB547" },
@@ -237,6 +239,9 @@ const WORKFLOW_STEPS = [
 /* ═══════════════════════════════════════════════════════════════
    HOME PAGE
    receives onLaunch (→ editor login), onOpenChat (→ /devchat),
+   and onOpenSandbox (→ /sandbox)
+═══════════════════════════════════════════════════════════════ */
+function HomePage({ onLaunch, onOpenChat, onOpenSandbox }) {
    onOpenApi (→ /api), and onOpenPerf (→ /performance)
 ═══════════════════════════════════════════════════════════════ */
 function HomePage({ onLaunch, onOpenChat, onOpenApi, onOpenPerf }) {
@@ -422,6 +427,29 @@ function HomePage({ onLaunch, onOpenChat, onOpenApi, onOpenPerf }) {
               className="mod-card"
               key={m.idx}
               onClick={
+                m.isEditor  ? onLaunch
+                : m.isChat  ? onOpenChat
+                : m.isSandbox ? onOpenSandbox
+                : undefined
+              }
+              style={{
+                cursor:      (m.isEditor || m.isChat || m.isSandbox) ? "pointer" : undefined,
+                borderColor: m.isEditor   ? "rgba(79,193,255,.2)"
+                           : m.isChat     ? "rgba(167,139,250,.2)"
+                           : m.isSandbox  ? "rgba(78,201,176,.2)"
+                           : undefined,
+              }}
+            >
+              {m.core       && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:600 }}>CORE</span>}
+              {m.isEditor   && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(79,193,255,.1)",color:"#8DD8FF",border:"1px solid rgba(79,193,255,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ LIVE</span>}
+              {m.isExec && !m.isSandbox && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ RUN</span>}
+              {m.isSandbox  && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ RUN</span>}
+              {m.isChat     && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(167,139,250,.1)",color:"#A78BFA",border:"1px solid rgba(167,139,250,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>💬 CHAT</span>}
+              <div className="mod-idx">{m.idx}</div>
+              <h3>{m.title}</h3><p>{m.desc}</p>
+              {m.isEditor  && <p style={{ fontSize:".75rem", color:"var(--blue)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isChat    && <p style={{ fontSize:".75rem", color:"var(--violet)", marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isSandbox && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
                 m.isEditor ? onLaunch
                 : m.isChat ? onOpenChat
                 : m.isApi  ? onOpenApi
@@ -726,6 +754,9 @@ function LoginScreen({ onJoin, onBack }) {
 
 /* ═══════════════════════════════════════════════════════════════
    ROOT
+   onLaunch      → login screen → /editor
+   onOpenChat    → navigate directly to /devchat
+   onOpenSandbox → navigate directly to /sandbox
    onLaunch    → login screen → /editor
    onOpenChat  → navigate directly to /devchat
    onOpenApi   → navigate directly to /api
@@ -740,6 +771,8 @@ export default function Index() {
     navigate("/editor", { state: { me, sid, lang } });
   };
 
+  const toChat    = () => navigate("/devchat");
+  const toSandbox = () => navigate("/sandbox");
   const toChat = () => navigate("/devchat");
   const toApi  = () => navigate("/api");
   const toPerf = () => navigate("/performance");
@@ -747,6 +780,7 @@ export default function Index() {
   return (
     <>
       <style>{GLOBAL_CSS}</style>
+      {route === "home"  && <HomePage onLaunch={() => setRoute("login")} onOpenChat={toChat} onOpenSandbox={toSandbox} />}
       {route === "home"  && <HomePage onLaunch={() => setRoute("login")} onOpenChat={toChat} onOpenApi={toApi} onOpenPerf={toPerf} />}
       {route === "login" && <LoginScreen onJoin={toEditor} onBack={() => setRoute("home")} />}
     </>
