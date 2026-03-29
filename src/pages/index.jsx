@@ -213,10 +213,10 @@ const MODULES = [
   { idx:"01", title:"Live Collaborative Editor",    desc:"Google Docs-style real-time coding with multi-user cursor tracking via WebSockets, full CRDT/OT, and CodeMirror 6.", accent:"#4FC1FF", isEditor:true },
   { idx:"02", title:"Real-Time Debugging Room",     desc:"Share logs instantly. Teams view, annotate, and suggest fixes collaboratively — for students and developers alike.", accent:"#4EC9B0" },
   { idx:"03", title:"Live Server Logs Dashboard",   desc:"Stream server events in real-time. Acts as a mini DevOps monitoring layer with live error surfacing.", accent:"#FFB547" },
-  { idx:"04", title:"Collaborative API Testing",    desc:"Like Postman, but real-time. Teams test endpoints, share requests, and view responses together live.", accent:"#FF6B9D" },
+  { idx:"04", title:"Collaborative API Testing",    desc:"Like Postman, but real-time. Teams test endpoints, share requests, and view responses together live.", accent:"#FF6B9D", isApi:true },
   { idx:"05", title:"Context-Based Dev Chat",       desc:"Chat linked to specific files, errors, and projects. Threaded discussions with @mention support.", accent:"#A78BFA", isChat:true },
   { idx:"06", title:"Code Execution Sandbox",       desc:"Run 8 languages in-browser: TypeScript, JavaScript, Python, Java, C++, Rust, Go, SQL — with simulated output.", accent:"#4FC1FF", isExec:true },
-  { idx:"07", title:"Performance Monitor",          desc:"Track API response time, errors per second, and execution latency with real-time graph visualization.", accent:"#4EC9B0" },
+  { idx:"07", title:"Performance Monitor",          desc:"Track API response time, errors per second, and execution latency with real-time graph visualization.", accent:"#4EC9B0", isPerf:true },
   { idx:"08", title:"Behavior Tracking Engine",     desc:"Monitors typing speed, backspace frequency, error rate, and idle time to understand developer cognition.", accent:"#FFB547" },
   { idx:"09", title:"Frustration Detection",        desc:"Detects when users are stuck and intelligently triggers hints, learning mode, or contextual suggestions.", accent:"#FF6B9D" },
   { idx:"10", title:"Live Knowledge Graph Engine",  desc:"Converts code into concepts, errors, and fixes. Builds a live visual graph: Loop → Array → Error → Fix.", accent:"#A78BFA", core:true },
@@ -236,9 +236,10 @@ const WORKFLOW_STEPS = [
 
 /* ═══════════════════════════════════════════════════════════════
    HOME PAGE
-   receives onLaunch (→ editor login) and onOpenChat (→ /devchat)
+   receives onLaunch (→ editor login), onOpenChat (→ /devchat),
+   onOpenApi (→ /api), and onOpenPerf (→ /performance)
 ═══════════════════════════════════════════════════════════════ */
-function HomePage({ onLaunch, onOpenChat }) {
+function HomePage({ onLaunch, onOpenChat, onOpenApi, onOpenPerf }) {
   const [activeTab, setActiveTab] = useState("all");
   const filtered = activeTab === "all" ? MODULES
     : activeTab === "collab" ? MODULES.filter((_,i) => i < 6)
@@ -423,12 +424,16 @@ function HomePage({ onLaunch, onOpenChat }) {
               onClick={
                 m.isEditor ? onLaunch
                 : m.isChat ? onOpenChat
+                : m.isApi  ? onOpenApi
+                : m.isPerf ? onOpenPerf
                 : undefined
               }
               style={{
-                cursor:      (m.isEditor || m.isChat) ? "pointer" : undefined,
+                cursor: (m.isEditor || m.isChat || m.isApi || m.isPerf) ? "pointer" : undefined,
                 borderColor: m.isEditor ? "rgba(79,193,255,.2)"
                            : m.isChat   ? "rgba(167,139,250,.2)"
+                           : m.isApi    ? "rgba(255,107,157,.2)"
+                           : m.isPerf   ? "rgba(78,201,176,.2)"
                            : undefined,
               }}
             >
@@ -436,10 +441,14 @@ function HomePage({ onLaunch, onOpenChat }) {
               {m.isEditor && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(79,193,255,.1)",color:"#8DD8FF",border:"1px solid rgba(79,193,255,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ LIVE</span>}
               {m.isExec   && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ RUN</span>}
               {m.isChat   && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(167,139,250,.1)",color:"#A78BFA",border:"1px solid rgba(167,139,250,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>💬 CHAT</span>}
+              {m.isApi    && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,107,157,.1)",color:"#FF6B9D",border:"1px solid rgba(255,107,157,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>⚡ API</span>}
+              {m.isPerf   && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>📊 PERF</span>}
               <div className="mod-idx">{m.idx}</div>
               <h3>{m.title}</h3><p>{m.desc}</p>
               {m.isEditor && <p style={{ fontSize:".75rem", color:"var(--blue)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
               {m.isChat   && <p style={{ fontSize:".75rem", color:"var(--violet)", marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isApi    && <p style={{ fontSize:".75rem", color:"var(--rose)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isPerf   && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
               <div className="mod-accent" style={{ background:m.accent }}/>
             </div>
           ))}
@@ -717,8 +726,10 @@ function LoginScreen({ onJoin, onBack }) {
 
 /* ═══════════════════════════════════════════════════════════════
    ROOT
-   onLaunch   → login screen → /editor
-   onOpenChat → navigate directly to /devchat
+   onLaunch    → login screen → /editor
+   onOpenChat  → navigate directly to /devchat
+   onOpenApi   → navigate directly to /api
+   onOpenPerf  → navigate directly to /performance
 ═══════════════════════════════════════════════════════════════ */
 export default function Index() {
   const navigate = useNavigate();
@@ -730,11 +741,13 @@ export default function Index() {
   };
 
   const toChat = () => navigate("/devchat");
+  const toApi  = () => navigate("/api");
+  const toPerf = () => navigate("/performance");
 
   return (
     <>
       <style>{GLOBAL_CSS}</style>
-      {route === "home"  && <HomePage onLaunch={() => setRoute("login")} onOpenChat={toChat} />}
+      {route === "home"  && <HomePage onLaunch={() => setRoute("login")} onOpenChat={toChat} onOpenApi={toApi} onOpenPerf={toPerf} />}
       {route === "login" && <LoginScreen onJoin={toEditor} onBack={() => setRoute("home")} />}
     </>
   );
