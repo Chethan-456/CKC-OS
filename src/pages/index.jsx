@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { authStore, PALETTE, LANGS, LK, initials, genSid } from "./editor.jsx";
 
 /* ═══════════════════════════════════════════════════════════════
-   GLOBAL CSS  (homepage + login only — editor.jsx owns its own)
+   GLOBAL CSS
 ═══════════════════════════════════════════════════════════════ */
 const GLOBAL_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Clash+Display:wght@400;500;600;700&family=Instrument+Sans:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap');
@@ -45,7 +45,6 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .hp-grad      { background: linear-gradient(135deg,var(--blue) 0%,var(--teal) 50%,var(--rose) 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
 .hp-grad-blue { background: linear-gradient(135deg,var(--blue),var(--teal)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
 
-/* NAV */
 .ckc-nav { position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:1rem 2.8rem;background:rgba(13,15,20,.88);backdrop-filter:blur(24px);border-bottom:1px solid rgba(255,255,255,.05); }
 .nav-logo { font-family:var(--disp);font-size:1.2rem;font-weight:800;color:#fff;display:flex;align-items:center;gap:9px; }
 .nav-logo-mark { width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--blue),var(--teal));display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 4px 16px rgba(79,193,255,.35); }
@@ -55,7 +54,6 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .btn-nav { background:linear-gradient(135deg,var(--blue),var(--teal));color:#0d0f14;border:none;border-radius:7px;padding:8px 20px;font-size:.82rem;font-weight:700;cursor:pointer;font-family:var(--disp);box-shadow:0 4px 18px rgba(79,193,255,.3);transition:opacity .2s,transform .2s; }
 .btn-nav:hover { opacity:.9;transform:translateY(-1px); }
 
-/* BUTTONS */
 .btn-primary { display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--blue),var(--teal));color:#0d0f14;border:none;border-radius:10px;padding:13px 30px;font-size:.95rem;font-weight:700;cursor:pointer;font-family:var(--disp);box-shadow:0 8px 32px rgba(79,193,255,.4);transition:transform .2s,box-shadow .2s; }
 .btn-primary:hover { transform:translateY(-2px);box-shadow:0 14px 44px rgba(79,193,255,.55); }
 .btn-primary .arrow { transition:transform .2s;display:inline-block; }
@@ -63,7 +61,6 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .btn-ghost { background:transparent;color:var(--text-2);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:13px 30px;font-size:.95rem;font-weight:500;cursor:pointer;font-family:var(--sans);transition:all .2s; }
 .btn-ghost:hover { border-color:var(--blue-l);color:var(--blue-l); }
 
-/* HERO */
 .hero { min-height:100vh;display:flex;align-items:center;position:relative;overflow:hidden;padding:8rem 2.8rem 5rem; }
 .hero-mesh { position:absolute;inset:0;z-index:0;background:radial-gradient(ellipse 65% 50% at 70% 10%,rgba(79,193,255,.13) 0%,transparent 65%),radial-gradient(ellipse 40% 38% at 10% 80%,rgba(78,201,176,.09) 0%,transparent 60%),radial-gradient(ellipse 30% 28% at 90% 80%,rgba(167,139,250,.07) 0%,transparent 55%); }
 .hero-grid { position:absolute;inset:0;z-index:0;background-image:linear-gradient(rgba(79,193,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(79,193,255,.035) 1px,transparent 1px);background-size:56px 56px;mask-image:radial-gradient(ellipse 90% 70% at 50% 0%,black 0%,transparent 100%); }
@@ -82,7 +79,6 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .code-body  { padding:1.1rem 1.4rem;font-family:var(--mono);font-size:.74rem;line-height:1.85; }
 .c-kw{color:#4FC1FF;} .c-fn{color:#4EC9B0;} .c-str{color:#FFB547;} .c-cmt{color:#3f4d66;font-style:italic;} .c-var{color:#e0e6ff;}
 
-/* SECTIONS */
 .section { padding:5.5rem 2.8rem; }
 .section.dark   { background:var(--bg2); }
 .section.darker { background:var(--bg3); }
@@ -90,7 +86,6 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .s-title { font-family:var(--disp);font-size:clamp(1.8rem,3.8vw,2.8rem);font-weight:800;color:#fff;letter-spacing:-.03em;line-height:1.05;margin-bottom:.9rem; }
 .s-desc  { font-size:.95rem;color:var(--text-2);max-width:500px;line-height:1.8; }
 
-/* EFC */
 .efc { background:rgba(17,19,24,.75);border:1px solid rgba(79,193,255,.18);border-radius:18px;overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,.5);margin-top:3rem; }
 .efc-bar { display:flex;align-items:center;justify-content:space-between;padding:1.1rem 1.6rem;background:rgba(255,255,255,.02);border-bottom:1px solid rgba(255,255,255,.06); }
 .efc-dots { display:flex;gap:5px; }
@@ -109,7 +104,6 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .efc-sv    { font-family:var(--disp);font-size:1.5rem;font-weight:800;color:#fff; }
 .efc-sl    { font-size:.63rem;color:var(--text-3);margin-top:2px; }
 
-/* LAYERS */
 .layers-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:1.4rem;margin-top:3rem; }
 .layer-card  { border-radius:16px;padding:1.9rem;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.06);transition:transform .3s,border-color .3s; }
 .layer-card:hover { transform:translateY(-5px); }
@@ -129,7 +123,6 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .pill-t { background:rgba(78,201,176,.08);color:var(--teal);border-color:rgba(78,201,176,.25); }
 .pill-v { background:rgba(167,139,250,.08);color:var(--violet);border-color:rgba(167,139,250,.25); }
 
-/* MODULES */
 .modules-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(285px,1fr));gap:1.1rem;margin-top:3rem; }
 .mod-card { background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:1.5rem;position:relative;overflow:hidden;transition:all .25s; }
 .mod-card:hover { background:rgba(255,255,255,.05);border-color:rgba(79,193,255,.28);transform:translateY(-3px); }
@@ -139,18 +132,15 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .mod-accent  { position:absolute;bottom:0;left:0;height:2px;border-radius:0 0 0 13px;width:0;transition:width .35s ease; }
 .mod-card:hover .mod-accent { width:100%; }
 
-/* LANG CHIPS */
 .lang-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.8rem;margin-top:2.5rem; }
 .lang-chip { background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:1.1rem;display:flex;flex-direction:column;align-items:center;gap:.5rem;transition:all .2s;text-align:center;cursor:default; }
 .lang-chip:hover { transform:translateY(-2px); }
 
-/* TABS */
 .tabs { display:flex;gap:.4rem;margin-bottom:2rem;flex-wrap:wrap; }
 .tab-btn { font-family:var(--sans);font-size:.8rem;font-weight:500;background:var(--surface);border:1px solid var(--border);color:var(--text-2);border-radius:7px;padding:6px 16px;cursor:pointer;transition:all .2s; }
 .tab-btn.active { background:rgba(79,193,255,.13);border-color:rgba(79,193,255,.38);color:var(--blue-l); }
 .tab-btn:hover:not(.active) { border-color:rgba(255,255,255,.14);color:var(--text); }
 
-/* WORKFLOW */
 .wf-steps { display:flex;flex-direction:column;margin-top:2.5rem;max-width:580px; }
 .wf-step  { display:flex;gap:1.4rem;position:relative;padding-bottom:2.2rem; }
 .wf-step:last-child { padding-bottom:0; }
@@ -159,7 +149,6 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .wf-body h4 { font-family:var(--disp);font-size:.95rem;font-weight:700;color:#fff;margin-bottom:.28rem;padding-top:.55rem; }
 .wf-body p  { font-size:.82rem;color:var(--text-3);line-height:1.7; }
 
-/* APPS */
 .apps-grid { display:grid;grid-template-columns:1fr 1fr;gap:1.4rem;margin-top:3rem; }
 .app-card  { border-radius:16px;padding:2.2rem;border:1px solid rgba(255,255,255,.06);position:relative;overflow:hidden; }
 .app-card.students { background:linear-gradient(135deg,rgba(78,201,176,.07),rgba(79,193,255,.05)); }
@@ -174,7 +163,6 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .app-card.students .app-list li::before { background:var(--teal); }
 .app-card.devs     .app-list li::before { background:var(--rose); }
 
-/* NOVELTY */
 .novelty-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:1.1rem;margin-top:2.5rem; }
 .novelty-card { background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:1.4rem; }
 .novelty-icon { width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1rem;margin-bottom:.9rem; }
@@ -182,17 +170,14 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .novelty-card h4 { font-family:var(--disp);font-size:.9rem;font-weight:700;color:#fff;margin-bottom:.35rem; }
 .novelty-card p  { font-size:.79rem;color:var(--text-3);line-height:1.7; }
 
-/* CTA */
 .cta-section { padding:6.5rem 2.8rem;text-align:center;position:relative;overflow:hidden; }
 .cta-section::before { content:'';position:absolute;inset:0;background:radial-gradient(ellipse 55% 48% at 50% 50%,rgba(79,193,255,.1) 0%,transparent 70%); }
 .cta-section h2 { font-family:var(--disp);font-size:clamp(1.9rem,4.5vw,3.2rem);font-weight:800;color:#fff;letter-spacing:-.03em;margin-bottom:.9rem;position:relative;z-index:1; }
 .cta-section p  { font-size:1rem;color:var(--text-2);margin-bottom:2.2rem;position:relative;z-index:1; }
 .cta-btns { display:flex;justify-content:center;gap:.9rem;flex-wrap:wrap;position:relative;z-index:1; }
 
-/* FOOTER */
 .footer { border-top:1px solid rgba(255,255,255,.05);padding:1.8rem 2.8rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.9rem; }
 
-/* LOGIN INPUT */
 .login-input { width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:.6rem .85rem;font-size:.85rem;color:#e0e6ff;font-family:var(--sans);outline:none;transition:border-color .2s,box-shadow .2s; }
 .login-input:focus { border-color:rgba(79,193,255,.5);box-shadow:0 0 0 3px rgba(79,193,255,.08); }
 
@@ -210,21 +195,19 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
    DATA
 ═══════════════════════════════════════════════════════════════ */
 const MODULES = [
-  { idx:"01", title:"Live Collaborative Editor",    desc:"Google Docs-style real-time coding with multi-user cursor tracking via WebSockets, full CRDT/OT, and CodeMirror 6.", accent:"#4FC1FF", isEditor:true },
-  { idx:"02", title:"Real-Time Debugging Room",     desc:"Share logs instantly. Teams view, annotate, and suggest fixes collaboratively — for students and developers alike.", accent:"#4EC9B0" },
-  { idx:"03", title:"Live Server Logs Dashboard",   desc:"Stream server events in real-time. Acts as a mini DevOps monitoring layer with live error surfacing.", accent:"#FFB547" },
-  { idx:"04", title:"Collaborative API Testing",    desc:"Like Postman, but real-time. Teams test endpoints, share requests, and view responses together live.", accent:"#FF6B9D", isApi:true },
-  { idx:"05", title:"Context-Based Dev Chat",       desc:"Chat linked to specific files, errors, and projects. Threaded discussions with @mention support.", accent:"#A78BFA", isChat:true },
-  { idx:"06", title:"Code Execution Sandbox",       desc:"Run 8 languages in-browser: TypeScript, JavaScript, Python, Java, C++, Rust, Go, SQL — with simulated output.", accent:"#4FC1FF", isExec:true, isSandbox:true },
-  { idx:"07", title:"Performance Monitor",          desc:"Track API response time, errors per second, and execution latency with real-time graph visualization.", accent:"#4EC9B0" },
-  { idx:"06", title:"Code Execution Sandbox",       desc:"Run 8 languages in-browser: TypeScript, JavaScript, Python, Java, C++, Rust, Go, SQL — with simulated output.", accent:"#4FC1FF", isExec:true },
-  { idx:"07", title:"Performance Monitor",          desc:"Track API response time, errors per second, and execution latency with real-time graph visualization.", accent:"#4EC9B0", isPerf:true },
-  { idx:"08", title:"Behavior Tracking Engine",     desc:"Monitors typing speed, backspace frequency, error rate, and idle time to understand developer cognition.", accent:"#FFB547" },
-  { idx:"09", title:"Frustration Detection",        desc:"Detects when users are stuck and intelligently triggers hints, learning mode, or contextual suggestions.", accent:"#FF6B9D" },
-  { idx:"10", title:"Live Knowledge Graph Engine",  desc:"Converts code into concepts, errors, and fixes. Builds a live visual graph: Loop → Array → Error → Fix.", accent:"#A78BFA", core:true },
-  { idx:"11", title:"Adaptive AI Mentor",           desc:"Beginner gets deep explanations. Intermediate gets hints. Advanced gets optimizations. Fully adaptive.", accent:"#4FC1FF" },
-  { idx:"12", title:"Adaptive UI Engine",           desc:"Dynamically changes the interface: hints for beginners, guidance for stuck users, minimal for experts.", accent:"#4EC9B0" },
-  { idx:"13", title:"Cognitive Analytics Dashboard",desc:"Displays productivity trends, focus levels, and weak concept identification across sessions.", accent:"#FFB547" },
+  { idx:"01", title:"Live Collaborative Editor",     desc:"Google Docs-style real-time coding with multi-user cursor tracking via WebSockets, full CRDT/OT, and CodeMirror 6.", accent:"#4FC1FF", isEditor:true },
+  { idx:"02", title:"Real-Time Debugging Room",      desc:"Share logs instantly. Teams view, annotate, and suggest fixes collaboratively — for students and developers alike.", accent:"#4EC9B0" },
+  { idx:"03", title:"Live Server Logs Dashboard",    desc:"Stream server events in real-time. Acts as a mini DevOps monitoring layer with live error surfacing.", accent:"#FFB547" },
+  { idx:"04", title:"Collaborative API Testing",     desc:"Like Postman, but real-time. Teams test endpoints, share requests, and view responses together live.", accent:"#FF6B9D", isApi:true },
+  { idx:"05", title:"Context-Based Dev Chat",        desc:"Chat linked to specific files, errors, and projects. Threaded discussions with @mention support.", accent:"#A78BFA", isChat:true },
+  { idx:"06", title:"Code Execution Sandbox",        desc:"Run 8 languages in-browser: TypeScript, JavaScript, Python, Java, C++, Rust, Go, SQL — with simulated output.", accent:"#4FC1FF", isExec:true, isSandbox:true },
+  { idx:"07", title:"Performance Monitor",           desc:"Track API response time, errors per second, and execution latency with real-time graph visualization.", accent:"#4EC9B0", isPerf:true },
+  { idx:"08", title:"Behavior Tracking Engine",      desc:"Monitors typing speed, backspace frequency, error rate, and idle time to understand developer cognition.", accent:"#FFB547" },
+  { idx:"09", title:"Frustration Detection",         desc:"Detects when users are stuck and intelligently triggers hints, learning mode, or contextual suggestions.", accent:"#FF6B9D" },
+  { idx:"10", title:"Live Knowledge Graph Engine",   desc:"Converts code into concepts, errors, and fixes. Builds a live visual graph: Loop -> Array -> Error -> Fix.", accent:"#A78BFA", core:true },
+  { idx:"11", title:"Adaptive AI Mentor",            desc:"Beginner gets deep explanations. Intermediate gets hints. Advanced gets optimizations. Fully adaptive.", accent:"#4FC1FF" },
+  { idx:"12", title:"Adaptive UI Engine",            desc:"Dynamically changes the interface: hints for beginners, guidance for stuck users, minimal for experts.", accent:"#4EC9B0" },
+  { idx:"13", title:"Cognitive Analytics Dashboard", desc:"Displays productivity trends, focus levels, and weak concept identification across sessions.", accent:"#FFB547" },
 ];
 
 const WORKFLOW_STEPS = [
@@ -238,13 +221,8 @@ const WORKFLOW_STEPS = [
 
 /* ═══════════════════════════════════════════════════════════════
    HOME PAGE
-   receives onLaunch (→ editor login), onOpenChat (→ /devchat),
-   and onOpenSandbox (→ /sandbox)
 ═══════════════════════════════════════════════════════════════ */
-function HomePage({ onLaunch, onOpenChat, onOpenSandbox }) {
-   onOpenApi (→ /api), and onOpenPerf (→ /performance)
-═══════════════════════════════════════════════════════════════ */
-function HomePage({ onLaunch, onOpenChat, onOpenApi, onOpenPerf }) {
+function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf }) {
   const [activeTab, setActiveTab] = useState("all");
   const filtered = activeTab === "all" ? MODULES
     : activeTab === "collab" ? MODULES.filter((_,i) => i < 6)
@@ -284,7 +262,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenApi, onOpenPerf }) {
             </p>
             <div className="fade-4" style={{ display:"flex", gap:".9rem", flexWrap:"wrap", alignItems:"center" }}>
               <button className="btn-primary" onClick={onLaunch}>
-                ⚡ Launch Collaborative Editor <span className="arrow">→</span>
+                ⚡ Launch Collaborative Editor <span className="arrow">-&gt;</span>
               </button>
               <button className="btn-ghost" onClick={() => scrollTo("overview")}>System Overview</button>
             </div>
@@ -332,7 +310,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenApi, onOpenPerf }) {
             <p className="s-desc">Google Docs-style coding with full CRDT/OT, live cursors, and 8-language execution via CodeMirror 6.</p>
           </div>
           <button className="btn-primary" onClick={onLaunch} style={{ fontSize:".85rem", padding:"11px 22px" }}>
-            Open Editor <span className="arrow">→</span>
+            Open Editor <span className="arrow">-&gt;</span>
           </button>
         </div>
         <div className="efc">
@@ -357,7 +335,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenApi, onOpenPerf }) {
                   <>  <span className="c-kw">private</span> <span className="c-var">ws</span>: <span style={{color:"#A78BFA"}}>WebSocketServer</span>;</>,
                   <>  <span className="c-kw">async</span> <span className="c-fn">applyOT</span>(<span className="c-var">op</span>: <span style={{color:"#A78BFA"}}>Operation</span>) {"{"}</>,
                   <>    <span className="c-kw">const</span> <span className="c-var">t</span> = <span className="c-fn">this</span>.<span className="c-fn">transform</span>(<span className="c-var">op</span>, <span className="c-fn">this</span>.<span className="c-var">version</span>);</>,
-                  <>    <span className="c-fn">this</span>.<span className="c-fn">broadcast</span>(<span className="c-var">t</span>); <span className="c-cmt">// ← Aria editing</span></>,
+                  <>    <span className="c-fn">this</span>.<span className="c-fn">broadcast</span>(<span className="c-var">t</span>); <span className="c-cmt">// Aria editing</span></>,
                   <>  {"}"}</>,
                   <>{"}"}</>,
                 ].map((l,i) => (
@@ -390,7 +368,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenApi, onOpenPerf }) {
                 ))}
               </div>
               <button className="btn-primary" onClick={onLaunch} style={{ fontSize:".8rem", padding:"10px 18px", width:"100%", justifyContent:"center" }}>
-                ⚡ Join Session Now <span className="arrow">→</span>
+                ⚡ Join Session Now <span className="arrow">-&gt;</span>
               </button>
             </div>
           </div>
@@ -405,7 +383,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenApi, onOpenPerf }) {
         <div className="layers-grid">
           <div className="layer-card bc"><div className="layer-num">01</div><div className="layer-icon">🧠</div><h3>Cognitive Layer</h3><p>Tracks real-time developer behavior — typing cadence, error frequency, idle periods — to infer frustration, focus, and proficiency.</p><div className="layer-pills"><span className="pill pill-b">Behavior Tracking</span><span className="pill pill-b">Frustration Detection</span></div></div>
           <div className="layer-card tc"><div className="layer-num">02</div><div className="layer-icon">🕸️</div><h3>Knowledge Layer</h3><p>Transforms raw code into structured knowledge: concepts, errors, and fixes linked in a live Neo4j graph that grows each session.</p><div className="layer-pills"><span className="pill pill-t">Knowledge Graph</span><span className="pill pill-t">Neo4j</span></div></div>
-          <div className="layer-card vc"><div className="layer-num">03</div><div className="layer-icon">🔧</div><h3>Collaboration & DevOps</h3><p>Real-time code editing, shared debugging, run-in-browser for 8 languages, live monitoring — all via WebSockets + CodeMirror 6.</p><div className="layer-pills"><span className="pill pill-v">WebSockets</span><span className="pill pill-v">CRDT/OT</span><span className="pill pill-v">CodeMirror 6</span></div></div>
+          <div className="layer-card vc"><div className="layer-num">03</div><div className="layer-icon">🔧</div><h3>Collaboration &amp; DevOps</h3><p>Real-time code editing, shared debugging, run-in-browser for 8 languages, live monitoring — all via WebSockets + CodeMirror 6.</p><div className="layer-pills"><span className="pill pill-v">WebSockets</span><span className="pill pill-v">CRDT/OT</span><span className="pill pill-v">CodeMirror 6</span></div></div>
         </div>
       </section>
 
@@ -422,61 +400,42 @@ function HomePage({ onLaunch, onOpenChat, onOpenApi, onOpenPerf }) {
         </div>
 
         <div className="modules-grid">
-          {filtered.map(m => (
+          {filtered.map((m, idx) => (
             <div
               className="mod-card"
-              key={m.idx}
+              key={`${m.idx}-${idx}`}
               onClick={
                 m.isEditor  ? onLaunch
                 : m.isChat  ? onOpenChat
                 : m.isSandbox ? onOpenSandbox
+                : m.isApi   ? onOpenApi
+                : m.isPerf  ? onOpenPerf
                 : undefined
               }
               style={{
-                cursor:      (m.isEditor || m.isChat || m.isSandbox) ? "pointer" : undefined,
-                borderColor: m.isEditor   ? "rgba(79,193,255,.2)"
-                           : m.isChat     ? "rgba(167,139,250,.2)"
-                           : m.isSandbox  ? "rgba(78,201,176,.2)"
+                cursor: (m.isEditor || m.isChat || m.isSandbox || m.isApi || m.isPerf) ? "pointer" : undefined,
+                borderColor: m.isEditor  ? "rgba(79,193,255,.2)"
+                           : m.isChat    ? "rgba(167,139,250,.2)"
+                           : m.isSandbox ? "rgba(78,201,176,.2)"
+                           : m.isApi     ? "rgba(255,107,157,.2)"
+                           : m.isPerf    ? "rgba(78,201,176,.2)"
                            : undefined,
               }}
             >
-              {m.core       && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:600 }}>CORE</span>}
-              {m.isEditor   && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(79,193,255,.1)",color:"#8DD8FF",border:"1px solid rgba(79,193,255,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ LIVE</span>}
+              {m.core      && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:600 }}>CORE</span>}
+              {m.isEditor  && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(79,193,255,.1)",color:"#8DD8FF",border:"1px solid rgba(79,193,255,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ LIVE</span>}
               {m.isExec && !m.isSandbox && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ RUN</span>}
-              {m.isSandbox  && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ RUN</span>}
-              {m.isChat     && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(167,139,250,.1)",color:"#A78BFA",border:"1px solid rgba(167,139,250,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>💬 CHAT</span>}
+              {m.isSandbox && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ RUN</span>}
+              {m.isChat    && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(167,139,250,.1)",color:"#A78BFA",border:"1px solid rgba(167,139,250,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>💬 CHAT</span>}
+              {m.isApi     && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,107,157,.1)",color:"#FF6B9D",border:"1px solid rgba(255,107,157,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>⚡ API</span>}
+              {m.isPerf    && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>📊 PERF</span>}
               <div className="mod-idx">{m.idx}</div>
               <h3>{m.title}</h3><p>{m.desc}</p>
-              {m.isEditor  && <p style={{ fontSize:".75rem", color:"var(--blue)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isChat    && <p style={{ fontSize:".75rem", color:"var(--violet)", marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isSandbox && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-                m.isEditor ? onLaunch
-                : m.isChat ? onOpenChat
-                : m.isApi  ? onOpenApi
-                : m.isPerf ? onOpenPerf
-                : undefined
-              }
-              style={{
-                cursor: (m.isEditor || m.isChat || m.isApi || m.isPerf) ? "pointer" : undefined,
-                borderColor: m.isEditor ? "rgba(79,193,255,.2)"
-                           : m.isChat   ? "rgba(167,139,250,.2)"
-                           : m.isApi    ? "rgba(255,107,157,.2)"
-                           : m.isPerf   ? "rgba(78,201,176,.2)"
-                           : undefined,
-              }}
-            >
-              {m.core     && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:600 }}>CORE</span>}
-              {m.isEditor && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(79,193,255,.1)",color:"#8DD8FF",border:"1px solid rgba(79,193,255,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ LIVE</span>}
-              {m.isExec   && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ RUN</span>}
-              {m.isChat   && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(167,139,250,.1)",color:"#A78BFA",border:"1px solid rgba(167,139,250,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>💬 CHAT</span>}
-              {m.isApi    && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,107,157,.1)",color:"#FF6B9D",border:"1px solid rgba(255,107,157,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>⚡ API</span>}
-              {m.isPerf   && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>📊 PERF</span>}
-              <div className="mod-idx">{m.idx}</div>
-              <h3>{m.title}</h3><p>{m.desc}</p>
-              {m.isEditor && <p style={{ fontSize:".75rem", color:"var(--blue)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isChat   && <p style={{ fontSize:".75rem", color:"var(--violet)", marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isApi    && <p style={{ fontSize:".75rem", color:"var(--rose)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isPerf   && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isEditor  && <p style={{ fontSize:".75rem", color:"var(--blue)",   marginTop:".65rem", fontWeight:700 }}>Click to open -&gt;</p>}
+              {m.isChat    && <p style={{ fontSize:".75rem", color:"var(--violet)", marginTop:".65rem", fontWeight:700 }}>Click to open -&gt;</p>}
+              {m.isSandbox && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open -&gt;</p>}
+              {m.isApi     && <p style={{ fontSize:".75rem", color:"var(--rose)",   marginTop:".65rem", fontWeight:700 }}>Click to open -&gt;</p>}
+              {m.isPerf    && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open -&gt;</p>}
               <div className="mod-accent" style={{ background:m.accent }}/>
             </div>
           ))}
@@ -517,7 +476,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenApi, onOpenPerf }) {
                 {["React + CodeMirror 6","WebSocket + CRDT/OT","Node.js Backend","AI Engine (Python)","Docker Sandbox"].map((n,i,arr) => (
                   <span key={n}>
                     <span style={{ background:"rgba(255,255,255,.035)", border:`1px solid ${(i===0||i===3)?"rgba(79,193,255,.45)":"rgba(255,255,255,.07)"}`, borderRadius:10, padding:".85rem 1.3rem", fontFamily:"var(--mono)", fontSize:".72rem", color:(i===0||i===3)?"#8DD8FF":"#e0e6ff", fontWeight:500, whiteSpace:"nowrap", display:"inline-block" }}>{n}</span>
-                    {i < arr.length-1 && <span style={{ padding:"0 .4rem", color:"var(--text-3)" }}>→</span>}
+                    {i < arr.length-1 && <span style={{ padding:"0 .4rem", color:"var(--text-3)" }}> -&gt; </span>}
                   </span>
                 ))}
               </div>
@@ -545,7 +504,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenApi, onOpenPerf }) {
             <div className="s-label">System Workflow</div>
             <h2 className="s-title">How It Works</h2>
             <p className="s-desc">Six orchestrated steps from session join to adaptive response — seamless and invisible to the user.</p>
-            <button className="btn-primary" onClick={onLaunch} style={{ marginTop:"2rem" }}>Try It Live <span className="arrow">→</span></button>
+            <button className="btn-primary" onClick={onLaunch} style={{ marginTop:"2rem" }}>Try It Live <span className="arrow">-&gt;</span></button>
           </div>
           <div className="wf-steps">
             {WORKFLOW_STEPS.map(s => (
@@ -612,7 +571,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenApi, onOpenPerf }) {
         <h2>Code Together,<br/><span className="hp-grad-blue">Run Instantly</span></h2>
         <p>CKC-OS transforms how developers build and students learn — collaboratively, adaptively, in any language.</p>
         <div className="cta-btns">
-          <button className="btn-primary" onClick={onLaunch}>⚡ Launch Collaborative Editor <span className="arrow">→</span></button>
+          <button className="btn-primary" onClick={onLaunch}>⚡ Launch Collaborative Editor <span className="arrow">-&gt;</span></button>
           <button className="btn-ghost" onClick={() => scrollTo("overview")}>Read System Overview</button>
         </div>
       </section>
@@ -669,7 +628,7 @@ function LoginScreen({ onJoin, onBack }) {
         <button onClick={onBack} style={{ position:"absolute", top:".9rem", left:".9rem", background:"none", border:"none", color:"rgba(255,255,255,.22)", cursor:"pointer", fontSize:".72rem", fontFamily:"var(--sans)", transition:"color .15s" }}
           onMouseEnter={e => e.currentTarget.style.color="var(--blue-l)"}
           onMouseLeave={e => e.currentTarget.style.color="rgba(255,255,255,.22)"}>
-          ← Back to Home
+          &larr; Back to Home
         </button>
 
         <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:"1.5rem", marginTop:".4rem" }}>
@@ -734,7 +693,7 @@ function LoginScreen({ onJoin, onBack }) {
           style={{ width:"100%", marginTop:".7rem", background:"linear-gradient(135deg,var(--blue),var(--teal))", color:"#0d0f14", border:"none", borderRadius:9, padding:".78rem", fontSize:".9rem", fontWeight:800, cursor:name.trim()?"pointer":"not-allowed", fontFamily:"var(--disp)", boxShadow:"0 8px 26px rgba(79,193,255,.32)", opacity:name.trim()?1:.4, transition:"transform .2s,box-shadow .2s" }}
           onMouseEnter={e => name.trim() && (e.currentTarget.style.transform="translateY(-2px)", e.currentTarget.style.boxShadow="0 14px 36px rgba(79,193,255,.5)")}
           onMouseLeave={e => { e.currentTarget.style.transform=""; e.currentTarget.style.boxShadow="0 8px 26px rgba(79,193,255,.32)"; }}>
-          Launch Session →
+          Launch Session -&gt;
         </button>
 
         <div style={{ marginTop:"1rem", textAlign:"center", fontSize:".65rem", color:"rgba(255,255,255,.18)" }}>
@@ -754,13 +713,6 @@ function LoginScreen({ onJoin, onBack }) {
 
 /* ═══════════════════════════════════════════════════════════════
    ROOT
-   onLaunch      → login screen → /editor
-   onOpenChat    → navigate directly to /devchat
-   onOpenSandbox → navigate directly to /sandbox
-   onLaunch    → login screen → /editor
-   onOpenChat  → navigate directly to /devchat
-   onOpenApi   → navigate directly to /api
-   onOpenPerf  → navigate directly to /performance
 ═══════════════════════════════════════════════════════════════ */
 export default function Index() {
   const navigate = useNavigate();
@@ -773,15 +725,21 @@ export default function Index() {
 
   const toChat    = () => navigate("/devchat");
   const toSandbox = () => navigate("/sandbox");
-  const toChat = () => navigate("/devchat");
-  const toApi  = () => navigate("/api");
-  const toPerf = () => navigate("/performance");
+  const toApi     = () => navigate("/api");
+  const toPerf    = () => navigate("/performance");
 
   return (
     <>
       <style>{GLOBAL_CSS}</style>
-      {route === "home"  && <HomePage onLaunch={() => setRoute("login")} onOpenChat={toChat} onOpenSandbox={toSandbox} />}
-      {route === "home"  && <HomePage onLaunch={() => setRoute("login")} onOpenChat={toChat} onOpenApi={toApi} onOpenPerf={toPerf} />}
+      {route === "home"  && (
+        <HomePage
+          onLaunch={() => setRoute("login")}
+          onOpenChat={toChat}
+          onOpenSandbox={toSandbox}
+          onOpenApi={toApi}
+          onOpenPerf={toPerf}
+        />
+      )}
       {route === "login" && <LoginScreen onJoin={toEditor} onBack={() => setRoute("home")} />}
     </>
   );
