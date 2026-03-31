@@ -6,6 +6,7 @@ import DevChat from "./pages/devchat.jsx"
 import SandBox from "./pages/sandbox.jsx";
 import ApiTesting from "./pages/api.jsx";
 import PerformanceMonitor from "./pages/performance.jsx";
+import Behavior from "./pages/behavior.jsx";
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
         <Route path="/sandbox" element={<SandBox />} />
         <Route path="/api" element={<ApiTesting />} />
         <Route path="/performance" element={<PerformanceMonitor />} />
+        <Route path="/behavior" element={<Behavior/>} />
       </Routes>
     </BrowserRouter>
   )
