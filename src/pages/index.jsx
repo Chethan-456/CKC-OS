@@ -202,9 +202,9 @@ const MODULES = [
   { idx:"05", title:"Context-Based Dev Chat",        desc:"Chat linked to specific files, errors, and projects. Threaded discussions with @mention support.", accent:"#A78BFA", isChat:true },
   { idx:"06", title:"Code Execution Sandbox",        desc:"Run 8 languages in-browser: TypeScript, JavaScript, Python, Java, C++, Rust, Go, SQL — with simulated output.", accent:"#4FC1FF", isExec:true, isSandbox:true },
   { idx:"07", title:"Performance Monitor",           desc:"Track API response time, errors per second, and execution latency with real-time graph visualization.", accent:"#4EC9B0", isPerf:true },
-  { idx:"08", title:"Behavior Tracking Engine",      desc:"Monitors typing speed, backspace frequency, error rate, and idle time to understand developer cognition.", accent:"#FFB547" },
+  { idx:"08", title:"Behavior Tracking Engine",      desc:"Monitors typing speed, backspace frequency, error rate, and idle time to understand developer cognition.", accent:"#FFB547", isBehavior:true },
   { idx:"09", title:"Frustration Detection",         desc:"Detects when users are stuck and intelligently triggers hints, learning mode, or contextual suggestions.", accent:"#FF6B9D" },
-  { idx:"10", title:"Live Knowledge Graph Engine",   desc:"Converts code into concepts, errors, and fixes. Builds a live visual graph: Loop -> Array -> Error -> Fix.", accent:"#A78BFA", core:true },
+  { idx:"10", title:"Live Knowledge Graph Engine",   desc:"Converts code into concepts, errors, and fixes. Builds a live visual graph: Loop → Array → Error → Fix.", accent:"#A78BFA", core:true },
   { idx:"11", title:"Adaptive AI Mentor",            desc:"Beginner gets deep explanations. Intermediate gets hints. Advanced gets optimizations. Fully adaptive.", accent:"#4FC1FF" },
   { idx:"12", title:"Adaptive UI Engine",            desc:"Dynamically changes the interface: hints for beginners, guidance for stuck users, minimal for experts.", accent:"#4EC9B0" },
   { idx:"13", title:"Cognitive Analytics Dashboard", desc:"Displays productivity trends, focus levels, and weak concept identification across sessions.", accent:"#FFB547" },
@@ -221,8 +221,10 @@ const WORKFLOW_STEPS = [
 
 /* ═══════════════════════════════════════════════════════════════
    HOME PAGE
+   receives: onLaunch · onOpenChat · onOpenSandbox · onOpenApi
+             onOpenPerf · onOpenBehavior
 ═══════════════════════════════════════════════════════════════ */
-function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf }) {
+function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, onOpenBehavior }) {
   const [activeTab, setActiveTab] = useState("all");
   const filtered = activeTab === "all" ? MODULES
     : activeTab === "collab" ? MODULES.filter((_,i) => i < 6)
@@ -262,7 +264,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf }
             </p>
             <div className="fade-4" style={{ display:"flex", gap:".9rem", flexWrap:"wrap", alignItems:"center" }}>
               <button className="btn-primary" onClick={onLaunch}>
-                ⚡ Launch Collaborative Editor <span className="arrow">-&gt;</span>
+                ⚡ Launch Collaborative Editor <span className="arrow">→</span>
               </button>
               <button className="btn-ghost" onClick={() => scrollTo("overview")}>System Overview</button>
             </div>
@@ -310,7 +312,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf }
             <p className="s-desc">Google Docs-style coding with full CRDT/OT, live cursors, and 8-language execution via CodeMirror 6.</p>
           </div>
           <button className="btn-primary" onClick={onLaunch} style={{ fontSize:".85rem", padding:"11px 22px" }}>
-            Open Editor <span className="arrow">-&gt;</span>
+            Open Editor <span className="arrow">→</span>
           </button>
         </div>
         <div className="efc">
@@ -335,7 +337,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf }
                   <>  <span className="c-kw">private</span> <span className="c-var">ws</span>: <span style={{color:"#A78BFA"}}>WebSocketServer</span>;</>,
                   <>  <span className="c-kw">async</span> <span className="c-fn">applyOT</span>(<span className="c-var">op</span>: <span style={{color:"#A78BFA"}}>Operation</span>) {"{"}</>,
                   <>    <span className="c-kw">const</span> <span className="c-var">t</span> = <span className="c-fn">this</span>.<span className="c-fn">transform</span>(<span className="c-var">op</span>, <span className="c-fn">this</span>.<span className="c-var">version</span>);</>,
-                  <>    <span className="c-fn">this</span>.<span className="c-fn">broadcast</span>(<span className="c-var">t</span>); <span className="c-cmt">// Aria editing</span></>,
+                  <>    <span className="c-fn">this</span>.<span className="c-fn">broadcast</span>(<span className="c-var">t</span>); <span className="c-cmt">// ← Aria editing</span></>,
                   <>  {"}"}</>,
                   <>{"}"}</>,
                 ].map((l,i) => (
@@ -368,7 +370,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf }
                 ))}
               </div>
               <button className="btn-primary" onClick={onLaunch} style={{ fontSize:".8rem", padding:"10px 18px", width:"100%", justifyContent:"center" }}>
-                ⚡ Join Session Now <span className="arrow">-&gt;</span>
+                ⚡ Join Session Now <span className="arrow">→</span>
               </button>
             </div>
           </div>
@@ -405,37 +407,41 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf }
               className="mod-card"
               key={`${m.idx}-${idx}`}
               onClick={
-                m.isEditor  ? onLaunch
-                : m.isChat  ? onOpenChat
+                m.isEditor    ? onLaunch
+                : m.isChat    ? onOpenChat
                 : m.isSandbox ? onOpenSandbox
-                : m.isApi   ? onOpenApi
-                : m.isPerf  ? onOpenPerf
+                : m.isApi     ? onOpenApi
+                : m.isPerf    ? onOpenPerf
+                : m.isBehavior? onOpenBehavior
                 : undefined
               }
               style={{
-                cursor: (m.isEditor || m.isChat || m.isSandbox || m.isApi || m.isPerf) ? "pointer" : undefined,
-                borderColor: m.isEditor  ? "rgba(79,193,255,.2)"
-                           : m.isChat    ? "rgba(167,139,250,.2)"
-                           : m.isSandbox ? "rgba(78,201,176,.2)"
-                           : m.isApi     ? "rgba(255,107,157,.2)"
-                           : m.isPerf    ? "rgba(78,201,176,.2)"
+                cursor: (m.isEditor || m.isChat || m.isSandbox || m.isApi || m.isPerf || m.isBehavior) ? "pointer" : undefined,
+                borderColor: m.isEditor    ? "rgba(79,193,255,.2)"
+                           : m.isChat      ? "rgba(167,139,250,.2)"
+                           : m.isSandbox   ? "rgba(78,201,176,.2)"
+                           : m.isApi       ? "rgba(255,107,157,.2)"
+                           : m.isPerf      ? "rgba(78,201,176,.2)"
+                           : m.isBehavior  ? "rgba(255,181,71,.2)"
                            : undefined,
               }}
             >
-              {m.core      && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:600 }}>CORE</span>}
-              {m.isEditor  && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(79,193,255,.1)",color:"#8DD8FF",border:"1px solid rgba(79,193,255,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ LIVE</span>}
+              {m.core        && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:600 }}>CORE</span>}
+              {m.isEditor    && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(79,193,255,.1)",color:"#8DD8FF",border:"1px solid rgba(79,193,255,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ LIVE</span>}
               {m.isExec && !m.isSandbox && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ RUN</span>}
-              {m.isSandbox && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ RUN</span>}
-              {m.isChat    && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(167,139,250,.1)",color:"#A78BFA",border:"1px solid rgba(167,139,250,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>💬 CHAT</span>}
-              {m.isApi     && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,107,157,.1)",color:"#FF6B9D",border:"1px solid rgba(255,107,157,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>⚡ API</span>}
-              {m.isPerf    && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>📊 PERF</span>}
+              {m.isSandbox   && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ RUN</span>}
+              {m.isChat      && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(167,139,250,.1)",color:"#A78BFA",border:"1px solid rgba(167,139,250,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>💬 CHAT</span>}
+              {m.isApi       && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,107,157,.1)",color:"#FF6B9D",border:"1px solid rgba(255,107,157,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>⚡ API</span>}
+              {m.isPerf      && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>📊 PERF</span>}
+              {m.isBehavior  && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🧠 TRACK</span>}
               <div className="mod-idx">{m.idx}</div>
               <h3>{m.title}</h3><p>{m.desc}</p>
-              {m.isEditor  && <p style={{ fontSize:".75rem", color:"var(--blue)",   marginTop:".65rem", fontWeight:700 }}>Click to open -&gt;</p>}
-              {m.isChat    && <p style={{ fontSize:".75rem", color:"var(--violet)", marginTop:".65rem", fontWeight:700 }}>Click to open -&gt;</p>}
-              {m.isSandbox && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open -&gt;</p>}
-              {m.isApi     && <p style={{ fontSize:".75rem", color:"var(--rose)",   marginTop:".65rem", fontWeight:700 }}>Click to open -&gt;</p>}
-              {m.isPerf    && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open -&gt;</p>}
+              {m.isEditor    && <p style={{ fontSize:".75rem", color:"var(--blue)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isChat      && <p style={{ fontSize:".75rem", color:"var(--violet)", marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isSandbox   && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isApi       && <p style={{ fontSize:".75rem", color:"var(--rose)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isPerf      && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isBehavior  && <p style={{ fontSize:".75rem", color:"var(--amber)",  marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
               <div className="mod-accent" style={{ background:m.accent }}/>
             </div>
           ))}
@@ -476,7 +482,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf }
                 {["React + CodeMirror 6","WebSocket + CRDT/OT","Node.js Backend","AI Engine (Python)","Docker Sandbox"].map((n,i,arr) => (
                   <span key={n}>
                     <span style={{ background:"rgba(255,255,255,.035)", border:`1px solid ${(i===0||i===3)?"rgba(79,193,255,.45)":"rgba(255,255,255,.07)"}`, borderRadius:10, padding:".85rem 1.3rem", fontFamily:"var(--mono)", fontSize:".72rem", color:(i===0||i===3)?"#8DD8FF":"#e0e6ff", fontWeight:500, whiteSpace:"nowrap", display:"inline-block" }}>{n}</span>
-                    {i < arr.length-1 && <span style={{ padding:"0 .4rem", color:"var(--text-3)" }}> -&gt; </span>}
+                    {i < arr.length-1 && <span style={{ padding:"0 .4rem", color:"var(--text-3)" }}>→</span>}
                   </span>
                 ))}
               </div>
@@ -504,7 +510,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf }
             <div className="s-label">System Workflow</div>
             <h2 className="s-title">How It Works</h2>
             <p className="s-desc">Six orchestrated steps from session join to adaptive response — seamless and invisible to the user.</p>
-            <button className="btn-primary" onClick={onLaunch} style={{ marginTop:"2rem" }}>Try It Live <span className="arrow">-&gt;</span></button>
+            <button className="btn-primary" onClick={onLaunch} style={{ marginTop:"2rem" }}>Try It Live <span className="arrow">→</span></button>
           </div>
           <div className="wf-steps">
             {WORKFLOW_STEPS.map(s => (
@@ -571,7 +577,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf }
         <h2>Code Together,<br/><span className="hp-grad-blue">Run Instantly</span></h2>
         <p>CKC-OS transforms how developers build and students learn — collaboratively, adaptively, in any language.</p>
         <div className="cta-btns">
-          <button className="btn-primary" onClick={onLaunch}>⚡ Launch Collaborative Editor <span className="arrow">-&gt;</span></button>
+          <button className="btn-primary" onClick={onLaunch}>⚡ Launch Collaborative Editor <span className="arrow">→</span></button>
           <button className="btn-ghost" onClick={() => scrollTo("overview")}>Read System Overview</button>
         </div>
       </section>
@@ -628,7 +634,7 @@ function LoginScreen({ onJoin, onBack }) {
         <button onClick={onBack} style={{ position:"absolute", top:".9rem", left:".9rem", background:"none", border:"none", color:"rgba(255,255,255,.22)", cursor:"pointer", fontSize:".72rem", fontFamily:"var(--sans)", transition:"color .15s" }}
           onMouseEnter={e => e.currentTarget.style.color="var(--blue-l)"}
           onMouseLeave={e => e.currentTarget.style.color="rgba(255,255,255,.22)"}>
-          &larr; Back to Home
+          ← Back to Home
         </button>
 
         <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:"1.5rem", marginTop:".4rem" }}>
@@ -693,7 +699,7 @@ function LoginScreen({ onJoin, onBack }) {
           style={{ width:"100%", marginTop:".7rem", background:"linear-gradient(135deg,var(--blue),var(--teal))", color:"#0d0f14", border:"none", borderRadius:9, padding:".78rem", fontSize:".9rem", fontWeight:800, cursor:name.trim()?"pointer":"not-allowed", fontFamily:"var(--disp)", boxShadow:"0 8px 26px rgba(79,193,255,.32)", opacity:name.trim()?1:.4, transition:"transform .2s,box-shadow .2s" }}
           onMouseEnter={e => name.trim() && (e.currentTarget.style.transform="translateY(-2px)", e.currentTarget.style.boxShadow="0 14px 36px rgba(79,193,255,.5)")}
           onMouseLeave={e => { e.currentTarget.style.transform=""; e.currentTarget.style.boxShadow="0 8px 26px rgba(79,193,255,.32)"; }}>
-          Launch Session -&gt;
+          Launch Session →
         </button>
 
         <div style={{ marginTop:"1rem", textAlign:"center", fontSize:".65rem", color:"rgba(255,255,255,.18)" }}>
@@ -713,31 +719,39 @@ function LoginScreen({ onJoin, onBack }) {
 
 /* ═══════════════════════════════════════════════════════════════
    ROOT
+   onLaunch       → login screen → /editor
+   onOpenChat     → /devchat
+   onOpenSandbox  → /sandbox
+   onOpenApi      → /api
+   onOpenPerf     → /performance
+   onOpenBehavior → /behavior
 ═══════════════════════════════════════════════════════════════ */
 export default function Index() {
   const navigate = useNavigate();
   const [route, setRoute] = useState("home");
 
-  const toEditor = (me, sid, lang) => {
+  const toEditor   = (me, sid, lang) => {
     authStore.set({ me, sid, lang });
     navigate("/editor", { state: { me, sid, lang } });
   };
 
-  const toChat    = () => navigate("/devchat");
-  const toSandbox = () => navigate("/sandbox");
-  const toApi     = () => navigate("/api");
-  const toPerf    = () => navigate("/performance");
+  const toChat     = () => navigate("/devchat");
+  const toSandbox  = () => navigate("/sandbox");
+  const toApi      = () => navigate("/api");
+  const toPerf     = () => navigate("/performance");
+  const toBehavior = () => navigate("/behavior");
 
   return (
     <>
       <style>{GLOBAL_CSS}</style>
-      {route === "home"  && (
+      {route === "home" && (
         <HomePage
           onLaunch={() => setRoute("login")}
           onOpenChat={toChat}
           onOpenSandbox={toSandbox}
           onOpenApi={toApi}
           onOpenPerf={toPerf}
+          onOpenBehavior={toBehavior}
         />
       )}
       {route === "login" && <LoginScreen onJoin={toEditor} onBack={() => setRoute("home")} />}
