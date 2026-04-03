@@ -98,13 +98,12 @@ function detectLang(code) {
   return "unknown";
 }
 
-// Places nodes in 4 fixed vertical columns: Concept | Error | Fix | Explanation
 function computeLayout(allNodes, W, H) {
   const cols = { concept:[], error:[], fix:[], explanation:[] };
   allNodes.forEach(n => { (cols[n.type] || cols.concept).push(n); });
 
   const PAD_X  = 110;
-  const colGap = (W - PAD_X * 2) / 3;  // 3 gaps for 4 columns
+  const colGap = (W - PAD_X * 2) / 3;
   const NODE_H = 100;
   const positions = {};
 
@@ -144,7 +143,6 @@ export default function KnowledgeGraphEngine() {
   const [apiError,    setApiError]    = useState(null);
   const [analyzeDone, setAnalyzeDone] = useState(false);
 
-  // ── Draw ─────────────────────────────────────────────────────────────────
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -156,7 +154,6 @@ export default function KnowledgeGraphEngine() {
 
     const wts = (x,y) => ({ x: x*s.camScale+s.camX, y: y*s.camScale+s.camY });
 
-    // Grid
     ctx.save();
     ctx.strokeStyle="rgba(42,47,69,.4)"; ctx.lineWidth=0.5;
     const gs=40*s.camScale;
@@ -167,38 +164,28 @@ export default function KnowledgeGraphEngine() {
 
     if (!s.nodes.length) return;
 
-    // Column header X positions
     const colX = {};
     CHAIN_ORDER.forEach(type => {
       const n = s.nodes.find(nd => nd.type === type);
       if (n) colX[type] = wts(n.x, 0).x;
     });
 
-    // Column header labels + vertical dividers
     CHAIN_ORDER.forEach((type, ci) => {
       if (colX[type] == null) return;
       const col = NODE_COLORS[type];
       ctx.save();
-
-      // Vertical lane background
       ctx.fillStyle = col + "08";
       const laneW = 140 * s.camScale;
       ctx.fillRect(colX[type] - laneW/2, 0, laneW, H);
-
-      // Column label
       ctx.font = `700 11px 'Syne',sans-serif`;
       ctx.textAlign = "center";
       ctx.fillStyle = col + "99";
       ctx.fillText(COL_LABELS[type], colX[type], 30);
-
-      // Underline
       ctx.strokeStyle = col+"44"; ctx.lineWidth=1;
       ctx.beginPath(); ctx.moveTo(colX[type]-55,36); ctx.lineTo(colX[type]+55,36); ctx.stroke();
-
       ctx.restore();
     });
 
-    // Chain flow arrows between column headers (mid-lane connectors)
     const colTypes = CHAIN_ORDER.filter(t => colX[t] != null);
     for (let i=0; i<colTypes.length-1; i++) {
       const x1=colX[colTypes[i]], x2=colX[colTypes[i+1]];
@@ -207,7 +194,6 @@ export default function KnowledgeGraphEngine() {
       ctx.strokeStyle="rgba(88,96,140,.12)"; ctx.lineWidth=1.5; ctx.setLineDash([5,7]);
       ctx.beginPath(); ctx.moveTo(x1+60,midY); ctx.lineTo(x2-60,midY); ctx.stroke();
       ctx.setLineDash([]);
-      // arrowhead
       ctx.fillStyle="rgba(88,96,140,.18)";
       ctx.beginPath();
       ctx.moveTo(x2-60,midY);
@@ -217,7 +203,6 @@ export default function KnowledgeGraphEngine() {
       ctx.restore();
     }
 
-    // Edges
     s.edges.forEach(e => {
       const a=s.nodes.find(n=>n.id===e.from), b=s.nodes.find(n=>n.id===e.to);
       if (!a||!b) return;
@@ -236,7 +221,6 @@ export default function KnowledgeGraphEngine() {
       if (!isChain) ctx.setLineDash([3,5]);
       ctx.stroke(); ctx.setLineDash([]);
 
-      // Arrow tip
       const ang=Math.atan2(bp.y-cy2, bp.x-cx2);
       const ar=8*s.camScale*0.85;
       ctx.beginPath();
@@ -246,7 +230,6 @@ export default function KnowledgeGraphEngine() {
       ctx.strokeStyle = isChain ? NODE_COLORS[a.type]+"cc" : "rgba(88,96,140,.5)";
       ctx.lineWidth=isChain?2:0.8; ctx.stroke();
 
-      // Edge label
       if (e.label && s.camScale>0.55) {
         const mx=(ap.x+bp.x)/2, my=(ap.y+bp.y)/2-10;
         ctx.fillStyle="rgba(136,144,170,.6)";
@@ -256,7 +239,6 @@ export default function KnowledgeGraphEngine() {
       ctx.restore();
     });
 
-    // Nodes
     s.nodes.forEach(n => {
       const p   = wts(n.x,n.y);
       const col = NODE_COLORS[n.type]||"#7c6ff7";
@@ -265,27 +247,22 @@ export default function KnowledgeGraphEngine() {
       const isHov=s.hoveredNode===n, isSel=s.selectedNode===n;
 
       ctx.save();
-      // Glow
       if (isHov||isSel) {
         const gl=ctx.createRadialGradient(p.x,p.y,r*0.2,p.x,p.y,r*2.5);
         gl.addColorStop(0,glow); gl.addColorStop(1,"transparent");
         ctx.fillStyle=gl; ctx.beginPath(); ctx.arc(p.x,p.y,r*2.5,0,Math.PI*2); ctx.fill();
       }
-      // Fill
       const grad=ctx.createRadialGradient(p.x-r*0.25,p.y-r*0.25,r*0.05,p.x,p.y,r);
       grad.addColorStop(0,col+"dd"); grad.addColorStop(1,col+"44");
       ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2);
       ctx.fillStyle=grad; ctx.fill();
-      // Border
       ctx.strokeStyle=isSel?col:(isHov?col+"cc":col+"66");
       ctx.lineWidth=isSel?2.5:1.5; ctx.stroke();
-      // Icon
       if (s.camScale>0.45) {
         ctx.font=`${Math.round(17*s.camScale)}px sans-serif`;
         ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillStyle="rgba(255,255,255,.9)";
         ctx.fillText(NODE_ICONS[n.type]||"●",p.x,p.y-r*0.2);
       }
-      // Label
       if (s.camScale>0.35) {
         const fs=Math.min(Math.round(10.5*s.camScale),13);
         ctx.font=`700 ${fs}px Syne,sans-serif`;
@@ -298,7 +275,6 @@ export default function KnowledgeGraphEngine() {
     });
   }, []);
 
-  // ── Resize ───────────────────────────────────────────────────────────────
   const resize = useCallback(() => {
     const canvas=canvasRef.current, area=graphAreaRef.current;
     if (!canvas||!area) return;
@@ -315,7 +291,6 @@ export default function KnowledgeGraphEngine() {
     return () => window.removeEventListener("resize",resize);
   },[resize]);
 
-  // ── Mouse helpers ────────────────────────────────────────────────────────
   const getMousePos   = e => { const r=canvasRef.current.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; };
   const screenToWorld = (x,y) => { const s=stateRef.current; return {x:(x-s.camX)/s.camScale,y:(y-s.camY)/s.camScale}; };
   const worldToScreen = (x,y) => { const s=stateRef.current; return {x:x*s.camScale+s.camX,y:y*s.camScale+s.camY}; };
@@ -371,7 +346,6 @@ export default function KnowledgeGraphEngine() {
     return ()=>canvas.removeEventListener("wheel",handleWheel);
   },[handleWheel]);
 
-  // ── Zoom / reset ─────────────────────────────────────────────────────────
   const zoomIn  = ()=>{stateRef.current.camScale=Math.min(3,stateRef.current.camScale*1.2);draw();};
   const zoomOut = ()=>{stateRef.current.camScale=Math.max(0.2,stateRef.current.camScale*0.83);draw();};
   const resetView = useCallback(()=>{
@@ -388,7 +362,6 @@ export default function KnowledgeGraphEngine() {
     draw();
   },[draw]);
 
-  // ── Build graph ───────────────────────────────────────────────────────────
   const buildGraph = useCallback((graph) => {
     const s=stateRef.current; s.nodes=[]; s.edges=[];
     const canvas=canvasRef.current,dpr=window.devicePixelRatio||1;
@@ -412,7 +385,6 @@ export default function KnowledgeGraphEngine() {
       });
     });
 
-    // Edges from API connections
     allRaw.forEach(n=>{
       (n.connections||[]).forEach(tid=>{
         if (s.nodes.find(x=>x.id===tid))
@@ -420,7 +392,6 @@ export default function KnowledgeGraphEngine() {
       });
     });
 
-    // Auto chain: concept→error→fix→explanation
     const byType=type=>s.nodes.filter(n=>n.type===type);
     const linked=(a,b)=>s.edges.some(e=>(e.from===a&&e.to===b)||(e.from===b&&e.to===a));
     const concepts=byType("concept"), errors=byType("error"), fixes=byType("fix"), explanations=byType("explanation");
@@ -437,7 +408,6 @@ export default function KnowledgeGraphEngine() {
       const x=explanations[i]||explanations[0];
       if (x&&!linked(f.id,x.id)) s.edges.push({from:f.id,to:x.id,chain:true,label:"why"});
     });
-    // vertical links within same column
     concepts.forEach((c,i)=>{if(concepts[i+1]&&!linked(c.id,concepts[i+1].id)) s.edges.push({from:c.id,to:concepts[i+1].id,chain:false,label:""});});
     errors.forEach((e,i)  =>{if(errors[i+1]  &&!linked(e.id,errors[i+1].id))   s.edges.push({from:e.id,to:errors[i+1].id,chain:false,label:""});});
 
@@ -448,7 +418,7 @@ export default function KnowledgeGraphEngine() {
     setTimeout(()=>resetView(),60);
   },[draw,resetView]);
 
-  // ── Analyze ───────────────────────────────────────────────────────────────
+  // ── Analyze — now calls /api/chat on your Express server ─────────────────
   const analyze = useCallback(async()=>{
     const trimmed=code.trim(); if (!trimmed) return;
     setLoading(true); setApiError(null); setAnalyzeDone(false);
@@ -498,13 +468,11 @@ Code:
 ${trimmed}`;
 
     try {
-      const apiKey=import.meta.env.VITE_GROQ_API_KEY;
-      const res=await fetch("https://api.groq.com/openai/v1/chat/completions",{
+      // ✅ FIXED: calls your Express server instead of Groq directly
+      const res=await fetch("/api/chat",{
         method:"POST",
-        headers:{"Content-Type":"application/json","Authorization":`Bearer ${apiKey}`},
+        headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
-          model:"llama-3.3-70b-versatile",
-          temperature:0.2, max_tokens:2048,
           messages:[
             {role:"system",content:"You are a code analyzer. Respond ONLY with raw JSON. No markdown, no backticks, no explanation."},
             {role:"user",content:prompt}
@@ -559,7 +527,6 @@ ${trimmed}`;
           KnowledgeGraph<span style={{WebkitTextFillColor:"#8890aa",fontWeight:400,fontSize:12,marginLeft:6}}>Engine</span>
         </div>
 
-        {/* Chain flow pill */}
         <div style={{display:"flex",alignItems:"center",gap:5,marginLeft:6}}>
           {CHAIN_ORDER.map((type,i)=>(
             <span key={type} style={{display:"flex",alignItems:"center",gap:5}}>
@@ -624,7 +591,6 @@ ${trimmed}`;
           onMouseUp={handleMouseUp} onClick={handleClick}
         />
 
-        {/* Empty state */}
         {showEmpty&&!loading&&!apiError&&(
           <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
             <div style={{textAlign:"center"}}>
@@ -643,7 +609,6 @@ ${trimmed}`;
           </div>
         )}
 
-        {/* Loading overlay */}
         {loading&&(
           <div style={{position:"absolute",inset:0,background:"rgba(10,11,15,.88)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,zIndex:20}}>
             <div style={{width:60,height:60,borderRadius:"50%",border:"2px solid #7c6ff7",animation:"pulse-out 1.2s ease-out infinite"}}/>
@@ -652,7 +617,6 @@ ${trimmed}`;
           </div>
         )}
 
-        {/* Error banner */}
         {apiError&&!loading&&(
           <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,padding:32}}>
             <div style={{fontSize:36,opacity:.6}}>⚠️</div>
@@ -662,7 +626,6 @@ ${trimmed}`;
           </div>
         )}
 
-        {/* Node detail panel */}
         {nodePanel.show&&nodePanel.node&&(
           <div style={{position:"absolute",top:16,right:60,width:255,background:"rgba(24,28,40,0.95)",backdropFilter:"blur(10px)",border:`1px solid ${NODE_COLORS[nodePanel.node.type]}44`,borderRadius:14,padding:16,fontSize:12,zIndex:50,boxShadow:"0 8px 32px rgba(0,0,0,.6)"}}>
             <button onClick={()=>setNodePanel(p=>({...p,show:false}))} style={{position:"absolute",top:10,right:10,background:"none",border:"none",color:"#5a6080",cursor:"pointer",fontSize:16}}>✕</button>
@@ -672,7 +635,6 @@ ${trimmed}`;
           </div>
         )}
 
-        {/* Hover tooltip */}
         {tooltip.show&&tooltip.node&&(
           <div style={{position:"absolute",left:tooltip.x,top:tooltip.y,maxWidth:255,minWidth:160,background:"#181c28",border:`1px solid ${NODE_COLORS[tooltip.node.type]}44`,borderRadius:10,padding:"10px 13px",fontSize:12,lineHeight:1.6,color:"#e8eaf2",pointerEvents:"none",zIndex:100,boxShadow:"0 8px 32px rgba(0,0,0,.5)"}}>
             <div style={{fontSize:9,fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",marginBottom:4,color:NODE_COLORS[tooltip.node.type]}}>{tooltip.node.type.toUpperCase()}</div>
@@ -681,7 +643,6 @@ ${trimmed}`;
           </div>
         )}
 
-        {/* Legend */}
         <div style={{position:"absolute",bottom:20,left:20,background:"#181c28",border:"1px solid #2a2f45",borderRadius:10,padding:"9px 14px",display:"flex",gap:14,fontSize:11}}>
           {CHAIN_ORDER.map(type=>(
             <div key={type} style={{display:"flex",alignItems:"center",gap:5,color:"#8890aa"}}>
@@ -691,7 +652,6 @@ ${trimmed}`;
           ))}
         </div>
 
-        {/* Zoom controls */}
         <div style={{position:"absolute",top:16,right:16,display:"flex",flexDirection:"column",gap:8}}>
           {[["＋",zoomIn],["－",zoomOut],["⌂",resetView]].map(([icon,fn])=>(
             <div key={icon} onClick={fn} style={{width:34,height:34,background:"#181c28",border:"1px solid #2a2f45",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16,color:"#8890aa"}}
