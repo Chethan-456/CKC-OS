@@ -101,12 +101,10 @@ function detectLang(code) {
 function computeLayout(allNodes, W, H) {
   const cols = { concept:[], error:[], fix:[], explanation:[] };
   allNodes.forEach(n => { (cols[n.type] || cols.concept).push(n); });
-
   const PAD_X  = 110;
   const colGap = (W - PAD_X * 2) / 3;
   const NODE_H = 100;
   const positions = {};
-
   CHAIN_ORDER.forEach((type, ci) => {
     const nodes  = cols[type] || [];
     const totalH = nodes.length * NODE_H;
@@ -119,6 +117,145 @@ function computeLayout(allNodes, W, H) {
   return positions;
 }
 
+// ─── Saved Graphs Drawer ──────────────────────────────────────────────────────
+function SavedGraphsDrawer({ open, onClose, onLoad, currentGraphId }) {
+  const [graphs, setGraphs]   = useState([]);
+  const [fetching, setFetching] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+  const [err, setErr]          = useState(null);
+
+  const fetchGraphs = useCallback(async () => {
+    setFetching(true); setErr(null);
+    try {
+      const res = await fetch("/api/graphs");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setGraphs(data);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setFetching(false);
+    }
+  }, []);
+
+  useEffect(() => { if (open) fetchGraphs(); }, [open, fetchGraphs]);
+
+  const handleDelete = async (id, e) => {
+    e.stopPropagation();
+    setDeleting(id);
+    try {
+      await fetch(`/api/graphs/${id}`, { method: "DELETE" });
+      setGraphs(g => g.filter(x => x.id !== id));
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  const langDot = lang => {
+    const col = LANG_COLORS[lang?.toLowerCase()] || "#8890aa";
+    return <span style={{ display:"inline-block", width:7, height:7, borderRadius:"50%", background:col, marginRight:5 }} />;
+  };
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div onClick={onClose} style={{
+        position:"fixed", inset:0, background:"rgba(0,0,0,.5)", zIndex:199,
+        opacity: open ? 1 : 0, pointerEvents: open ? "auto" : "none",
+        transition:"opacity .22s"
+      }} />
+
+      {/* Drawer */}
+      <div style={{
+        position:"fixed", top:0, right:0, width:320, height:"100vh",
+        background:"#10121a", borderLeft:"1px solid #2a2f45",
+        zIndex:200, display:"flex", flexDirection:"column",
+        transform: open ? "translateX(0)" : "translateX(100%)",
+        transition:"transform .26s cubic-bezier(.4,0,.2,1)",
+        boxShadow:"-8px 0 40px rgba(0,0,0,.6)"
+      }}>
+        {/* Header */}
+        <div style={{ padding:"18px 20px 14px", borderBottom:"1px solid #2a2f45", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <div>
+            <div style={{ fontWeight:800, fontSize:14, color:"#e8eaf2", letterSpacing:"-.2px" }}>Saved Graphs</div>
+            <div style={{ fontSize:10, color:"#5a6080", marginTop:2, fontWeight:600, letterSpacing:".06em", textTransform:"uppercase" }}>Neo4j Storage</div>
+          </div>
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            <button onClick={fetchGraphs} title="Refresh" style={{ background:"none", border:"1px solid #2a2f45", borderRadius:7, color:"#8890aa", cursor:"pointer", fontSize:12, padding:"4px 9px", fontFamily:"'Syne',sans-serif", fontWeight:600 }}>↻</button>
+            <button onClick={onClose} style={{ background:"none", border:"none", color:"#5a6080", cursor:"pointer", fontSize:18, lineHeight:1 }}>✕</button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex:1, overflowY:"auto", padding:"12px 14px" }}>
+          {fetching && (
+            <div style={{ textAlign:"center", padding:"40px 0", color:"#5a6080", fontSize:12 }}>
+              <div style={{ width:20, height:20, border:"2px solid #2a2f45", borderTopColor:"#7c6ff7", borderRadius:"50%", animation:"spin .7s linear infinite", margin:"0 auto 12px" }} />
+              Loading from Neo4j...
+            </div>
+          )}
+          {err && !fetching && (
+            <div style={{ background:"#1a1020", border:"1px solid #ff6b6b44", borderRadius:8, padding:"12px 14px", fontSize:11, color:"#ff6b6b", marginTop:8 }}>
+              ⚠ {err}
+            </div>
+          )}
+          {!fetching && !err && graphs.length === 0 && (
+            <div style={{ textAlign:"center", padding:"48px 16px", color:"#3a4060" }}>
+              <div style={{ fontSize:32, marginBottom:12, opacity:.4 }}>◈</div>
+              <div style={{ fontSize:12, fontWeight:700, color:"#5a6080", marginBottom:6 }}>No saved graphs yet</div>
+              <div style={{ fontSize:11, color:"#3a4060", lineHeight:1.7 }}>Analyze some code and hit<br/>Save Graph to persist it here</div>
+            </div>
+          )}
+          {!fetching && graphs.map(g => {
+            const isActive = g.id === currentGraphId;
+            return (
+              <div key={g.id} onClick={() => onLoad(g)}
+                style={{
+                  padding:"11px 13px", borderRadius:9, marginBottom:7, cursor:"pointer",
+                  border:`1px solid ${isActive ? "#7c6ff766" : "#2a2f45"}`,
+                  background: isActive ? "rgba(124,111,247,.08)" : "rgba(255,255,255,.02)",
+                  transition:"all .15s", position:"relative"
+                }}
+                onMouseEnter={e => { if (!isActive) { e.currentTarget.style.borderColor="#7c6ff744"; e.currentTarget.style.background="rgba(124,111,247,.05)"; }}}
+                onMouseLeave={e => { if (!isActive) { e.currentTarget.style.borderColor="#2a2f45"; e.currentTarget.style.background="rgba(255,255,255,.02)"; }}}
+              >
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:5 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:"#e8eaf2", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:190 }}>
+                    {langDot(g.language)}{g.name || g.language || "Untitled"}
+                  </div>
+                  <button onClick={e => handleDelete(g.id, e)}
+                    disabled={deleting === g.id}
+                    title="Delete"
+                    style={{ background:"none", border:"1px solid transparent", borderRadius:5, color:"#5a6080", cursor:"pointer", fontSize:11, padding:"2px 6px", lineHeight:1, fontFamily:"'Syne',sans-serif", transition:"all .12s" }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor="#ff6b6b66"; e.currentTarget.style.color="#ff6b6b"; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor="transparent"; e.currentTarget.style.color="#5a6080"; }}
+                  >
+                    {deleting === g.id ? "…" : "✕"}
+                  </button>
+                </div>
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                  {["concept","error","fix","explanation"].map(t => (
+                    <span key={t} style={{ fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:8, background:NODE_COLORS[t]+"18", color:NODE_COLORS[t], letterSpacing:".04em" }}>
+                      {(g.counts?.[t] || 0)} {t}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ fontSize:10, color:"#3a4060", marginTop:6, fontFamily:"'JetBrains Mono',monospace" }}>
+                  {g.savedAt ? new Date(g.savedAt).toLocaleString() : ""}
+                </div>
+                {isActive && <div style={{ position:"absolute", top:10, right:38, width:6, height:6, borderRadius:"50%", background:"#29d4a8" }} />}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function KnowledgeGraphEngine() {
   const navigate     = useNavigate();
   const canvasRef    = useRef(null);
@@ -131,17 +268,24 @@ export default function KnowledgeGraphEngine() {
     panning:false, panStartX:0, panStartY:0, camStartX:0, camStartY:0,
   });
 
-  const [code,        setCode]        = useState("");
-  const [forcedLang,  setForcedLang]  = useState("auto");
-  const [loading,     setLoading]     = useState(false);
-  const [loadingStep, setLoadingStep] = useState("Detecting language & structure");
-  const [lang,        setLang]        = useState("Waiting for code...");
-  const [stats,       setStats]       = useState({ nodes:0, edges:0, errors:0 });
-  const [tooltip,     setTooltip]     = useState({ show:false, x:0, y:0, node:null });
-  const [nodePanel,   setNodePanel]   = useState({ show:false, node:null });
-  const [showEmpty,   setShowEmpty]   = useState(true);
-  const [apiError,    setApiError]    = useState(null);
-  const [analyzeDone, setAnalyzeDone] = useState(false);
+  const [code,          setCode]          = useState("");
+  const [forcedLang,    setForcedLang]    = useState("auto");
+  const [loading,       setLoading]       = useState(false);
+  const [loadingStep,   setLoadingStep]   = useState("Detecting language & structure");
+  const [lang,          setLang]          = useState("Waiting for code...");
+  const [stats,         setStats]         = useState({ nodes:0, edges:0, errors:0 });
+  const [tooltip,       setTooltip]       = useState({ show:false, x:0, y:0, node:null });
+  const [nodePanel,     setNodePanel]     = useState({ show:false, node:null });
+  const [showEmpty,     setShowEmpty]     = useState(true);
+  const [apiError,      setApiError]      = useState(null);
+  const [analyzeDone,   setAnalyzeDone]   = useState(false);
+
+  // Neo4j save state
+  const [currentGraph,  setCurrentGraph]  = useState(null); // { id, language, graph }
+  const [savedGraphId,  setSavedGraphId]  = useState(null);
+  const [saving,        setSaving]        = useState(false);
+  const [saveMsg,       setSaveMsg]       = useState(null); // { ok: bool, text: string }
+  const [drawerOpen,    setDrawerOpen]    = useState(false);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -151,7 +295,6 @@ export default function KnowledgeGraphEngine() {
     const W   = canvas.width / dpr, H = canvas.height / dpr;
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, W, H);
-
     const wts = (x,y) => ({ x: x*s.camScale+s.camX, y: y*s.camScale+s.camY });
 
     ctx.save();
@@ -170,7 +313,7 @@ export default function KnowledgeGraphEngine() {
       if (n) colX[type] = wts(n.x, 0).x;
     });
 
-    CHAIN_ORDER.forEach((type, ci) => {
+    CHAIN_ORDER.forEach((type) => {
       if (colX[type] == null) return;
       const col = NODE_COLORS[type];
       ctx.save();
@@ -196,9 +339,7 @@ export default function KnowledgeGraphEngine() {
       ctx.setLineDash([]);
       ctx.fillStyle="rgba(88,96,140,.18)";
       ctx.beginPath();
-      ctx.moveTo(x2-60,midY);
-      ctx.lineTo(x2-70,midY-5);
-      ctx.lineTo(x2-70,midY+5);
+      ctx.moveTo(x2-60,midY); ctx.lineTo(x2-70,midY-5); ctx.lineTo(x2-70,midY+5);
       ctx.closePath(); ctx.fill();
       ctx.restore();
     }
@@ -208,9 +349,7 @@ export default function KnowledgeGraphEngine() {
       if (!a||!b) return;
       const ap=wts(a.x,a.y), bp=wts(b.x,b.y);
       const dx=bp.x-ap.x;
-      const cx1=ap.x+dx*0.45, cy1=ap.y;
-      const cx2=bp.x-dx*0.45, cy2=bp.y;
-
+      const cx1=ap.x+dx*0.45, cy1=ap.y, cx2=bp.x-dx*0.45, cy2=bp.y;
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(ap.x,ap.y);
@@ -220,7 +359,6 @@ export default function KnowledgeGraphEngine() {
       ctx.lineWidth   = isChain ? 2 : 0.8;
       if (!isChain) ctx.setLineDash([3,5]);
       ctx.stroke(); ctx.setLineDash([]);
-
       const ang=Math.atan2(bp.y-cy2, bp.x-cx2);
       const ar=8*s.camScale*0.85;
       ctx.beginPath();
@@ -229,7 +367,6 @@ export default function KnowledgeGraphEngine() {
       ctx.lineTo(bp.x-ar*Math.cos(ang+0.35), bp.y-ar*Math.sin(ang+0.35));
       ctx.strokeStyle = isChain ? NODE_COLORS[a.type]+"cc" : "rgba(88,96,140,.5)";
       ctx.lineWidth=isChain?2:0.8; ctx.stroke();
-
       if (e.label && s.camScale>0.55) {
         const mx=(ap.x+bp.x)/2, my=(ap.y+bp.y)/2-10;
         ctx.fillStyle="rgba(136,144,170,.6)";
@@ -245,7 +382,6 @@ export default function KnowledgeGraphEngine() {
       const glow= NODE_GLOW[n.type]||"rgba(124,111,247,.25)";
       const r   = (n.radius||40)*s.camScale;
       const isHov=s.hoveredNode===n, isSel=s.selectedNode===n;
-
       ctx.save();
       if (isHov||isSel) {
         const gl=ctx.createRadialGradient(p.x,p.y,r*0.2,p.x,p.y,r*2.5);
@@ -366,7 +502,6 @@ export default function KnowledgeGraphEngine() {
     const s=stateRef.current; s.nodes=[]; s.edges=[];
     const canvas=canvasRef.current,dpr=window.devicePixelRatio||1;
     const W=canvas.width/dpr,H=canvas.height/dpr;
-
     const allRaw=[
       ...(graph.concepts||[]),
       ...(graph.errors||[]),
@@ -374,7 +509,6 @@ export default function KnowledgeGraphEngine() {
       ...(graph.explanations||[])
     ];
     if (!allRaw.length) return;
-
     const positions=computeLayout(allRaw,W,H);
     allRaw.forEach(n=>{
       const pos=positions[n.id]||{x:W/2,y:H/2};
@@ -384,44 +518,33 @@ export default function KnowledgeGraphEngine() {
         radius:40+Math.min((n.label||"").length,8)*1.2
       });
     });
-
     allRaw.forEach(n=>{
       (n.connections||[]).forEach(tid=>{
         if (s.nodes.find(x=>x.id===tid))
           s.edges.push({from:n.id,to:tid,chain:true,label:""});
       });
     });
-
     const byType=type=>s.nodes.filter(n=>n.type===type);
     const linked=(a,b)=>s.edges.some(e=>(e.from===a&&e.to===b)||(e.from===b&&e.to===a));
     const concepts=byType("concept"), errors=byType("error"), fixes=byType("fix"), explanations=byType("explanation");
-
-    concepts.forEach((c,i)=>{
-      const e=errors[i]||errors[0];
-      if (e&&!linked(c.id,e.id)) s.edges.push({from:c.id,to:e.id,chain:true,label:"causes"});
-    });
-    errors.forEach((e,i)=>{
-      const f=fixes[i]||fixes[0];
-      if (f&&!linked(e.id,f.id)) s.edges.push({from:e.id,to:f.id,chain:true,label:"fix"});
-    });
-    fixes.forEach((f,i)=>{
-      const x=explanations[i]||explanations[0];
-      if (x&&!linked(f.id,x.id)) s.edges.push({from:f.id,to:x.id,chain:true,label:"why"});
-    });
-    concepts.forEach((c,i)=>{if(concepts[i+1]&&!linked(c.id,concepts[i+1].id)) s.edges.push({from:c.id,to:concepts[i+1].id,chain:false,label:""});});
-    errors.forEach((e,i)  =>{if(errors[i+1]  &&!linked(e.id,errors[i+1].id))   s.edges.push({from:e.id,to:errors[i+1].id,chain:false,label:""});});
-
-    setStats({nodes:s.nodes.length,edges:s.edges.length,errors:errors.length});
+    concepts.forEach((c,i)=>{const e=errors[i]||errors[0];if(e&&!linked(c.id,e.id))s.edges.push({from:c.id,to:e.id,chain:true,label:"causes"});});
+    errors.forEach((e,i)=>{const f=fixes[i]||fixes[0];if(f&&!linked(e.id,f.id))s.edges.push({from:e.id,to:f.id,chain:true,label:"fix"});});
+    fixes.forEach((f,i)=>{const x=explanations[i]||explanations[0];if(x&&!linked(f.id,x.id))s.edges.push({from:f.id,to:x.id,chain:true,label:"why"});});
+    concepts.forEach((c,i)=>{if(concepts[i+1]&&!linked(c.id,concepts[i+1].id))s.edges.push({from:c.id,to:concepts[i+1].id,chain:false,label:""});});
+    errors.forEach((e,i)=>{if(errors[i+1]&&!linked(e.id,errors[i+1].id))s.edges.push({from:e.id,to:errors[i+1].id,chain:false,label:""});});
+    const errCount = errors.length;
+    setStats({nodes:s.nodes.length,edges:s.edges.length,errors:errCount});
     setShowEmpty(false);
     s.camX=0; s.camY=0; s.camScale=1;
     draw();
     setTimeout(()=>resetView(),60);
   },[draw,resetView]);
 
-  // ── Analyze — now calls /api/chat on your Express server ─────────────────
+  // ── Analyze ───────────────────────────────────────────────────────────────
   const analyze = useCallback(async()=>{
     const trimmed=code.trim(); if (!trimmed) return;
     setLoading(true); setApiError(null); setAnalyzeDone(false);
+    setSavedGraphId(null); setCurrentGraph(null); setSaveMsg(null);
     const detectedLang=forcedLang==="auto"?detectLang(trimmed):forcedLang;
     setLang(detectedLang==="unknown"?"Detecting...":detectedLang);
     const steps=["Detecting language & structure","Extracting concepts & patterns","Identifying errors & bugs","Generating fixes & solutions","Building knowledge graph..."];
@@ -468,7 +591,6 @@ Code:
 ${trimmed}`;
 
     try {
-      // ✅ FIXED: calls your Express server instead of Groq directly
       const res=await fetch("/api/chat",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
@@ -479,16 +601,19 @@ ${trimmed}`;
           ]
         })
       });
-      if (!res.ok){const err=await res.text();throw new Error(`Groq API error ${res.status}: ${err}`);}
+      if (!res.ok){const err=await res.text();throw new Error(`API error ${res.status}: ${err}`);}
       const data=await res.json();
       const raw=data.choices?.[0]?.message?.content?.trim();
-      if (!raw) throw new Error("Empty response from Groq");
+      if (!raw) throw new Error("Empty response");
       const clean=raw.replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/i,"").trim();
       const graph=JSON.parse(clean);
       if (!graph.concepts&&!graph.errors) throw new Error("Invalid graph format");
-      setLang(graph.language||detectedLang);
+      const detectedGraphLang = graph.language||detectedLang;
+      setLang(detectedGraphLang);
       clearInterval(stepTimer);
       setAnalyzeDone(true);
+      // Store graph data for saving
+      setCurrentGraph({ language: detectedGraphLang, graph, code: trimmed });
       buildGraph(graph);
       setTimeout(()=>setAnalyzeDone(false),2000);
     } catch(err){
@@ -501,8 +626,54 @@ ${trimmed}`;
     }
   },[code,forcedLang,buildGraph]);
 
+  // ── Save to Neo4j ─────────────────────────────────────────────────────────
+  const saveGraph = useCallback(async () => {
+    if (!currentGraph || saving) return;
+    setSaving(true); setSaveMsg(null);
+    try {
+      const res = await fetch("/api/graphs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          language: currentGraph.language,
+          code: currentGraph.code,
+          graph: currentGraph.graph,
+          name: `${currentGraph.language} — ${new Date().toLocaleTimeString()}`
+        })
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Save failed: ${errText}`);
+      }
+      const saved = await res.json();
+      setSavedGraphId(saved.id);
+      setSaveMsg({ ok: true, text: "Saved to Neo4j ✓" });
+      setTimeout(() => setSaveMsg(null), 3000);
+    } catch (e) {
+      setSaveMsg({ ok: false, text: e.message });
+      setTimeout(() => setSaveMsg(null), 4000);
+    } finally {
+      setSaving(false);
+    }
+  }, [currentGraph, saving]);
+
+  // ── Load saved graph from drawer ──────────────────────────────────────────
+  const loadSavedGraph = useCallback((saved) => {
+    if (!saved?.graph) return;
+    setCode(saved.code || "");
+    setLang(saved.language || "unknown");
+    setCurrentGraph({ language: saved.language, graph: saved.graph, code: saved.code });
+    setSavedGraphId(saved.id);
+    setSaveMsg(null);
+    buildGraph(saved.graph);
+    setDrawerOpen(false);
+  }, [buildGraph]);
+
   const handleKeyDown=e=>{if((e.ctrlKey||e.metaKey)&&e.key==="Enter")analyze();};
   const langColor=LANG_COLORS[lang.toLowerCase()]||"#8890aa";
+
+  const isSaved = !!savedGraphId;
+  const canSave  = !!currentGraph && !isSaved && !saving;
 
   return (
     <div style={{fontFamily:"'Syne',sans-serif",background:"#0a0b0f",color:"#e8eaf2",height:"100vh",display:"grid",gridTemplateColumns:"340px 1fr",gridTemplateRows:"56px 1fr",overflow:"hidden"}}>
@@ -514,6 +685,8 @@ ${trimmed}`;
         textarea::-webkit-scrollbar-thumb{background:#2a2f45;border-radius:2px;}
         @keyframes spin{to{transform:rotate(360deg);}}
         @keyframes pulse-out{0%{transform:scale(.7);opacity:1}100%{transform:scale(1.3);opacity:0}}
+        @keyframes fadeSlideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+        .save-toast{animation:fadeSlideIn .2s ease forwards;}
       `}</style>
 
       {/* TOP BAR */}
@@ -536,6 +709,13 @@ ${trimmed}`;
           ))}
         </div>
 
+        {/* Save feedback toast */}
+        {saveMsg && (
+          <div className="save-toast" style={{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:8,background:saveMsg.ok?"rgba(41,212,168,.12)":"rgba(255,107,107,.12)",border:`1px solid ${saveMsg.ok?"#29d4a888":"#ff6b6b88"}`,color:saveMsg.ok?"#29d4a8":"#ff6b6b",marginLeft:4}}>
+            {saveMsg.text}
+          </div>
+        )}
+
         <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,border:"1px solid #3a4060",background:"#181c28",fontSize:11,fontWeight:600,color:"#8890aa",marginLeft:"auto"}}>
           <div style={{width:7,height:7,borderRadius:"50%",background:langColor}}/>
           {lang}
@@ -547,6 +727,47 @@ ${trimmed}`;
             </div>
           ))}
         </div>
+
+        {/* Save Graph Button */}
+        <button
+          onClick={saveGraph}
+          disabled={!canSave}
+          title={isSaved ? "Already saved" : !currentGraph ? "Analyze code first" : "Save graph to Neo4j"}
+          style={{
+            padding:"5px 13px", borderRadius:8,
+            border:`1px solid ${isSaved ? "#29d4a855" : canSave ? "#7c6ff777" : "#2a2f45"}`,
+            background: isSaved ? "rgba(41,212,168,.1)" : canSave ? "rgba(124,111,247,.12)" : "transparent",
+            color: isSaved ? "#29d4a8" : canSave ? "#7c6ff7" : "#3a4060",
+            fontFamily:"'Syne',sans-serif", fontSize:11, fontWeight:700,
+            cursor: canSave ? "pointer" : "not-allowed",
+            display:"flex", alignItems:"center", gap:5,
+            transition:"all .15s"
+          }}
+          onMouseEnter={e=>{ if(canSave){ e.currentTarget.style.background="rgba(124,111,247,.2)"; e.currentTarget.style.borderColor="#7c6ff7aa"; }}}
+          onMouseLeave={e=>{ if(canSave){ e.currentTarget.style.background="rgba(124,111,247,.12)"; e.currentTarget.style.borderColor="#7c6ff777"; }}}
+        >
+          {saving
+            ? <><div style={{width:10,height:10,border:"1.5px solid #7c6ff744",borderTopColor:"#7c6ff7",borderRadius:"50%",animation:"spin .7s linear infinite"}}/>Saving...</>
+            : isSaved
+            ? "✓ Saved"
+            : "⬆ Save Graph"
+          }
+        </button>
+
+        {/* Saved Graphs Button */}
+        <button
+          onClick={()=>setDrawerOpen(true)}
+          style={{
+            padding:"5px 13px", borderRadius:8, border:"1px solid #2a2f45",
+            background:"transparent", color:"#8890aa", fontFamily:"'Syne',sans-serif",
+            fontSize:11, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:5,
+            transition:"all .15s"
+          }}
+          onMouseEnter={e=>{e.currentTarget.style.borderColor="#7c6ff7";e.currentTarget.style.color="#7c6ff7";e.currentTarget.style.background="rgba(124,111,247,.07)";}}
+          onMouseLeave={e=>{e.currentTarget.style.borderColor="#2a2f45";e.currentTarget.style.color="#8890aa";e.currentTarget.style.background="transparent";}}
+        >
+          ◫ Saved Graphs
+        </button>
       </div>
 
       {/* LEFT PANEL */}
@@ -560,7 +781,7 @@ ${trimmed}`;
         </div>
 
         <div style={{flex:1,overflow:"hidden",position:"relative"}}>
-          <textarea value={code} onChange={e=>setCode(e.target.value)} onKeyDown={handleKeyDown} spellCheck={false}
+          <textarea value={code} onChange={e=>{setCode(e.target.value);setSavedGraphId(null);setSaveMsg(null);}} onKeyDown={handleKeyDown} spellCheck={false}
             placeholder={"// Paste your code here...\n// Ctrl+Enter to analyze"}
             style={{width:"100%",height:"100%",padding:14,background:"transparent",border:"none",outline:"none",resize:"none",fontFamily:"'JetBrains Mono',monospace",fontSize:12.5,lineHeight:1.7,color:"#c9d1d9",caretColor:"#29d4a8",overflowY:"auto"}}
           />
@@ -569,7 +790,7 @@ ${trimmed}`;
         <div style={{padding:"10px 12px 14px"}}>
           <div style={{fontSize:10,color:"#5a6080",fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",marginBottom:6}}>Quick Examples</div>
           {[["py_sort","Python — bubble sort"],["js_async","JS — async/await fetch"],["java_null","Java — NullPointerException"],["cpp_mem","C++ — memory leak"],["rust_own","Rust — ownership chain"],["go_goroutine","Go — goroutine pattern"]].map(([key,label])=>(
-            <button key={key} onClick={()=>setCode(EXAMPLES[key])} style={{display:"block",width:"100%",textAlign:"left",padding:"7px 10px",marginBottom:4,borderRadius:7,border:"1px solid #2a2f45",background:"transparent",color:"#8890aa",fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}
+            <button key={key} onClick={()=>{setCode(EXAMPLES[key]);setSavedGraphId(null);}} style={{display:"block",width:"100%",textAlign:"left",padding:"7px 10px",marginBottom:4,borderRadius:7,border:"1px solid #2a2f45",background:"transparent",color:"#8890aa",fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}
               onMouseEnter={e=>{e.target.style.borderColor="#7c6ff7";e.target.style.color="#7c6ff7";e.target.style.background="rgba(124,111,247,.07)";}}
               onMouseLeave={e=>{e.target.style.borderColor="#2a2f45";e.target.style.color="#8890aa";e.target.style.background="transparent";}}
             >{label}</button>
@@ -661,6 +882,14 @@ ${trimmed}`;
           ))}
         </div>
       </div>
+
+      {/* Saved Graphs Drawer */}
+      <SavedGraphsDrawer
+        open={drawerOpen}
+        onClose={()=>setDrawerOpen(false)}
+        onLoad={loadSavedGraph}
+        currentGraphId={savedGraphId}
+      />
     </div>
   );
 }
