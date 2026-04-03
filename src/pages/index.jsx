@@ -204,7 +204,7 @@ const MODULES = [
   { idx:"07", title:"Performance Monitor",           desc:"Track API response time, errors per second, and execution latency with real-time graph visualization.", accent:"#4EC9B0", isPerf:true },
   { idx:"08", title:"Behavior Tracking Engine",      desc:"Monitors typing speed, backspace frequency, error rate, and idle time to understand developer cognition.", accent:"#FFB547", isBehavior:true },
   { idx:"09", title:"Frustration Detection",         desc:"Detects when users are stuck and intelligently triggers hints, learning mode, or contextual suggestions.", accent:"#FF6B9D" },
-  { idx:"10", title:"Live Knowledge Graph Engine",   desc:"Converts code into concepts, errors, and fixes. Builds a live visual graph: Loop → Array → Error → Fix.", accent:"#A78BFA", core:true },
+  { idx:"10", title:"Live Knowledge Graph Engine",   desc:"Converts code into concepts, errors, and fixes. Builds a live visual graph: Loop → Array → Error → Fix.", accent:"#A78BFA", core:true, isKnowledge:true },
   { idx:"11", title:"Adaptive AI Mentor",            desc:"Beginner gets deep explanations. Intermediate gets hints. Advanced gets optimizations. Fully adaptive.", accent:"#4FC1FF" },
   { idx:"12", title:"Adaptive UI Engine",            desc:"Dynamically changes the interface: hints for beginners, guidance for stuck users, minimal for experts.", accent:"#4EC9B0" },
   { idx:"13", title:"Cognitive Analytics Dashboard", desc:"Displays productivity trends, focus levels, and weak concept identification across sessions.", accent:"#FFB547" },
@@ -221,10 +221,8 @@ const WORKFLOW_STEPS = [
 
 /* ═══════════════════════════════════════════════════════════════
    HOME PAGE
-   receives: onLaunch · onOpenChat · onOpenSandbox · onOpenApi
-             onOpenPerf · onOpenBehavior
 ═══════════════════════════════════════════════════════════════ */
-function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, onOpenBehavior }) {
+function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, onOpenBehavior, onOpenKnowledge }) {
   const [activeTab, setActiveTab] = useState("all");
   const filtered = activeTab === "all" ? MODULES
     : activeTab === "collab" ? MODULES.filter((_,i) => i < 6)
@@ -407,22 +405,24 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
               className="mod-card"
               key={`${m.idx}-${idx}`}
               onClick={
-                m.isEditor    ? onLaunch
-                : m.isChat    ? onOpenChat
-                : m.isSandbox ? onOpenSandbox
-                : m.isApi     ? onOpenApi
-                : m.isPerf    ? onOpenPerf
-                : m.isBehavior? onOpenBehavior
+                m.isEditor      ? onLaunch
+                : m.isChat      ? onOpenChat
+                : m.isSandbox   ? onOpenSandbox
+                : m.isApi       ? onOpenApi
+                : m.isPerf      ? onOpenPerf
+                : m.isBehavior  ? onOpenBehavior
+                : m.isKnowledge ? onOpenKnowledge
                 : undefined
               }
               style={{
-                cursor: (m.isEditor || m.isChat || m.isSandbox || m.isApi || m.isPerf || m.isBehavior) ? "pointer" : undefined,
-                borderColor: m.isEditor    ? "rgba(79,193,255,.2)"
-                           : m.isChat      ? "rgba(167,139,250,.2)"
-                           : m.isSandbox   ? "rgba(78,201,176,.2)"
-                           : m.isApi       ? "rgba(255,107,157,.2)"
-                           : m.isPerf      ? "rgba(78,201,176,.2)"
-                           : m.isBehavior  ? "rgba(255,181,71,.2)"
+                cursor: (m.isEditor || m.isChat || m.isSandbox || m.isApi || m.isPerf || m.isBehavior || m.isKnowledge) ? "pointer" : undefined,
+                borderColor: m.isEditor      ? "rgba(79,193,255,.2)"
+                           : m.isChat        ? "rgba(167,139,250,.2)"
+                           : m.isSandbox     ? "rgba(78,201,176,.2)"
+                           : m.isApi         ? "rgba(255,107,157,.2)"
+                           : m.isPerf        ? "rgba(78,201,176,.2)"
+                           : m.isBehavior    ? "rgba(255,181,71,.2)"
+                           : m.isKnowledge   ? "rgba(167,139,250,.2)"
                            : undefined,
               }}
             >
@@ -434,6 +434,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
               {m.isApi       && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,107,157,.1)",color:"#FF6B9D",border:"1px solid rgba(255,107,157,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>⚡ API</span>}
               {m.isPerf      && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>📊 PERF</span>}
               {m.isBehavior  && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🧠 TRACK</span>}
+              {m.isKnowledge && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(167,139,250,.1)",color:"#A78BFA",border:"1px solid rgba(167,139,250,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🕸️ GRAPH</span>}
               <div className="mod-idx">{m.idx}</div>
               <h3>{m.title}</h3><p>{m.desc}</p>
               {m.isEditor    && <p style={{ fontSize:".75rem", color:"var(--blue)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
@@ -442,6 +443,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
               {m.isApi       && <p style={{ fontSize:".75rem", color:"var(--rose)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
               {m.isPerf      && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
               {m.isBehavior  && <p style={{ fontSize:".75rem", color:"var(--amber)",  marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isKnowledge && <p style={{ fontSize:".75rem", color:"var(--violet)", marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
               <div className="mod-accent" style={{ background:m.accent }}/>
             </div>
           ))}
@@ -719,27 +721,29 @@ function LoginScreen({ onJoin, onBack }) {
 
 /* ═══════════════════════════════════════════════════════════════
    ROOT
-   onLaunch       → login screen → /editor
-   onOpenChat     → /devchat
-   onOpenSandbox  → /sandbox
-   onOpenApi      → /api
-   onOpenPerf     → /performance
-   onOpenBehavior → /behavior
+   onLaunch        → login screen → /editor
+   onOpenChat      → /devchat
+   onOpenSandbox   → /sandbox
+   onOpenApi       → /api
+   onOpenPerf      → /performance
+   onOpenBehavior  → /behavior
+   onOpenKnowledge → /knowledge
 ═══════════════════════════════════════════════════════════════ */
 export default function Index() {
   const navigate = useNavigate();
   const [route, setRoute] = useState("home");
 
-  const toEditor   = (me, sid, lang) => {
+  const toEditor    = (me, sid, lang) => {
     authStore.set({ me, sid, lang });
     navigate("/editor", { state: { me, sid, lang } });
   };
 
-  const toChat     = () => navigate("/devchat");
-  const toSandbox  = () => navigate("/sandbox");
-  const toApi      = () => navigate("/api");
-  const toPerf     = () => navigate("/performance");
-  const toBehavior = () => navigate("/behavior");
+  const toChat      = () => navigate("/devchat");
+  const toSandbox   = () => navigate("/sandbox");
+  const toApi       = () => navigate("/api");
+  const toPerf      = () => navigate("/performance");
+  const toBehavior  = () => navigate("/behavior");
+  const toKnowledge = () => navigate("/knowledge-graph");
 
   return (
     <>
@@ -752,6 +756,7 @@ export default function Index() {
           onOpenApi={toApi}
           onOpenPerf={toPerf}
           onOpenBehavior={toBehavior}
+          onOpenKnowledge={toKnowledge}
         />
       )}
       {route === "login" && <LoginScreen onJoin={toEditor} onBack={() => setRoute("home")} />}

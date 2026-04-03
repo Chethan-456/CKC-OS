@@ -1,0 +1,706 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+
+const EXAMPLES = {
+  py_sort: `def bubble_sort(arr):
+    n = len(arr)
+    for i in range(n):
+        for j in range(0, n-i-1):
+            if arr[j] > arr[j+1]:
+                arr[j], arr[j+1] = arr[j+1], arr[j]
+    return arr
+
+result = bubble_sort([64, 34, 25, 12, 22, 11, 90])
+print(result)`,
+  js_async: `async function fetchUserData(userId) {
+  try {
+    const response = await fetch(\`/api/users/\${userId}\`);
+    if (!response.ok) throw new Error('HTTP error: ' + response.status);
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Failed:', error);
+    return null;
+  }
+}`,
+  java_null: `public class UserService {
+    private Database db;
+    public String getUserName(int id) {
+        User user = db.findById(id);
+        return user.getName();
+    }
+    public void processUsers(List<User> users) {
+        for (User u : users) {
+            System.out.println(getUserName(u.getId()));
+        }
+    }
+}`,
+  cpp_mem: `#include <iostream>
+using namespace std;
+class Node {
+public:
+    int data; Node* next;
+    Node(int d) : data(d), next(nullptr) {}
+};
+void addNode(Node* head, int val) {
+    Node* newNode = new Node(val);
+    head->next = newNode;
+}
+int main() {
+    Node* head = new Node(1);
+    addNode(head, 2); addNode(head, 3);
+    return 0;
+}`,
+  rust_own: `fn main() {
+    let s1 = String::from("hello");
+    let s2 = s1;
+    let s3 = s2.clone();
+    println!("{} {}", s2, s3);
+    let len = calculate_length(&s2);
+    println!("Length: {}", len);
+}
+fn calculate_length(s: &String) -> usize { s.len() }`,
+  go_goroutine: `package main
+import ("fmt"; "sync")
+func worker(id int, wg *sync.WaitGroup, results chan<- int) {
+    defer wg.Done()
+    results <- id * id
+}
+func main() {
+    var wg sync.WaitGroup
+    results := make(chan int, 5)
+    for i := 1; i <= 5; i++ { wg.Add(1); go worker(i, &wg, results) }
+    go func() { wg.Wait(); close(results) }()
+    for r := range results { fmt.Println(r) }
+}`
+};
+
+const LANG_COLORS = {
+  python:"#3572A5", javascript:"#f1e05a", java:"#b07219",
+  cpp:"#f34b7d", c:"#555555", rust:"#dea584", go:"#00ADD8",
+  typescript:"#2b7489", auto:"#8890aa", unknown:"#8890aa"
+};
+
+const CHAIN_ORDER   = ["concept","error","fix","explanation"];
+const NODE_COLORS   = { concept:"#7c6ff7", error:"#ff6b6b", fix:"#29d4a8", explanation:"#ffa94d" };
+const NODE_GLOW     = { concept:"rgba(124,111,247,.3)", error:"rgba(255,107,107,.3)", fix:"rgba(41,212,168,.3)", explanation:"rgba(255,169,77,.3)" };
+const NODE_ICONS    = { concept:"⬡", error:"⚠", fix:"✦", explanation:"◎" };
+const COL_LABELS    = { concept:"CONCEPT", error:"ERROR", fix:"FIX", explanation:"EXPLANATION" };
+
+function detectLang(code) {
+  if (/^\s*(import|from\s+\w+\s+import|def |class |print\(|:\s*$)/m.test(code)) return "python";
+  if (/^\s*(public\s+class|import\s+java\.|System\.out)/m.test(code)) return "java";
+  if (/^\s*(#include|using namespace|std::|cout<<)/m.test(code)) return "cpp";
+  if (/^\s*(fn\s+\w+|let\s+mut|use\s+std::|println!)/m.test(code)) return "rust";
+  if (/^\s*(package\s+main|func\s+\w+|fmt\.|go\s+func)/m.test(code)) return "go";
+  if (/^\s*(async\s+function|const\s+\w+\s*=|=>|console\.log|require\()/m.test(code)) return "javascript";
+  if (/^\s*(#include|int\s+main\s*\()/m.test(code)) return "c";
+  return "unknown";
+}
+
+// Places nodes in 4 fixed vertical columns: Concept | Error | Fix | Explanation
+function computeLayout(allNodes, W, H) {
+  const cols = { concept:[], error:[], fix:[], explanation:[] };
+  allNodes.forEach(n => { (cols[n.type] || cols.concept).push(n); });
+
+  const PAD_X  = 110;
+  const colGap = (W - PAD_X * 2) / 3;  // 3 gaps for 4 columns
+  const NODE_H = 100;
+  const positions = {};
+
+  CHAIN_ORDER.forEach((type, ci) => {
+    const nodes  = cols[type] || [];
+    const totalH = nodes.length * NODE_H;
+    const startY = H / 2 - totalH / 2 + NODE_H / 2;
+    const x      = PAD_X + ci * colGap;
+    nodes.forEach((n, ri) => {
+      positions[n.id] = { x, y: startY + ri * NODE_H };
+    });
+  });
+  return positions;
+}
+
+export default function KnowledgeGraphEngine() {
+  const navigate     = useNavigate();
+  const canvasRef    = useRef(null);
+  const graphAreaRef = useRef(null);
+  const stateRef     = useRef({
+    nodes:[], edges:[],
+    camX:0, camY:0, camScale:1,
+    dragging:null, dragOffX:0, dragOffY:0,
+    hoveredNode:null, selectedNode:null,
+    panning:false, panStartX:0, panStartY:0, camStartX:0, camStartY:0,
+  });
+
+  const [code,        setCode]        = useState("");
+  const [forcedLang,  setForcedLang]  = useState("auto");
+  const [loading,     setLoading]     = useState(false);
+  const [loadingStep, setLoadingStep] = useState("Detecting language & structure");
+  const [lang,        setLang]        = useState("Waiting for code...");
+  const [stats,       setStats]       = useState({ nodes:0, edges:0, errors:0 });
+  const [tooltip,     setTooltip]     = useState({ show:false, x:0, y:0, node:null });
+  const [nodePanel,   setNodePanel]   = useState({ show:false, node:null });
+  const [showEmpty,   setShowEmpty]   = useState(true);
+  const [apiError,    setApiError]    = useState(null);
+  const [analyzeDone, setAnalyzeDone] = useState(false);
+
+  // ── Draw ─────────────────────────────────────────────────────────────────
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const s   = stateRef.current;
+    const dpr = window.devicePixelRatio || 1;
+    const W   = canvas.width / dpr, H = canvas.height / dpr;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, W, H);
+
+    const wts = (x,y) => ({ x: x*s.camScale+s.camX, y: y*s.camScale+s.camY });
+
+    // Grid
+    ctx.save();
+    ctx.strokeStyle="rgba(42,47,69,.4)"; ctx.lineWidth=0.5;
+    const gs=40*s.camScale;
+    const ox=((s.camX%gs)+gs)%gs, oy=((s.camY%gs)+gs)%gs;
+    for (let x=ox;x<W;x+=gs){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+    for (let y=oy;y<H;y+=gs){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+    ctx.restore();
+
+    if (!s.nodes.length) return;
+
+    // Column header X positions
+    const colX = {};
+    CHAIN_ORDER.forEach(type => {
+      const n = s.nodes.find(nd => nd.type === type);
+      if (n) colX[type] = wts(n.x, 0).x;
+    });
+
+    // Column header labels + vertical dividers
+    CHAIN_ORDER.forEach((type, ci) => {
+      if (colX[type] == null) return;
+      const col = NODE_COLORS[type];
+      ctx.save();
+
+      // Vertical lane background
+      ctx.fillStyle = col + "08";
+      const laneW = 140 * s.camScale;
+      ctx.fillRect(colX[type] - laneW/2, 0, laneW, H);
+
+      // Column label
+      ctx.font = `700 11px 'Syne',sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillStyle = col + "99";
+      ctx.fillText(COL_LABELS[type], colX[type], 30);
+
+      // Underline
+      ctx.strokeStyle = col+"44"; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(colX[type]-55,36); ctx.lineTo(colX[type]+55,36); ctx.stroke();
+
+      ctx.restore();
+    });
+
+    // Chain flow arrows between column headers (mid-lane connectors)
+    const colTypes = CHAIN_ORDER.filter(t => colX[t] != null);
+    for (let i=0; i<colTypes.length-1; i++) {
+      const x1=colX[colTypes[i]], x2=colX[colTypes[i+1]];
+      const midY = H/2;
+      ctx.save();
+      ctx.strokeStyle="rgba(88,96,140,.12)"; ctx.lineWidth=1.5; ctx.setLineDash([5,7]);
+      ctx.beginPath(); ctx.moveTo(x1+60,midY); ctx.lineTo(x2-60,midY); ctx.stroke();
+      ctx.setLineDash([]);
+      // arrowhead
+      ctx.fillStyle="rgba(88,96,140,.18)";
+      ctx.beginPath();
+      ctx.moveTo(x2-60,midY);
+      ctx.lineTo(x2-70,midY-5);
+      ctx.lineTo(x2-70,midY+5);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+
+    // Edges
+    s.edges.forEach(e => {
+      const a=s.nodes.find(n=>n.id===e.from), b=s.nodes.find(n=>n.id===e.to);
+      if (!a||!b) return;
+      const ap=wts(a.x,a.y), bp=wts(b.x,b.y);
+      const dx=bp.x-ap.x;
+      const cx1=ap.x+dx*0.45, cy1=ap.y;
+      const cx2=bp.x-dx*0.45, cy2=bp.y;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(ap.x,ap.y);
+      ctx.bezierCurveTo(cx1,cy1,cx2,cy2,bp.x,bp.y);
+      const isChain=e.chain;
+      ctx.strokeStyle = isChain ? NODE_COLORS[a.type]+"aa" : "rgba(58,64,96,.4)";
+      ctx.lineWidth   = isChain ? 2 : 0.8;
+      if (!isChain) ctx.setLineDash([3,5]);
+      ctx.stroke(); ctx.setLineDash([]);
+
+      // Arrow tip
+      const ang=Math.atan2(bp.y-cy2, bp.x-cx2);
+      const ar=8*s.camScale*0.85;
+      ctx.beginPath();
+      ctx.moveTo(bp.x-ar*Math.cos(ang-0.35), bp.y-ar*Math.sin(ang-0.35));
+      ctx.lineTo(bp.x,bp.y);
+      ctx.lineTo(bp.x-ar*Math.cos(ang+0.35), bp.y-ar*Math.sin(ang+0.35));
+      ctx.strokeStyle = isChain ? NODE_COLORS[a.type]+"cc" : "rgba(88,96,140,.5)";
+      ctx.lineWidth=isChain?2:0.8; ctx.stroke();
+
+      // Edge label
+      if (e.label && s.camScale>0.55) {
+        const mx=(ap.x+bp.x)/2, my=(ap.y+bp.y)/2-10;
+        ctx.fillStyle="rgba(136,144,170,.6)";
+        ctx.font=`${Math.round(9*s.camScale)}px Syne,sans-serif`;
+        ctx.textAlign="center"; ctx.fillText(e.label,mx,my);
+      }
+      ctx.restore();
+    });
+
+    // Nodes
+    s.nodes.forEach(n => {
+      const p   = wts(n.x,n.y);
+      const col = NODE_COLORS[n.type]||"#7c6ff7";
+      const glow= NODE_GLOW[n.type]||"rgba(124,111,247,.25)";
+      const r   = (n.radius||40)*s.camScale;
+      const isHov=s.hoveredNode===n, isSel=s.selectedNode===n;
+
+      ctx.save();
+      // Glow
+      if (isHov||isSel) {
+        const gl=ctx.createRadialGradient(p.x,p.y,r*0.2,p.x,p.y,r*2.5);
+        gl.addColorStop(0,glow); gl.addColorStop(1,"transparent");
+        ctx.fillStyle=gl; ctx.beginPath(); ctx.arc(p.x,p.y,r*2.5,0,Math.PI*2); ctx.fill();
+      }
+      // Fill
+      const grad=ctx.createRadialGradient(p.x-r*0.25,p.y-r*0.25,r*0.05,p.x,p.y,r);
+      grad.addColorStop(0,col+"dd"); grad.addColorStop(1,col+"44");
+      ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2);
+      ctx.fillStyle=grad; ctx.fill();
+      // Border
+      ctx.strokeStyle=isSel?col:(isHov?col+"cc":col+"66");
+      ctx.lineWidth=isSel?2.5:1.5; ctx.stroke();
+      // Icon
+      if (s.camScale>0.45) {
+        ctx.font=`${Math.round(17*s.camScale)}px sans-serif`;
+        ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillStyle="rgba(255,255,255,.9)";
+        ctx.fillText(NODE_ICONS[n.type]||"●",p.x,p.y-r*0.2);
+      }
+      // Label
+      if (s.camScale>0.35) {
+        const fs=Math.min(Math.round(10.5*s.camScale),13);
+        ctx.font=`700 ${fs}px Syne,sans-serif`;
+        ctx.textAlign="center"; ctx.textBaseline="top";
+        ctx.fillStyle=isHov||isSel?"#ffffff":"rgba(232,234,242,.92)";
+        const lbl=n.label.length>16?n.label.slice(0,14)+"…":n.label;
+        ctx.fillText(lbl,p.x,p.y+r*0.22);
+      }
+      ctx.restore();
+    });
+  }, []);
+
+  // ── Resize ───────────────────────────────────────────────────────────────
+  const resize = useCallback(() => {
+    const canvas=canvasRef.current, area=graphAreaRef.current;
+    if (!canvas||!area) return;
+    const dpr=window.devicePixelRatio||1;
+    canvas.width=area.clientWidth*dpr; canvas.height=area.clientHeight*dpr;
+    canvas.style.width=area.clientWidth+"px"; canvas.style.height=area.clientHeight+"px";
+    canvas.getContext("2d").scale(dpr,dpr);
+    draw();
+  }, [draw]);
+
+  useEffect(() => {
+    resize();
+    window.addEventListener("resize",resize);
+    return () => window.removeEventListener("resize",resize);
+  },[resize]);
+
+  // ── Mouse helpers ────────────────────────────────────────────────────────
+  const getMousePos   = e => { const r=canvasRef.current.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; };
+  const screenToWorld = (x,y) => { const s=stateRef.current; return {x:(x-s.camX)/s.camScale,y:(y-s.camY)/s.camScale}; };
+  const worldToScreen = (x,y) => { const s=stateRef.current; return {x:x*s.camScale+s.camX,y:y*s.camScale+s.camY}; };
+  const findNodeAt    = (mx,my) => {
+    const s=stateRef.current, w=screenToWorld(mx,my);
+    for (let i=s.nodes.length-1;i>=0;i--) {
+      const n=s.nodes[i],dx=n.x-w.x,dy=n.y-w.y;
+      if (dx*dx+dy*dy<(n.radius||40)**2) return n;
+    }
+    return null;
+  };
+
+  const handleMouseDown = useCallback(e => {
+    const p=getMousePos(e),s=stateRef.current,n=findNodeAt(p.x,p.y);
+    if (n){s.dragging=n;const sp=worldToScreen(n.x,n.y);s.dragOffX=p.x-sp.x;s.dragOffY=p.y-sp.y;}
+    else {s.panning=true;s.panStartX=p.x;s.panStartY=p.y;s.camStartX=s.camX;s.camStartY=s.camY;}
+  },[]);
+
+  const handleMouseMove = useCallback(e => {
+    const p=getMousePos(e),s=stateRef.current;
+    if (s.dragging){const w=screenToWorld(p.x-s.dragOffX,p.y-s.dragOffY);s.dragging.x=w.x;s.dragging.y=w.y;draw();return;}
+    if (s.panning){s.camX=s.camStartX+(p.x-s.panStartX);s.camY=s.camStartY+(p.y-s.panStartY);draw();return;}
+    const n=findNodeAt(p.x,p.y);
+    s.hoveredNode=n;
+    canvasRef.current.style.cursor=n?"pointer":"grab";
+    if (n) setTooltip({show:true,x:p.x+18,y:p.y-10,node:n});
+    else   setTooltip(t=>({...t,show:false}));
+    draw();
+  },[draw]);
+
+  const handleMouseUp = useCallback(()=>{const s=stateRef.current;s.dragging=null;s.panning=false;},[]);
+  const handleClick   = useCallback(e=>{
+    const p=getMousePos(e),s=stateRef.current,n=findNodeAt(p.x,p.y);
+    s.selectedNode=n;
+    if (n) setNodePanel({show:true,node:n});
+    else   setNodePanel(prev=>({...prev,show:false}));
+    draw();
+  },[draw]);
+
+  const handleWheel = useCallback(e=>{
+    e.preventDefault();
+    const p=getMousePos(e),s=stateRef.current;
+    const factor=e.deltaY<0?1.1:0.91;
+    const wx=(p.x-s.camX)/s.camScale,wy=(p.y-s.camY)/s.camScale;
+    s.camScale=Math.max(0.2,Math.min(3,s.camScale*factor));
+    s.camX=p.x-wx*s.camScale; s.camY=p.y-wy*s.camScale;
+    draw();
+  },[draw]);
+
+  useEffect(()=>{
+    const canvas=canvasRef.current; if (!canvas) return;
+    canvas.addEventListener("wheel",handleWheel,{passive:false});
+    return ()=>canvas.removeEventListener("wheel",handleWheel);
+  },[handleWheel]);
+
+  // ── Zoom / reset ─────────────────────────────────────────────────────────
+  const zoomIn  = ()=>{stateRef.current.camScale=Math.min(3,stateRef.current.camScale*1.2);draw();};
+  const zoomOut = ()=>{stateRef.current.camScale=Math.max(0.2,stateRef.current.camScale*0.83);draw();};
+  const resetView = useCallback(()=>{
+    const s=stateRef.current; if (!s.nodes.length) return;
+    const canvas=canvasRef.current,dpr=window.devicePixelRatio||1;
+    const W=canvas.width/dpr,H=canvas.height/dpr;
+    const xs=s.nodes.map(n=>n.x),ys=s.nodes.map(n=>n.y);
+    const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+    const pad=100;
+    const scaleX=(W-pad*2)/((maxX-minX)||1), scaleY=(H-pad*2)/((maxY-minY)||1);
+    s.camScale=Math.min(scaleX,scaleY,1.5);
+    s.camX=W/2-((minX+maxX)/2)*s.camScale;
+    s.camY=H/2-((minY+maxY)/2)*s.camScale;
+    draw();
+  },[draw]);
+
+  // ── Build graph ───────────────────────────────────────────────────────────
+  const buildGraph = useCallback((graph) => {
+    const s=stateRef.current; s.nodes=[]; s.edges=[];
+    const canvas=canvasRef.current,dpr=window.devicePixelRatio||1;
+    const W=canvas.width/dpr,H=canvas.height/dpr;
+
+    const allRaw=[
+      ...(graph.concepts||[]),
+      ...(graph.errors||[]),
+      ...(graph.fixes||[]),
+      ...(graph.explanations||[])
+    ];
+    if (!allRaw.length) return;
+
+    const positions=computeLayout(allRaw,W,H);
+    allRaw.forEach(n=>{
+      const pos=positions[n.id]||{x:W/2,y:H/2};
+      s.nodes.push({
+        id:n.id, label:n.label, type:n.type||"concept", desc:n.desc,
+        x:pos.x, y:pos.y,
+        radius:40+Math.min((n.label||"").length,8)*1.2
+      });
+    });
+
+    // Edges from API connections
+    allRaw.forEach(n=>{
+      (n.connections||[]).forEach(tid=>{
+        if (s.nodes.find(x=>x.id===tid))
+          s.edges.push({from:n.id,to:tid,chain:true,label:""});
+      });
+    });
+
+    // Auto chain: concept→error→fix→explanation
+    const byType=type=>s.nodes.filter(n=>n.type===type);
+    const linked=(a,b)=>s.edges.some(e=>(e.from===a&&e.to===b)||(e.from===b&&e.to===a));
+    const concepts=byType("concept"), errors=byType("error"), fixes=byType("fix"), explanations=byType("explanation");
+
+    concepts.forEach((c,i)=>{
+      const e=errors[i]||errors[0];
+      if (e&&!linked(c.id,e.id)) s.edges.push({from:c.id,to:e.id,chain:true,label:"causes"});
+    });
+    errors.forEach((e,i)=>{
+      const f=fixes[i]||fixes[0];
+      if (f&&!linked(e.id,f.id)) s.edges.push({from:e.id,to:f.id,chain:true,label:"fix"});
+    });
+    fixes.forEach((f,i)=>{
+      const x=explanations[i]||explanations[0];
+      if (x&&!linked(f.id,x.id)) s.edges.push({from:f.id,to:x.id,chain:true,label:"why"});
+    });
+    // vertical links within same column
+    concepts.forEach((c,i)=>{if(concepts[i+1]&&!linked(c.id,concepts[i+1].id)) s.edges.push({from:c.id,to:concepts[i+1].id,chain:false,label:""});});
+    errors.forEach((e,i)  =>{if(errors[i+1]  &&!linked(e.id,errors[i+1].id))   s.edges.push({from:e.id,to:errors[i+1].id,chain:false,label:""});});
+
+    setStats({nodes:s.nodes.length,edges:s.edges.length,errors:errors.length});
+    setShowEmpty(false);
+    s.camX=0; s.camY=0; s.camScale=1;
+    draw();
+    setTimeout(()=>resetView(),60);
+  },[draw,resetView]);
+
+  // ── Analyze ───────────────────────────────────────────────────────────────
+  const analyze = useCallback(async()=>{
+    const trimmed=code.trim(); if (!trimmed) return;
+    setLoading(true); setApiError(null); setAnalyzeDone(false);
+    const detectedLang=forcedLang==="auto"?detectLang(trimmed):forcedLang;
+    setLang(detectedLang==="unknown"?"Detecting...":detectedLang);
+    const steps=["Detecting language & structure","Extracting concepts & patterns","Identifying errors & bugs","Generating fixes & solutions","Building knowledge graph..."];
+    let si=0;
+    const stepTimer=setInterval(()=>setLoadingStep(steps[Math.min(si++,steps.length-1)]),700);
+
+    const prompt=`You are a code knowledge graph analyzer. Analyze the following ${detectedLang} code.
+
+Return ONLY a raw JSON object. No markdown, no backticks, no text before or after.
+
+The graph must follow this chain: Concept → Error → Fix → Explanation
+- concepts = what the code does (loops, functions, data structures)
+- errors = bugs, risks, or issues in the code
+- fixes = how to fix each error
+- explanations = deeper insight, complexity, best practices
+
+Use this EXACT JSON structure:
+{
+  "language": "python",
+  "concepts": [
+    {"id":"c1","label":"Bubble Sort","type":"concept","desc":"Repeatedly swaps adjacent elements if out of order.","connections":["e1"]},
+    {"id":"c2","label":"Loop","type":"concept","desc":"Nested loops iterate through array pairs.","connections":["e2"]}
+  ],
+  "errors": [
+    {"id":"e1","label":"No Early Exit","type":"error","desc":"Algorithm doesn't stop even when array is already sorted.","connections":["f1"]},
+    {"id":"e2","label":"O(n²) Always","type":"error","desc":"Worst and average case are always quadratic.","connections":["f2"]}
+  ],
+  "fixes": [
+    {"id":"f1","label":"Add Flag","type":"fix","desc":"Use a swapped boolean flag to exit early if no swaps in a pass.","connections":["x1"]},
+    {"id":"f2","label":"Use Tim Sort","type":"fix","desc":"Python's built-in sort is Tim Sort — O(n log n) average.","connections":["x1"]}
+  ],
+  "explanations": [
+    {"id":"x1","label":"Complexity","type":"explanation","desc":"Bubble sort is O(n²) — fine for small arrays, slow for large ones. Tim Sort handles real-world data much better.","connections":[]}
+  ]
+}
+
+Rules:
+- connections link to IDs in the NEXT column only (concept→error id, error→fix id, fix→explanation id)
+- Labels: 1-3 words MAX
+- Generate 2-4 items per category
+- Base everything on the actual code provided
+
+Code:
+${trimmed}`;
+
+    try {
+      const apiKey=import.meta.env.VITE_GROQ_API_KEY;
+      const res=await fetch("https://api.groq.com/openai/v1/chat/completions",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${apiKey}`},
+        body:JSON.stringify({
+          model:"llama-3.3-70b-versatile",
+          temperature:0.2, max_tokens:2048,
+          messages:[
+            {role:"system",content:"You are a code analyzer. Respond ONLY with raw JSON. No markdown, no backticks, no explanation."},
+            {role:"user",content:prompt}
+          ]
+        })
+      });
+      if (!res.ok){const err=await res.text();throw new Error(`Groq API error ${res.status}: ${err}`);}
+      const data=await res.json();
+      const raw=data.choices?.[0]?.message?.content?.trim();
+      if (!raw) throw new Error("Empty response from Groq");
+      const clean=raw.replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/i,"").trim();
+      const graph=JSON.parse(clean);
+      if (!graph.concepts&&!graph.errors) throw new Error("Invalid graph format");
+      setLang(graph.language||detectedLang);
+      clearInterval(stepTimer);
+      setAnalyzeDone(true);
+      buildGraph(graph);
+      setTimeout(()=>setAnalyzeDone(false),2000);
+    } catch(err){
+      clearInterval(stepTimer);
+      console.error("Graph analysis error:",err);
+      setApiError(err.message);
+      setLoadingStep("Analysis failed");
+    } finally {
+      setLoading(false);
+    }
+  },[code,forcedLang,buildGraph]);
+
+  const handleKeyDown=e=>{if((e.ctrlKey||e.metaKey)&&e.key==="Enter")analyze();};
+  const langColor=LANG_COLORS[lang.toLowerCase()]||"#8890aa";
+
+  return (
+    <div style={{fontFamily:"'Syne',sans-serif",background:"#0a0b0f",color:"#e8eaf2",height:"100vh",display:"grid",gridTemplateColumns:"340px 1fr",gridTemplateRows:"56px 1fr",overflow:"hidden"}}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@400;600;700;800&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0;}
+        textarea::-webkit-scrollbar{width:4px;}
+        textarea::-webkit-scrollbar-track{background:transparent;}
+        textarea::-webkit-scrollbar-thumb{background:#2a2f45;border-radius:2px;}
+        @keyframes spin{to{transform:rotate(360deg);}}
+        @keyframes pulse-out{0%{transform:scale(.7);opacity:1}100%{transform:scale(1.3);opacity:0}}
+      `}</style>
+
+      {/* TOP BAR */}
+      <div style={{gridColumn:"1/-1",display:"flex",alignItems:"center",gap:12,padding:"0 20px",background:"#10121a",borderBottom:"1px solid #2a2f45",zIndex:10}}>
+        <button onClick={()=>navigate("/")} style={{background:"none",border:"1px solid #2a2f45",borderRadius:7,color:"#8890aa",cursor:"pointer",fontSize:12,padding:"4px 10px",fontFamily:"'Syne',sans-serif",fontWeight:600,display:"flex",alignItems:"center",gap:5,transition:"all .15s"}}
+          onMouseEnter={e=>{e.currentTarget.style.borderColor="#7c6ff7";e.currentTarget.style.color="#7c6ff7";}}
+          onMouseLeave={e=>{e.currentTarget.style.borderColor="#2a2f45";e.currentTarget.style.color="#8890aa";}}
+        >← Home</button>
+
+        <div style={{fontWeight:800,fontSize:15,letterSpacing:"-.3px",background:"linear-gradient(135deg,#7c6ff7,#29d4a8)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
+          KnowledgeGraph<span style={{WebkitTextFillColor:"#8890aa",fontWeight:400,fontSize:12,marginLeft:6}}>Engine</span>
+        </div>
+
+        {/* Chain flow pill */}
+        <div style={{display:"flex",alignItems:"center",gap:5,marginLeft:6}}>
+          {CHAIN_ORDER.map((type,i)=>(
+            <span key={type} style={{display:"flex",alignItems:"center",gap:5}}>
+              <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:10,background:NODE_COLORS[type]+"22",border:`1px solid ${NODE_COLORS[type]}55`,color:NODE_COLORS[type],letterSpacing:".04em"}}>{COL_LABELS[type]}</span>
+              {i<3&&<span style={{color:"#3a4060",fontSize:11}}>→</span>}
+            </span>
+          ))}
+        </div>
+
+        <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,border:"1px solid #3a4060",background:"#181c28",fontSize:11,fontWeight:600,color:"#8890aa",marginLeft:"auto"}}>
+          <div style={{width:7,height:7,borderRadius:"50%",background:langColor}}/>
+          {lang}
+        </div>
+        <div style={{display:"flex",gap:16}}>
+          {[["Nodes",stats.nodes],["Edges",stats.edges],["Errors",stats.errors]].map(([k,v])=>(
+            <div key={k} style={{fontSize:11,color:"#5a6080"}}>
+              <b style={{color:"#e8eaf2",fontWeight:600,marginRight:3}}>{showEmpty?"—":v}</b>{k.toLowerCase()}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* LEFT PANEL */}
+      <div style={{background:"#10121a",borderRight:"1px solid #2a2f45",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        <div style={{padding:"14px 16px 10px",fontSize:11,fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",color:"#5a6080",borderBottom:"1px solid #2a2f45"}}>Input Code</div>
+
+        <div style={{display:"flex",gap:4,padding:"10px 12px 0",flexWrap:"wrap"}}>
+          {["auto","python","javascript","java","cpp","c","rust","go"].map(l=>(
+            <button key={l} onClick={()=>setForcedLang(l)} style={{padding:"4px 9px",borderRadius:6,border:`1px solid ${forcedLang===l?"#7c6ff7":"#2a2f45"}`,background:forcedLang===l?"#7c6ff7":"transparent",color:forcedLang===l?"#fff":"#5a6080",fontFamily:"'Syne',sans-serif",fontSize:10,fontWeight:600,cursor:"pointer"}}>{l}</button>
+          ))}
+        </div>
+
+        <div style={{flex:1,overflow:"hidden",position:"relative"}}>
+          <textarea value={code} onChange={e=>setCode(e.target.value)} onKeyDown={handleKeyDown} spellCheck={false}
+            placeholder={"// Paste your code here...\n// Ctrl+Enter to analyze"}
+            style={{width:"100%",height:"100%",padding:14,background:"transparent",border:"none",outline:"none",resize:"none",fontFamily:"'JetBrains Mono',monospace",fontSize:12.5,lineHeight:1.7,color:"#c9d1d9",caretColor:"#29d4a8",overflowY:"auto"}}
+          />
+        </div>
+
+        <div style={{padding:"10px 12px 14px"}}>
+          <div style={{fontSize:10,color:"#5a6080",fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",marginBottom:6}}>Quick Examples</div>
+          {[["py_sort","Python — bubble sort"],["js_async","JS — async/await fetch"],["java_null","Java — NullPointerException"],["cpp_mem","C++ — memory leak"],["rust_own","Rust — ownership chain"],["go_goroutine","Go — goroutine pattern"]].map(([key,label])=>(
+            <button key={key} onClick={()=>setCode(EXAMPLES[key])} style={{display:"block",width:"100%",textAlign:"left",padding:"7px 10px",marginBottom:4,borderRadius:7,border:"1px solid #2a2f45",background:"transparent",color:"#8890aa",fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}
+              onMouseEnter={e=>{e.target.style.borderColor="#7c6ff7";e.target.style.color="#7c6ff7";e.target.style.background="rgba(124,111,247,.07)";}}
+              onMouseLeave={e=>{e.target.style.borderColor="#2a2f45";e.target.style.color="#8890aa";e.target.style.background="transparent";}}
+            >{label}</button>
+          ))}
+        </div>
+
+        <button onClick={analyze} disabled={loading||!code.trim()} style={{margin:12,padding:11,borderRadius:10,border:"none",cursor:loading||!code.trim()?"not-allowed":"pointer",background:analyzeDone?"linear-gradient(135deg,#29d4a8,#1aad88)":"linear-gradient(135deg,#7c6ff7,#5b4ee0)",color:"#fff",fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:700,letterSpacing:".3px",display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:loading||!code.trim()?0.4:1,transition:"opacity .2s,background .3s"}}>
+          {loading
+            ?<><div style={{width:14,height:14,border:"2px solid rgba(255,255,255,.3)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin .7s linear infinite"}}/>Analyzing...</>
+            :analyzeDone?"✓ Graph Built!":"⚡ Analyze & Build Graph"
+          }
+        </button>
+      </div>
+
+      {/* GRAPH AREA */}
+      <div ref={graphAreaRef} style={{position:"relative",overflow:"hidden",background:"#0a0b0f"}}>
+        <canvas ref={canvasRef} style={{position:"absolute",top:0,left:0}}
+          onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp} onClick={handleClick}
+        />
+
+        {/* Empty state */}
+        {showEmpty&&!loading&&!apiError&&(
+          <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+            <div style={{textAlign:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,justifyContent:"center",marginBottom:20}}>
+                {CHAIN_ORDER.map((t,i)=>(
+                  <span key={t} style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{color:NODE_COLORS[t],fontWeight:700,fontSize:12}}>{COL_LABELS[t]}</span>
+                    {i<3&&<span style={{color:"#2a2f45",fontSize:16}}>→</span>}
+                  </span>
+                ))}
+              </div>
+              <div style={{fontSize:40,marginBottom:14,opacity:.18}}>◈</div>
+              <div style={{fontSize:16,fontWeight:700,color:"#5a6080",marginBottom:8}}>Knowledge Graph Engine</div>
+              <div style={{fontSize:12,color:"#3a4060",lineHeight:1.8}}>Paste any code on the left<br/>and click Analyze to build the chain graph</div>
+            </div>
+          </div>
+        )}
+
+        {/* Loading overlay */}
+        {loading&&(
+          <div style={{position:"absolute",inset:0,background:"rgba(10,11,15,.88)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,zIndex:20}}>
+            <div style={{width:60,height:60,borderRadius:"50%",border:"2px solid #7c6ff7",animation:"pulse-out 1.2s ease-out infinite"}}/>
+            <div style={{fontSize:13,color:"#8890aa",fontWeight:600}}>Analyzing code...</div>
+            <div style={{fontSize:11,color:"#5a6080"}}>{loadingStep}</div>
+          </div>
+        )}
+
+        {/* Error banner */}
+        {apiError&&!loading&&(
+          <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,padding:32}}>
+            <div style={{fontSize:36,opacity:.6}}>⚠️</div>
+            <div style={{fontSize:15,fontWeight:700,color:"#ff6b6b"}}>Graph generation failed</div>
+            <div style={{maxWidth:460,background:"#181c28",border:"1px solid #ff6b6b44",borderRadius:10,padding:"12px 16px",fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"#ff6b6b",lineHeight:1.6,wordBreak:"break-all",whiteSpace:"pre-wrap"}}>{apiError}</div>
+            <button onClick={()=>{setApiError(null);setShowEmpty(false);}} style={{marginTop:4,padding:"8px 20px",borderRadius:8,border:"1px solid #3a4060",background:"transparent",color:"#8890aa",cursor:"pointer",fontFamily:"'Syne',sans-serif",fontSize:12,fontWeight:600}}>← Try again</button>
+          </div>
+        )}
+
+        {/* Node detail panel */}
+        {nodePanel.show&&nodePanel.node&&(
+          <div style={{position:"absolute",top:16,right:60,width:255,background:"rgba(24,28,40,0.95)",backdropFilter:"blur(10px)",border:`1px solid ${NODE_COLORS[nodePanel.node.type]}44`,borderRadius:14,padding:16,fontSize:12,zIndex:50,boxShadow:"0 8px 32px rgba(0,0,0,.6)"}}>
+            <button onClick={()=>setNodePanel(p=>({...p,show:false}))} style={{position:"absolute",top:10,right:10,background:"none",border:"none",color:"#5a6080",cursor:"pointer",fontSize:16}}>✕</button>
+            <div style={{fontSize:10,fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",marginBottom:8,color:NODE_COLORS[nodePanel.node.type]}}>{nodePanel.node.type.toUpperCase()}</div>
+            <div style={{fontSize:15,fontWeight:800,marginBottom:10,color:"#e8eaf2"}}>{nodePanel.node.label}</div>
+            <div style={{fontSize:12,color:"#8890aa",lineHeight:1.7}}>{nodePanel.node.desc||"No description available."}</div>
+          </div>
+        )}
+
+        {/* Hover tooltip */}
+        {tooltip.show&&tooltip.node&&(
+          <div style={{position:"absolute",left:tooltip.x,top:tooltip.y,maxWidth:255,minWidth:160,background:"#181c28",border:`1px solid ${NODE_COLORS[tooltip.node.type]}44`,borderRadius:10,padding:"10px 13px",fontSize:12,lineHeight:1.6,color:"#e8eaf2",pointerEvents:"none",zIndex:100,boxShadow:"0 8px 32px rgba(0,0,0,.5)"}}>
+            <div style={{fontSize:9,fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",marginBottom:4,color:NODE_COLORS[tooltip.node.type]}}>{tooltip.node.type.toUpperCase()}</div>
+            <div style={{fontWeight:700,fontSize:12,marginBottom:4}}>{tooltip.node.label}</div>
+            <div style={{color:"#8890aa",fontSize:11}}>{(tooltip.node.desc||"").slice(0,90)}{(tooltip.node.desc||"").length>90?"…":""}</div>
+          </div>
+        )}
+
+        {/* Legend */}
+        <div style={{position:"absolute",bottom:20,left:20,background:"#181c28",border:"1px solid #2a2f45",borderRadius:10,padding:"9px 14px",display:"flex",gap:14,fontSize:11}}>
+          {CHAIN_ORDER.map(type=>(
+            <div key={type} style={{display:"flex",alignItems:"center",gap:5,color:"#8890aa"}}>
+              <div style={{width:9,height:9,borderRadius:"50%",background:NODE_COLORS[type]}}/>
+              {type.charAt(0).toUpperCase()+type.slice(1)}
+            </div>
+          ))}
+        </div>
+
+        {/* Zoom controls */}
+        <div style={{position:"absolute",top:16,right:16,display:"flex",flexDirection:"column",gap:8}}>
+          {[["＋",zoomIn],["－",zoomOut],["⌂",resetView]].map(([icon,fn])=>(
+            <div key={icon} onClick={fn} style={{width:34,height:34,background:"#181c28",border:"1px solid #2a2f45",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16,color:"#8890aa"}}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor="#7c6ff7";e.currentTarget.style.color="#7c6ff7";}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor="#2a2f45";e.currentTarget.style.color="#8890aa";}}
+            >{icon}</div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
