@@ -35,12 +35,19 @@ const driver = neo4j.driver(
   { maxConnectionPoolSize: 50 }
 );
 
-try {
-  await driver.getServerInfo();
-  console.log("✅ Neo4j connected:", process.env.NEO4J_URI);
-} catch (err) {
-  console.warn("⚠️  Neo4j connection failed (save/load won't work):", err.message);
-}
+// ✅ FIX 1: Do NOT await this at the top level.
+// If Neo4j is down, the old code threw here and Express never called .listen(),
+// leaving port 5000 closed → Vite proxy got a 502 on every request.
+// Now we connect in the background; the server always starts.
+let neo4jReady = false;
+driver.getServerInfo()
+  .then(() => {
+    neo4jReady = true;
+    console.log("✅ Neo4j connected:", process.env.NEO4J_URI);
+  })
+  .catch(err => {
+    console.warn("⚠️  Neo4j connection failed (save/load features disabled):", err.message);
+  });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function toNum(v) {
@@ -101,7 +108,6 @@ app.post("/api/chat", async (req, res) => {
       console.error("Groq error:", data);
       return res.status(groqRes.status).json({ error: data });
     }
-    // Already OpenAI-shaped → data.choices[0].message.content
     res.json(data);
   } catch (err) {
     console.error("Chat proxy error:", err.message);
@@ -111,6 +117,9 @@ app.post("/api/chat", async (req, res) => {
 
 // ─── POST /api/graphs  (save) ────────────────────────────────────────────────
 app.post("/api/graphs", async (req, res) => {
+  if (!neo4jReady)
+    return res.status(503).json({ error: "Neo4j is not connected. Check NEO4J_URI / credentials in .env." });
+
   const { language, code, graph, name } = req.body;
   if (!graph || (!graph.concepts && !graph.errors))
     return res.status(400).json({ error: "Invalid graph payload." });
@@ -121,7 +130,9 @@ app.post("/api/graphs", async (req, res) => {
 
   const session = driver.session();
   try {
-    await session.writeTransaction(async (tx) => {
+    // ✅ FIX 2: neo4j-driver v6 removed writeTransaction / readTransaction.
+    // Use executeWrite / executeRead instead.
+    await session.executeWrite(async (tx) => {
       await tx.run(
         `CREATE (g:CodeGraph {
            id:$id, name:$name, language:$language, code:$code, savedAt:$savedAt,
@@ -174,6 +185,8 @@ app.post("/api/graphs", async (req, res) => {
 
 // ─── GET /api/graphs  (list) ─────────────────────────────────────────────────
 app.get("/api/graphs", async (req, res) => {
+  if (!neo4jReady) return res.json([]); // return empty list gracefully
+
   try {
     const result = await runQuery(
       `MATCH (g:CodeGraph)
@@ -217,6 +230,8 @@ app.get("/api/graphs", async (req, res) => {
 
 // ─── GET /api/graphs/:id  (single) ───────────────────────────────────────────
 app.get("/api/graphs/:id", async (req, res) => {
+  if (!neo4jReady) return res.status(503).json({ error: "Neo4j not connected." });
+
   const { id } = req.params;
   try {
     const result = await runQuery(
@@ -242,6 +257,8 @@ app.get("/api/graphs/:id", async (req, res) => {
 
 // ─── PATCH /api/graphs/:id  (rename) ─────────────────────────────────────────
 app.patch("/api/graphs/:id", async (req, res) => {
+  if (!neo4jReady) return res.status(503).json({ error: "Neo4j not connected." });
+
   const { id }   = req.params;
   const { name } = req.body;
   if (!name || typeof name !== "string") return res.status(400).json({ error: "name is required." });
@@ -260,6 +277,8 @@ app.patch("/api/graphs/:id", async (req, res) => {
 
 // ─── DELETE /api/graphs/:id ──────────────────────────────────────────────────
 app.delete("/api/graphs/:id", async (req, res) => {
+  if (!neo4jReady) return res.status(503).json({ error: "Neo4j not connected." });
+
   const { id } = req.params;
   try {
     await runQuery(
@@ -277,6 +296,8 @@ app.delete("/api/graphs/:id", async (req, res) => {
 
 // ─── PATCH /api/graphs/:id/nodes/:nodeLocalId  (edit node) ───────────────────
 app.patch("/api/graphs/:id/nodes/:nodeLocalId", async (req, res) => {
+  if (!neo4jReady) return res.status(503).json({ error: "Neo4j not connected." });
+
   const { id, nodeLocalId } = req.params;
   const { label, desc }     = req.body;
   if (label == null && desc == null) return res.status(400).json({ error: "Provide label and/or desc." });
@@ -308,7 +329,7 @@ app.patch("/api/graphs/:id/nodes/:nodeLocalId", async (req, res) => {
 });
 
 // ─── Health ───────────────────────────────────────────────────────────────────
-app.get("/health", (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
+app.get("/health", (_req, res) => res.json({ ok: true, neo4j: neo4jReady, ts: new Date().toISOString() }));
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;

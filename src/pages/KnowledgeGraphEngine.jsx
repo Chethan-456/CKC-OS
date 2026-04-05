@@ -103,7 +103,7 @@ function computeLayout(allNodes, W, H) {
   allNodes.forEach(n => { (cols[n.type] || cols.concept).push(n); });
   const PAD_X  = 110;
   const colGap = (W - PAD_X * 2) / 3;
-  const NODE_H = 100;
+  const NODE_H = 110;
   const positions = {};
   CHAIN_ORDER.forEach((type, ci) => {
     const nodes  = cols[type] || [];
@@ -160,14 +160,12 @@ function SavedGraphsDrawer({ open, onClose, onLoad, currentGraphId }) {
 
   return (
     <>
-      {/* Backdrop */}
       <div onClick={onClose} style={{
         position:"fixed", inset:0, background:"rgba(0,0,0,.5)", zIndex:199,
         opacity: open ? 1 : 0, pointerEvents: open ? "auto" : "none",
         transition:"opacity .22s"
       }} />
 
-      {/* Drawer */}
       <div style={{
         position:"fixed", top:0, right:0, width:320, height:"100vh",
         background:"#10121a", borderLeft:"1px solid #2a2f45",
@@ -176,7 +174,6 @@ function SavedGraphsDrawer({ open, onClose, onLoad, currentGraphId }) {
         transition:"transform .26s cubic-bezier(.4,0,.2,1)",
         boxShadow:"-8px 0 40px rgba(0,0,0,.6)"
       }}>
-        {/* Header */}
         <div style={{ padding:"18px 20px 14px", borderBottom:"1px solid #2a2f45", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
           <div>
             <div style={{ fontWeight:800, fontSize:14, color:"#e8eaf2", letterSpacing:"-.2px" }}>Saved Graphs</div>
@@ -188,7 +185,6 @@ function SavedGraphsDrawer({ open, onClose, onLoad, currentGraphId }) {
           </div>
         </div>
 
-        {/* Body */}
         <div style={{ flex:1, overflowY:"auto", padding:"12px 14px" }}>
           {fetching && (
             <div style={{ textAlign:"center", padding:"40px 0", color:"#5a6080", fontSize:12 }}>
@@ -280,13 +276,13 @@ export default function KnowledgeGraphEngine() {
   const [apiError,      setApiError]      = useState(null);
   const [analyzeDone,   setAnalyzeDone]   = useState(false);
 
-  // Neo4j save state
-  const [currentGraph,  setCurrentGraph]  = useState(null); // { id, language, graph }
+  const [currentGraph,  setCurrentGraph]  = useState(null);
   const [savedGraphId,  setSavedGraphId]  = useState(null);
   const [saving,        setSaving]        = useState(false);
-  const [saveMsg,       setSaveMsg]       = useState(null); // { ok: bool, text: string }
+  const [saveMsg,       setSaveMsg]       = useState(null);
   const [drawerOpen,    setDrawerOpen]    = useState(false);
 
+  // ── Draw ──────────────────────────────────────────────────────────────────
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -297,6 +293,7 @@ export default function KnowledgeGraphEngine() {
     ctx.clearRect(0, 0, W, H);
     const wts = (x,y) => ({ x: x*s.camScale+s.camX, y: y*s.camScale+s.camY });
 
+    // Grid
     ctx.save();
     ctx.strokeStyle="rgba(42,47,69,.4)"; ctx.lineWidth=0.5;
     const gs=40*s.camScale;
@@ -305,45 +302,42 @@ export default function KnowledgeGraphEngine() {
     for (let y=oy;y<H;y+=gs){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
     ctx.restore();
 
-    if (!s.nodes.length) return;
-
-    const colX = {};
-    CHAIN_ORDER.forEach(type => {
-      const n = s.nodes.find(nd => nd.type === type);
-      if (n) colX[type] = wts(n.x, 0).x;
-    });
-
-    CHAIN_ORDER.forEach((type) => {
-      if (colX[type] == null) return;
-      const col = NODE_COLORS[type];
+    // Column headers
+    CHAIN_ORDER.forEach((type, ci) => {
+      const col = stateRef.current.nodes.filter(n => n.type === type);
+      if (!col.length) return;
+      const xs = col.map(n => wts(n.x, n.y).x);
+      const avgX = xs.reduce((a,b)=>a+b,0)/xs.length;
+      const topY = Math.min(...col.map(n => wts(n.x, n.y).y)) - 55 * s.camScale;
+      if (topY < 10 || topY > H - 10) return;
       ctx.save();
-      ctx.fillStyle = col + "08";
-      const laneW = 140 * s.camScale;
-      ctx.fillRect(colX[type] - laneW/2, 0, laneW, H);
-      ctx.font = `700 11px 'Syne',sans-serif`;
-      ctx.textAlign = "center";
-      ctx.fillStyle = col + "99";
-      ctx.fillText(COL_LABELS[type], colX[type], 30);
-      ctx.strokeStyle = col+"44"; ctx.lineWidth=1;
-      ctx.beginPath(); ctx.moveTo(colX[type]-55,36); ctx.lineTo(colX[type]+55,36); ctx.stroke();
+      ctx.font = `700 ${Math.round(9*s.camScale)}px Syne,sans-serif`;
+      ctx.textAlign="center"; ctx.fillStyle = NODE_COLORS[type]+"99";
+      ctx.letterSpacing = "0.06em";
+      ctx.fillText(COL_LABELS[type], avgX, topY);
       ctx.restore();
     });
 
-    const colTypes = CHAIN_ORDER.filter(t => colX[t] != null);
-    for (let i=0; i<colTypes.length-1; i++) {
-      const x1=colX[colTypes[i]], x2=colX[colTypes[i+1]];
-      const midY = H/2;
-      ctx.save();
-      ctx.strokeStyle="rgba(88,96,140,.12)"; ctx.lineWidth=1.5; ctx.setLineDash([5,7]);
-      ctx.beginPath(); ctx.moveTo(x1+60,midY); ctx.lineTo(x2-60,midY); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle="rgba(88,96,140,.18)";
-      ctx.beginPath();
-      ctx.moveTo(x2-60,midY); ctx.lineTo(x2-70,midY-5); ctx.lineTo(x2-70,midY+5);
-      ctx.closePath(); ctx.fill();
-      ctx.restore();
+    // Chain arrows between column headers
+    if (s.nodes.length > 0 && s.camScale > 0.5) {
+      const cols = CHAIN_ORDER.map(type => s.nodes.filter(n => n.type === type));
+      for (let ci = 0; ci < cols.length - 1; ci++) {
+        if (!cols[ci].length || !cols[ci+1].length) continue;
+        const ax = cols[ci].map(n=>wts(n.x,n.y).x).reduce((a,b)=>a+b,0)/cols[ci].length;
+        const bx = cols[ci+1].map(n=>wts(n.x,n.y).x).reduce((a,b)=>a+b,0)/cols[ci+1].length;
+        const midY = 28;
+        ctx.save();
+        ctx.strokeStyle="rgba(58,64,96,.35)"; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(ax+40,midY); ctx.lineTo(bx-40,midY); ctx.stroke();
+        ctx.fillStyle="rgba(58,64,96,.35)";
+        ctx.beginPath();
+        ctx.moveTo(bx-40,midY); ctx.lineTo(bx-50,midY-5); ctx.lineTo(bx-50,midY+5);
+        ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
     }
 
+    // Edges
     s.edges.forEach(e => {
       const a=s.nodes.find(n=>n.id===e.from), b=s.nodes.find(n=>n.id===e.to);
       if (!a||!b) return;
@@ -376,6 +370,7 @@ export default function KnowledgeGraphEngine() {
       ctx.restore();
     });
 
+    // Nodes
     s.nodes.forEach(n => {
       const p   = wts(n.x,n.y);
       const col = NODE_COLORS[n.type]||"#7c6ff7";
@@ -540,7 +535,9 @@ export default function KnowledgeGraphEngine() {
     setTimeout(()=>resetView(),60);
   },[draw,resetView]);
 
-  // ── Analyze ───────────────────────────────────────────────────────────────
+  // ── Analyze — routes through /api/chat backend proxy ────────────────────────
+  // This FIXES the "Failed to fetch" error. The browser cannot call Anthropic/Groq
+  // directly due to CORS. All AI calls must go through the Express server at /api/chat.
   const analyze = useCallback(async()=>{
     const trimmed=code.trim(); if (!trimmed) return;
     setLoading(true); setApiError(null); setAnalyzeDone(false);
@@ -551,9 +548,8 @@ export default function KnowledgeGraphEngine() {
     let si=0;
     const stepTimer=setInterval(()=>setLoadingStep(steps[Math.min(si++,steps.length-1)]),700);
 
-    const prompt=`You are a code knowledge graph analyzer. Analyze the following ${detectedLang} code.
-
-Return ONLY a raw JSON object. No markdown, no backticks, no text before or after.
+    const systemMsg = "You are a code knowledge graph analyzer. Respond ONLY with raw JSON. No markdown, no backticks, no explanation text before or after.";
+    const userMsg = `Analyze the following ${detectedLang} code and return ONLY a raw JSON object.
 
 The graph must follow this chain: Concept → Error → Fix → Explanation
 - concepts = what the code does (loops, functions, data structures)
@@ -561,7 +557,7 @@ The graph must follow this chain: Concept → Error → Fix → Explanation
 - fixes = how to fix each error
 - explanations = deeper insight, complexity, best practices
 
-Use this EXACT JSON structure:
+Use this EXACT JSON structure (no other text, no markdown fences):
 {
   "language": "python",
   "concepts": [
@@ -577,7 +573,7 @@ Use this EXACT JSON structure:
     {"id":"f2","label":"Use Tim Sort","type":"fix","desc":"Python's built-in sort is Tim Sort — O(n log n) average.","connections":["x1"]}
   ],
   "explanations": [
-    {"id":"x1","label":"Complexity","type":"explanation","desc":"Bubble sort is O(n²) — fine for small arrays, slow for large ones. Tim Sort handles real-world data much better.","connections":[]}
+    {"id":"x1","label":"Complexity","type":"explanation","desc":"Bubble sort is O(n²) — fine for small arrays, slow for large ones.","connections":[]}
   ]
 }
 
@@ -591,42 +587,67 @@ Code:
 ${trimmed}`;
 
     try {
-      const res=await fetch("/api/chat",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          messages:[
-            {role:"system",content:"You are a code analyzer. Respond ONLY with raw JSON. No markdown, no backticks, no explanation."},
-            {role:"user",content:prompt}
+      // ✅ FIX: Call /api/chat (Express proxy) instead of Anthropic/Groq directly.
+      // Direct browser calls to external AI APIs are blocked by CORS.
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            { role: "system", content: systemMsg },
+            { role: "user",   content: userMsg   }
           ]
         })
       });
-      if (!res.ok){const err=await res.text();throw new Error(`API error ${res.status}: ${err}`);}
-      const data=await res.json();
-      const raw=data.choices?.[0]?.message?.content?.trim();
-      if (!raw) throw new Error("Empty response");
-      const clean=raw.replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/i,"").trim();
-      const graph=JSON.parse(clean);
-      if (!graph.concepts&&!graph.errors) throw new Error("Invalid graph format");
-      const detectedGraphLang = graph.language||detectedLang;
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Server error ${res.status}: ${errText}`);
+      }
+
+      const data = await res.json();
+
+      // Groq returns OpenAI-shaped: data.choices[0].message.content
+      const raw = data?.choices?.[0]?.message?.content?.trim();
+      if (!raw) throw new Error("Empty response from AI — check GROQ_API_KEY on the server");
+
+      // Strip any accidental markdown fences the model may have added
+      const clean = raw
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+
+      let graph;
+      try {
+        graph = JSON.parse(clean);
+      } catch (parseErr) {
+        // Try extracting the first JSON object from the string
+        const match = clean.match(/\{[\s\S]*\}/);
+        if (match) graph = JSON.parse(match[0]);
+        else throw new Error("Could not parse JSON from AI response:\n" + clean.slice(0, 300));
+      }
+
+      if (!graph.concepts && !graph.errors)
+        throw new Error("AI returned JSON but it's missing 'concepts'/'errors' keys.");
+
+      const detectedGraphLang = graph.language || detectedLang;
       setLang(detectedGraphLang);
       clearInterval(stepTimer);
       setAnalyzeDone(true);
-      // Store graph data for saving
       setCurrentGraph({ language: detectedGraphLang, graph, code: trimmed });
       buildGraph(graph);
-      setTimeout(()=>setAnalyzeDone(false),2000);
+      setTimeout(()=>setAnalyzeDone(false), 2000);
     } catch(err){
       clearInterval(stepTimer);
-      console.error("Graph analysis error:",err);
+      console.error("Graph analysis error:", err);
       setApiError(err.message);
       setLoadingStep("Analysis failed");
     } finally {
       setLoading(false);
     }
-  },[code,forcedLang,buildGraph]);
+  },[code, forcedLang, buildGraph]);
 
-  // ── Save to Neo4j ─────────────────────────────────────────────────────────
+  // ── Save to Neo4j ──────────────────────────────────────────────────────────
   const saveGraph = useCallback(async () => {
     if (!currentGraph || saving) return;
     setSaving(true); setSaveMsg(null);
@@ -657,7 +678,7 @@ ${trimmed}`;
     }
   }, [currentGraph, saving]);
 
-  // ── Load saved graph from drawer ──────────────────────────────────────────
+  // ── Load saved graph ───────────────────────────────────────────────────────
   const loadSavedGraph = useCallback((saved) => {
     if (!saved?.graph) return;
     setCode(saved.code || "");
@@ -669,10 +690,9 @@ ${trimmed}`;
     setDrawerOpen(false);
   }, [buildGraph]);
 
-  const handleKeyDown=e=>{if((e.ctrlKey||e.metaKey)&&e.key==="Enter")analyze();};
-  const langColor=LANG_COLORS[lang.toLowerCase()]||"#8890aa";
-
-  const isSaved = !!savedGraphId;
+  const handleKeyDown = e => { if ((e.ctrlKey||e.metaKey) && e.key==="Enter") analyze(); };
+  const langColor = LANG_COLORS[lang?.toLowerCase()] || "#8890aa";
+  const isSaved  = !!savedGraphId;
   const canSave  = !!currentGraph && !isSaved && !saving;
 
   return (
@@ -691,7 +711,8 @@ ${trimmed}`;
 
       {/* TOP BAR */}
       <div style={{gridColumn:"1/-1",display:"flex",alignItems:"center",gap:12,padding:"0 20px",background:"#10121a",borderBottom:"1px solid #2a2f45",zIndex:10}}>
-        <button onClick={()=>navigate("/")} style={{background:"none",border:"1px solid #2a2f45",borderRadius:7,color:"#8890aa",cursor:"pointer",fontSize:12,padding:"4px 10px",fontFamily:"'Syne',sans-serif",fontWeight:600,display:"flex",alignItems:"center",gap:5,transition:"all .15s"}}
+        <button onClick={()=>navigate("/")}
+          style={{background:"none",border:"1px solid #2a2f45",borderRadius:7,color:"#8890aa",cursor:"pointer",fontSize:12,padding:"4px 10px",fontFamily:"'Syne',sans-serif",fontWeight:600,display:"flex",alignItems:"center",gap:5,transition:"all .15s"}}
           onMouseEnter={e=>{e.currentTarget.style.borderColor="#7c6ff7";e.currentTarget.style.color="#7c6ff7";}}
           onMouseLeave={e=>{e.currentTarget.style.borderColor="#2a2f45";e.currentTarget.style.color="#8890aa";}}
         >← Home</button>
@@ -709,7 +730,6 @@ ${trimmed}`;
           ))}
         </div>
 
-        {/* Save feedback toast */}
         {saveMsg && (
           <div className="save-toast" style={{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:8,background:saveMsg.ok?"rgba(41,212,168,.12)":"rgba(255,107,107,.12)",border:`1px solid ${saveMsg.ok?"#29d4a888":"#ff6b6b88"}`,color:saveMsg.ok?"#29d4a8":"#ff6b6b",marginLeft:4}}>
             {saveMsg.text}
@@ -720,6 +740,7 @@ ${trimmed}`;
           <div style={{width:7,height:7,borderRadius:"50%",background:langColor}}/>
           {lang}
         </div>
+
         <div style={{display:"flex",gap:16}}>
           {[["Nodes",stats.nodes],["Edges",stats.edges],["Errors",stats.errors]].map(([k,v])=>(
             <div key={k} style={{fontSize:11,color:"#5a6080"}}>
@@ -740,17 +761,14 @@ ${trimmed}`;
             color: isSaved ? "#29d4a8" : canSave ? "#7c6ff7" : "#3a4060",
             fontFamily:"'Syne',sans-serif", fontSize:11, fontWeight:700,
             cursor: canSave ? "pointer" : "not-allowed",
-            display:"flex", alignItems:"center", gap:5,
-            transition:"all .15s"
+            display:"flex", alignItems:"center", gap:5, transition:"all .15s"
           }}
           onMouseEnter={e=>{ if(canSave){ e.currentTarget.style.background="rgba(124,111,247,.2)"; e.currentTarget.style.borderColor="#7c6ff7aa"; }}}
           onMouseLeave={e=>{ if(canSave){ e.currentTarget.style.background="rgba(124,111,247,.12)"; e.currentTarget.style.borderColor="#7c6ff777"; }}}
         >
           {saving
             ? <><div style={{width:10,height:10,border:"1.5px solid #7c6ff744",borderTopColor:"#7c6ff7",borderRadius:"50%",animation:"spin .7s linear infinite"}}/>Saving...</>
-            : isSaved
-            ? "✓ Saved"
-            : "⬆ Save Graph"
+            : isSaved ? "✓ Saved" : "⬆ Save Graph"
           }
         </button>
 
@@ -776,12 +794,18 @@ ${trimmed}`;
 
         <div style={{display:"flex",gap:4,padding:"10px 12px 0",flexWrap:"wrap"}}>
           {["auto","python","javascript","java","cpp","c","rust","go"].map(l=>(
-            <button key={l} onClick={()=>setForcedLang(l)} style={{padding:"4px 9px",borderRadius:6,border:`1px solid ${forcedLang===l?"#7c6ff7":"#2a2f45"}`,background:forcedLang===l?"#7c6ff7":"transparent",color:forcedLang===l?"#fff":"#5a6080",fontFamily:"'Syne',sans-serif",fontSize:10,fontWeight:600,cursor:"pointer"}}>{l}</button>
+            <button key={l} onClick={()=>setForcedLang(l)}
+              style={{padding:"4px 9px",borderRadius:6,border:`1px solid ${forcedLang===l?"#7c6ff7":"#2a2f45"}`,background:forcedLang===l?"#7c6ff7":"transparent",color:forcedLang===l?"#fff":"#5a6080",fontFamily:"'Syne',sans-serif",fontSize:10,fontWeight:600,cursor:"pointer"}}
+            >{l}</button>
           ))}
         </div>
 
         <div style={{flex:1,overflow:"hidden",position:"relative"}}>
-          <textarea value={code} onChange={e=>{setCode(e.target.value);setSavedGraphId(null);setSaveMsg(null);}} onKeyDown={handleKeyDown} spellCheck={false}
+          <textarea
+            value={code}
+            onChange={e=>{setCode(e.target.value);setSavedGraphId(null);setSaveMsg(null);}}
+            onKeyDown={handleKeyDown}
+            spellCheck={false}
             placeholder={"// Paste your code here...\n// Ctrl+Enter to analyze"}
             style={{width:"100%",height:"100%",padding:14,background:"transparent",border:"none",outline:"none",resize:"none",fontFamily:"'JetBrains Mono',monospace",fontSize:12.5,lineHeight:1.7,color:"#c9d1d9",caretColor:"#29d4a8",overflowY:"auto"}}
           />
@@ -790,14 +814,17 @@ ${trimmed}`;
         <div style={{padding:"10px 12px 14px"}}>
           <div style={{fontSize:10,color:"#5a6080",fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",marginBottom:6}}>Quick Examples</div>
           {[["py_sort","Python — bubble sort"],["js_async","JS — async/await fetch"],["java_null","Java — NullPointerException"],["cpp_mem","C++ — memory leak"],["rust_own","Rust — ownership chain"],["go_goroutine","Go — goroutine pattern"]].map(([key,label])=>(
-            <button key={key} onClick={()=>{setCode(EXAMPLES[key]);setSavedGraphId(null);}} style={{display:"block",width:"100%",textAlign:"left",padding:"7px 10px",marginBottom:4,borderRadius:7,border:"1px solid #2a2f45",background:"transparent",color:"#8890aa",fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}
+            <button key={key} onClick={()=>{setCode(EXAMPLES[key]);setSavedGraphId(null);}}
+              style={{display:"block",width:"100%",textAlign:"left",padding:"7px 10px",marginBottom:4,borderRadius:7,border:"1px solid #2a2f45",background:"transparent",color:"#8890aa",fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}
               onMouseEnter={e=>{e.target.style.borderColor="#7c6ff7";e.target.style.color="#7c6ff7";e.target.style.background="rgba(124,111,247,.07)";}}
               onMouseLeave={e=>{e.target.style.borderColor="#2a2f45";e.target.style.color="#8890aa";e.target.style.background="transparent";}}
             >{label}</button>
           ))}
         </div>
 
-        <button onClick={analyze} disabled={loading||!code.trim()} style={{margin:12,padding:11,borderRadius:10,border:"none",cursor:loading||!code.trim()?"not-allowed":"pointer",background:analyzeDone?"linear-gradient(135deg,#29d4a8,#1aad88)":"linear-gradient(135deg,#7c6ff7,#5b4ee0)",color:"#fff",fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:700,letterSpacing:".3px",display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:loading||!code.trim()?0.4:1,transition:"opacity .2s,background .3s"}}>
+        <button onClick={analyze} disabled={loading||!code.trim()}
+          style={{margin:12,padding:11,borderRadius:10,border:"none",cursor:loading||!code.trim()?"not-allowed":"pointer",background:analyzeDone?"linear-gradient(135deg,#29d4a8,#1aad88)":"linear-gradient(135deg,#7c6ff7,#5b4ee0)",color:"#fff",fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:700,letterSpacing:".3px",display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:loading||!code.trim()?0.4:1,transition:"opacity .2s,background .3s"}}
+        >
           {loading
             ?<><div style={{width:14,height:14,border:"2px solid rgba(255,255,255,.3)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin .7s linear infinite"}}/>Analyzing...</>
             :analyzeDone?"✓ Graph Built!":"⚡ Analyze & Build Graph"
@@ -843,7 +870,9 @@ ${trimmed}`;
             <div style={{fontSize:36,opacity:.6}}>⚠️</div>
             <div style={{fontSize:15,fontWeight:700,color:"#ff6b6b"}}>Graph generation failed</div>
             <div style={{maxWidth:460,background:"#181c28",border:"1px solid #ff6b6b44",borderRadius:10,padding:"12px 16px",fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"#ff6b6b",lineHeight:1.6,wordBreak:"break-all",whiteSpace:"pre-wrap"}}>{apiError}</div>
-            <button onClick={()=>{setApiError(null);setShowEmpty(false);}} style={{marginTop:4,padding:"8px 20px",borderRadius:8,border:"1px solid #3a4060",background:"transparent",color:"#8890aa",cursor:"pointer",fontFamily:"'Syne',sans-serif",fontSize:12,fontWeight:600}}>← Try again</button>
+            <button onClick={()=>{setApiError(null);setShowEmpty(true);}}
+              style={{marginTop:4,padding:"8px 20px",borderRadius:8,border:"1px solid #3a4060",background:"transparent",color:"#8890aa",cursor:"pointer",fontFamily:"'Syne',sans-serif",fontSize:12,fontWeight:600}}
+            >← Try again</button>
           </div>
         )}
 
@@ -875,7 +904,8 @@ ${trimmed}`;
 
         <div style={{position:"absolute",top:16,right:16,display:"flex",flexDirection:"column",gap:8}}>
           {[["＋",zoomIn],["－",zoomOut],["⌂",resetView]].map(([icon,fn])=>(
-            <div key={icon} onClick={fn} style={{width:34,height:34,background:"#181c28",border:"1px solid #2a2f45",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16,color:"#8890aa"}}
+            <div key={icon} onClick={fn}
+              style={{width:34,height:34,background:"#181c28",border:"1px solid #2a2f45",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16,color:"#8890aa"}}
               onMouseEnter={e=>{e.currentTarget.style.borderColor="#7c6ff7";e.currentTarget.style.color="#7c6ff7";}}
               onMouseLeave={e=>{e.currentTarget.style.borderColor="#2a2f45";e.currentTarget.style.color="#8890aa";}}
             >{icon}</div>
@@ -883,7 +913,6 @@ ${trimmed}`;
         </div>
       </div>
 
-      {/* Saved Graphs Drawer */}
       <SavedGraphsDrawer
         open={drawerOpen}
         onClose={()=>setDrawerOpen(false)}

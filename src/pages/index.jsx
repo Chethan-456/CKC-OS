@@ -205,7 +205,7 @@ const MODULES = [
   { idx:"08", title:"Behavior Tracking Engine",      desc:"Monitors typing speed, backspace frequency, error rate, and idle time to understand developer cognition.", accent:"#FFB547", isBehavior:true },
   { idx:"09", title:"Frustration Detection",         desc:"Detects when users are stuck and intelligently triggers hints, learning mode, or contextual suggestions.", accent:"#FF6B9D" },
   { idx:"10", title:"Live Knowledge Graph Engine",   desc:"Converts code into concepts, errors, and fixes. Builds a live visual graph: Loop → Array → Error → Fix.", accent:"#A78BFA", core:true, isKnowledge:true },
-  { idx:"11", title:"Adaptive AI Mentor",            desc:"Beginner gets deep explanations. Intermediate gets hints. Advanced gets optimizations. Fully adaptive.", accent:"#4FC1FF" },
+  { idx:"11", title:"Adaptive AI Mentor",            desc:"Beginner gets deep explanations. Intermediate gets hints. Advanced gets optimizations. Fully adaptive.", accent:"#4FC1FF", isMentor:true },
   { idx:"12", title:"Adaptive UI Engine",            desc:"Dynamically changes the interface: hints for beginners, guidance for stuck users, minimal for experts.", accent:"#4EC9B0" },
   { idx:"13", title:"Cognitive Analytics Dashboard", desc:"Displays productivity trends, focus levels, and weak concept identification across sessions.", accent:"#FFB547" },
 ];
@@ -222,7 +222,7 @@ const WORKFLOW_STEPS = [
 /* ═══════════════════════════════════════════════════════════════
    HOME PAGE
 ═══════════════════════════════════════════════════════════════ */
-function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, onOpenBehavior, onOpenKnowledge }) {
+function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, onOpenBehavior, onOpenKnowledge, onOpenMentor }) {
   const [activeTab, setActiveTab] = useState("all");
   const filtered = activeTab === "all" ? MODULES
     : activeTab === "collab" ? MODULES.filter((_,i) => i < 6)
@@ -412,10 +412,11 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
                 : m.isPerf      ? onOpenPerf
                 : m.isBehavior  ? onOpenBehavior
                 : m.isKnowledge ? onOpenKnowledge
+                : m.isMentor    ? onOpenMentor
                 : undefined
               }
               style={{
-                cursor: (m.isEditor || m.isChat || m.isSandbox || m.isApi || m.isPerf || m.isBehavior || m.isKnowledge) ? "pointer" : undefined,
+                cursor: (m.isEditor || m.isChat || m.isSandbox || m.isApi || m.isPerf || m.isBehavior || m.isKnowledge || m.isMentor) ? "pointer" : undefined,
                 borderColor: m.isEditor      ? "rgba(79,193,255,.2)"
                            : m.isChat        ? "rgba(167,139,250,.2)"
                            : m.isSandbox     ? "rgba(78,201,176,.2)"
@@ -423,6 +424,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
                            : m.isPerf        ? "rgba(78,201,176,.2)"
                            : m.isBehavior    ? "rgba(255,181,71,.2)"
                            : m.isKnowledge   ? "rgba(167,139,250,.2)"
+                           : m.isMentor      ? "rgba(79,193,255,.2)"
                            : undefined,
               }}
             >
@@ -435,6 +437,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
               {m.isPerf      && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>📊 PERF</span>}
               {m.isBehavior  && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🧠 TRACK</span>}
               {m.isKnowledge && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(167,139,250,.1)",color:"#A78BFA",border:"1px solid rgba(167,139,250,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🕸️ GRAPH</span>}
+              {m.isMentor    && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(79,193,255,.1)",color:"#8DD8FF",border:"1px solid rgba(79,193,255,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🎓 AI</span>}
               <div className="mod-idx">{m.idx}</div>
               <h3>{m.title}</h3><p>{m.desc}</p>
               {m.isEditor    && <p style={{ fontSize:".75rem", color:"var(--blue)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
@@ -444,6 +447,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
               {m.isPerf      && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
               {m.isBehavior  && <p style={{ fontSize:".75rem", color:"var(--amber)",  marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
               {m.isKnowledge && <p style={{ fontSize:".75rem", color:"var(--violet)", marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isMentor    && <p style={{ fontSize:".75rem", color:"var(--blue)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
               <div className="mod-accent" style={{ background:m.accent }}/>
             </div>
           ))}
@@ -721,13 +725,6 @@ function LoginScreen({ onJoin, onBack }) {
 
 /* ═══════════════════════════════════════════════════════════════
    ROOT
-   onLaunch        → login screen → /editor
-   onOpenChat      → /devchat
-   onOpenSandbox   → /sandbox
-   onOpenApi       → /api
-   onOpenPerf      → /performance
-   onOpenBehavior  → /behavior
-   onOpenKnowledge → /knowledge
 ═══════════════════════════════════════════════════════════════ */
 export default function Index() {
   const navigate = useNavigate();
@@ -744,6 +741,7 @@ export default function Index() {
   const toPerf      = () => navigate("/performance");
   const toBehavior  = () => navigate("/behavior");
   const toKnowledge = () => navigate("/knowledge-graph");
+  const toAibot     = () => navigate("/aibot");
 
   return (
     <>
@@ -757,6 +755,7 @@ export default function Index() {
           onOpenPerf={toPerf}
           onOpenBehavior={toBehavior}
           onOpenKnowledge={toKnowledge}
+          onOpenMentor={toAibot}
         />
       )}
       {route === "login" && <LoginScreen onJoin={toEditor} onBack={() => setRoute("home")} />}

@@ -3,11 +3,12 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Index from './pages/index.jsx'
 import EditorPage from './pages/editor.jsx'
 import DevChat from "./pages/devchat.jsx"
-import SandBox from "./pages/sandbox.jsx";
-import ApiTesting from "./pages/api.jsx";
-import PerformanceMonitor from "./pages/performance.jsx";
-import Behavior from "./pages/behavior.jsx";
-import KnowledgeGraphEngine from "./pages/KnowledgeGraphEngine";
+import SandBox from "./pages/sandbox.jsx"
+import ApiTesting from "./pages/api.jsx"
+import PerformanceMonitor from "./pages/performance.jsx"
+import Behavior from "./pages/behavior.jsx"
+import KnowledgeGraphEngine from "./pages/KnowledgeGraphEngine"
+import AIBot from "./pages/AIBOT.jsx"
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
         <Route path="/performance" element={<PerformanceMonitor />} />
         <Route path="/behavior" element={<Behavior/>} />
         <Route path="/knowledge-graph" element={<KnowledgeGraphEngine />} />
+        <Route path="/aibot" element={<AIBot />} />
       </Routes>
     </BrowserRouter>
   )
