@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { authStore } from "./auth.jsx";
-import { PALETTE, LANGS, LK, initials, genSid } from "./editor.jsx";
+import { authStore, PALETTE, LANGS, LK, initials, genSid } from "./editor.jsx";
 
 /* ═══════════════════════════════════════════════════════════════
    GLOBAL CSS
@@ -31,6 +30,7 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 @keyframes spin    { to{transform:rotate(360deg)} }
 @keyframes cardIn  { from{opacity:0;transform:translateY(26px) scale(.96)} to{opacity:1;transform:none} }
 @keyframes float   { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+@keyframes pulseGlow { 0%,100%{box-shadow:0 0 0 0 rgba(255,181,71,.4)} 50%{box-shadow:0 0 18px 4px rgba(255,181,71,.18)} }
 
 .page-in  { animation: pageIn .4s cubic-bezier(.22,1,.36,1) both; }
 .a-cin    { animation: cardIn .38s cubic-bezier(.34,1.4,.64,1) both; }
@@ -45,6 +45,7 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 
 .hp-grad      { background: linear-gradient(135deg,var(--blue) 0%,var(--teal) 50%,var(--rose) 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
 .hp-grad-blue { background: linear-gradient(135deg,var(--blue),var(--teal)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.hp-grad-amber{ background: linear-gradient(135deg,#FFB547,#FF6B9D); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
 
 .ckc-nav { position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:1rem 2.8rem;background:rgba(13,15,20,.88);backdrop-filter:blur(24px);border-bottom:1px solid rgba(255,255,255,.05); }
 .nav-logo { font-family:var(--disp);font-size:1.2rem;font-weight:800;color:#fff;display:flex;align-items:center;gap:9px; }
@@ -61,6 +62,9 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .btn-primary:hover .arrow { transform:translateX(4px); }
 .btn-ghost { background:transparent;color:var(--text-2);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:13px 30px;font-size:.95rem;font-weight:500;cursor:pointer;font-family:var(--sans);transition:all .2s; }
 .btn-ghost:hover { border-color:var(--blue-l);color:var(--blue-l); }
+
+.btn-amber { display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#FFB547,#FF6B9D);color:#0d0f14;border:none;border-radius:10px;padding:13px 30px;font-size:.95rem;font-weight:700;cursor:pointer;font-family:var(--disp);box-shadow:0 8px 32px rgba(255,181,71,.35);transition:transform .2s,box-shadow .2s; }
+.btn-amber:hover { transform:translateY(-2px);box-shadow:0 14px 44px rgba(255,181,71,.5); }
 
 .hero { min-height:100vh;display:flex;align-items:center;position:relative;overflow:hidden;padding:8rem 2.8rem 5rem; }
 .hero-mesh { position:absolute;inset:0;z-index:0;background:radial-gradient(ellipse 65% 50% at 70% 10%,rgba(79,193,255,.13) 0%,transparent 65%),radial-gradient(ellipse 40% 38% at 10% 80%,rgba(78,201,176,.09) 0%,transparent 60%),radial-gradient(ellipse 30% 28% at 90% 80%,rgba(167,139,250,.07) 0%,transparent 55%); }
@@ -86,6 +90,38 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .s-label { font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--blue-l);font-weight:600;margin-bottom:.6rem; }
 .s-title { font-family:var(--disp);font-size:clamp(1.8rem,3.8vw,2.8rem);font-weight:800;color:#fff;letter-spacing:-.03em;line-height:1.05;margin-bottom:.9rem; }
 .s-desc  { font-size:.95rem;color:var(--text-2);max-width:500px;line-height:1.8; }
+
+/* ── Cognitive Analytics spotlight banner ── */
+.cog-banner {
+  position: relative; overflow: hidden;
+  background: linear-gradient(135deg, rgba(255,181,71,.07) 0%, rgba(255,107,157,.06) 50%, rgba(167,139,250,.06) 100%);
+  border: 1px solid rgba(255,181,71,.22);
+  border-radius: 18px; padding: 2.2rem 2.4rem;
+  margin-top: 3rem; cursor: pointer;
+  transition: border-color .25s, transform .25s;
+  animation: pulseGlow 3s ease-in-out infinite;
+}
+.cog-banner:hover { border-color: rgba(255,181,71,.55); transform: translateY(-3px); }
+.cog-banner::before {
+  content:''; position:absolute; inset:0;
+  background: radial-gradient(ellipse 55% 70% at 85% 50%, rgba(255,181,71,.08), transparent 65%);
+  pointer-events:none;
+}
+.cog-banner-grid {
+  position:absolute; inset:0; pointer-events:none;
+  background-image: linear-gradient(rgba(255,181,71,.04) 1px,transparent 1px), linear-gradient(90deg,rgba(255,181,71,.04) 1px,transparent 1px);
+  background-size: 32px 32px;
+}
+.cog-preview-bar {
+  display: flex; gap: 10px; align-items: center; margin-bottom: 1.2rem;
+}
+.cog-pill {
+  font-size: .6rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  padding: 3px 10px; border-radius: 100px; border: 1px solid;
+}
+.cog-pill-amber { background:rgba(255,181,71,.12); color:#FFB547; border-color:rgba(255,181,71,.35); }
+.cog-pill-rose  { background:rgba(255,107,157,.1);  color:#FF6B9D; border-color:rgba(255,107,157,.3); }
+.cog-pill-viol  { background:rgba(167,139,250,.1);  color:#A78BFA; border-color:rgba(167,139,250,.3); }
 
 .efc { background:rgba(17,19,24,.75);border:1px solid rgba(79,193,255,.18);border-radius:18px;overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,.5);margin-top:3rem; }
 .efc-bar { display:flex;align-items:center;justify-content:space-between;padding:1.1rem 1.6rem;background:rgba(255,255,255,.02);border-bottom:1px solid rgba(255,255,255,.06); }
@@ -127,7 +163,10 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .modules-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(285px,1fr));gap:1.1rem;margin-top:3rem; }
 .mod-card { background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:1.5rem;position:relative;overflow:hidden;transition:all .25s; }
 .mod-card:hover { background:rgba(255,255,255,.05);border-color:rgba(79,193,255,.28);transform:translateY(-3px); }
+.mod-card.mod-cog { background:linear-gradient(145deg,rgba(255,181,71,.07),rgba(255,107,157,.04)); border-color:rgba(255,181,71,.2); }
+.mod-card.mod-cog:hover { border-color:rgba(255,181,71,.5); transform:translateY(-4px); box-shadow:0 16px 48px rgba(255,181,71,.12); }
 .mod-idx  { font-family:var(--mono);font-size:.64rem;color:rgba(79,193,255,.5);font-weight:600;letter-spacing:.08em;margin-bottom:.7rem; }
+.mod-card.mod-cog .mod-idx { color:rgba(255,181,71,.6); }
 .mod-card h3 { font-family:var(--disp);font-size:.95rem;font-weight:700;color:#fff;margin-bottom:.4rem; }
 .mod-card p  { font-size:.8rem;color:var(--text-3);line-height:1.7; }
 .mod-accent  { position:absolute;bottom:0;left:0;height:2px;border-radius:0 0 0 13px;width:0;transition:width .35s ease; }
@@ -189,6 +228,7 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
   .ckc-nav{padding:.9rem 1.5rem;} .nav-links{display:none;}
   .section{padding:4rem 1.5rem;} .cta-section{padding:4.5rem 1.5rem;} .footer{padding:1.3rem 1.5rem;}
   .layers-grid{grid-template-columns:1fr;} .apps-grid{grid-template-columns:1fr;} .efc-body{grid-template-columns:1fr;}
+  .cog-banner { padding:1.6rem; }
 }
 `;
 
@@ -197,18 +237,18 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 ═══════════════════════════════════════════════════════════════ */
 const MODULES = [
   { idx:"01", title:"Live Collaborative Editor",     desc:"Google Docs-style real-time coding with multi-user cursor tracking via WebSockets, full CRDT/OT, and CodeMirror 6.", accent:"#4FC1FF", isEditor:true },
-  { idx:"02", title:"Real-Time Debugging Room",      desc:"Share logs instantly. Teams view, annotate, and suggest fixes collaboratively — for students and developers alike.", accent:"#4EC9B0", isDebug:true },
-  { idx:"03", title:"Live Server Logs Dashboard",    desc:"Stream server events in real-time. Acts as a mini DevOps monitoring layer with live error surfacing.", accent:"#FFB547", isLogs:true },
+  { idx:"02", title:"Real-Time Debugging Room",      desc:"Share logs instantly. Teams view, annotate, and suggest fixes collaboratively — for students and developers alike.", accent:"#4EC9B0" },
+  { idx:"03", title:"Live Server Logs Dashboard",    desc:"Stream server events in real-time. Acts as a mini DevOps monitoring layer with live error surfacing.", accent:"#FFB547" },
   { idx:"04", title:"Collaborative API Testing",     desc:"Like Postman, but real-time. Teams test endpoints, share requests, and view responses together live.", accent:"#FF6B9D", isApi:true },
   { idx:"05", title:"Context-Based Dev Chat",        desc:"Chat linked to specific files, errors, and projects. Threaded discussions with @mention support.", accent:"#A78BFA", isChat:true },
   { idx:"06", title:"Code Execution Sandbox",        desc:"Run 8 languages in-browser: TypeScript, JavaScript, Python, Java, C++, Rust, Go, SQL — with simulated output.", accent:"#4FC1FF", isExec:true, isSandbox:true },
   { idx:"07", title:"Performance Monitor",           desc:"Track API response time, errors per second, and execution latency with real-time graph visualization.", accent:"#4EC9B0", isPerf:true },
   { idx:"08", title:"Behavior Tracking Engine",      desc:"Monitors typing speed, backspace frequency, error rate, and idle time to understand developer cognition.", accent:"#FFB547", isBehavior:true },
-  { idx:"09", title:"Frustration Detection",         desc:"Detects when users are stuck and intelligently triggers hints, learning mode, or contextual suggestions.", accent:"#FF6B9D" },
-  { idx:"10", title:"Live Knowledge Graph Engine",   desc:"Converts code into concepts, errors, and fixes. Builds a live visual graph: Loop → Array → Error → Fix.", accent:"#A78BFA", core:true, isKnowledge:true },
-  { idx:"11", title:"Adaptive AI Mentor",            desc:"Beginner gets deep explanations. Intermediate gets hints. Advanced gets optimizations. Fully adaptive.", accent:"#4FC1FF", isMentor:true },
+  { idx:"09", title:"Frustration Detection",         desc:"Detects when users are stuck and intelligently triggers hints, learning mode, or contextual suggestions.", accent:"#FF6B9D", isFrustration:true },
+  { idx:"10", title:"Live Knowledge Graph Engine",   desc:"Converts code into concepts, errors, and fixes. Builds a live visual graph: Loop → Array → Error → Fix.", accent:"#A78BFA", core:true },
+  { idx:"11", title:"Adaptive AI Mentor",            desc:"Beginner gets deep explanations. Intermediate gets hints. Advanced gets optimizations. Fully adaptive.", accent:"#4FC1FF" },
   { idx:"12", title:"Adaptive UI Engine",            desc:"Dynamically changes the interface: hints for beginners, guidance for stuck users, minimal for experts.", accent:"#4EC9B0" },
-  { idx:"13", title:"Cognitive Analytics Dashboard", desc:"Displays productivity trends, focus levels, and weak concept identification across sessions.", accent:"#FFB547" },
+  { idx:"13", title:"Cognitive Analytics Dashboard", desc:"Displays productivity trends, focus levels, and weak concept identification across sessions. AI-powered insights in real time.", accent:"#FFB547", isCognitive:true },
 ];
 
 const WORKFLOW_STEPS = [
@@ -220,10 +260,26 @@ const WORKFLOW_STEPS = [
   { n:"6", title:"System Responds Adaptively",  desc:"Suggestions surface, knowledge graph updates, UI adapts — all in real time without interruption." },
 ];
 
+/* ── Mini sparkline for stat cards in the cognitive banner ── */
+function MiniSparkline({ values, color }) {
+  const W = 80, H = 28, pad = 2;
+  const max = Math.max(...values), min = Math.min(...values);
+  const pts = values.map((v, i) => {
+    const x = pad + (i / (values.length - 1)) * (W - pad * 2);
+    const y = H - pad - ((v - min) / (max - min || 1)) * (H - pad * 2);
+    return `${x},${y}`;
+  }).join(" ");
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" opacity="0.8" />
+    </svg>
+  );
+}
+
 /* ═══════════════════════════════════════════════════════════════
    HOME PAGE
 ═══════════════════════════════════════════════════════════════ */
-function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, onOpenBehavior, onOpenKnowledge, onOpenMentor, onOpenDebug, onOpenLogs }) {
+function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, onOpenBehavior, onOpenFrustration, onOpenCognitive }) {
   const [activeTab, setActiveTab] = useState("all");
   const filtered = activeTab === "all" ? MODULES
     : activeTab === "collab" ? MODULES.filter((_,i) => i < 6)
@@ -243,7 +299,22 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
             <button key={id} className="nav-link" onClick={() => scrollTo(id)}>{l}</button>
           ))}
         </div>
-        <button className="btn-nav" onClick={onLaunch}>⚡ Launch Editor</button>
+        <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+          <button
+            onClick={onOpenCognitive}
+            style={{
+              background:"linear-gradient(135deg,rgba(255,181,71,.18),rgba(255,107,157,.14))",
+              color:"#FFB547", border:"1px solid rgba(255,181,71,.38)", borderRadius:7,
+              padding:"7px 16px", fontSize:".78rem", fontWeight:700, cursor:"pointer",
+              fontFamily:"var(--disp)", letterSpacing:".04em", transition:"all .2s",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background="linear-gradient(135deg,rgba(255,181,71,.3),rgba(255,107,157,.22))"; e.currentTarget.style.borderColor="rgba(255,181,71,.6)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background="linear-gradient(135deg,rgba(255,181,71,.18),rgba(255,107,157,.14))"; e.currentTarget.style.borderColor="rgba(255,181,71,.38)"; }}
+          >
+            📊 Analytics
+          </button>
+          <button className="btn-nav" onClick={onLaunch}>⚡ Launch Editor</button>
+        </div>
       </nav>
 
       {/* HERO */}
@@ -374,6 +445,109 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
             </div>
           </div>
         </div>
+
+        {/* ── COGNITIVE ANALYTICS SPOTLIGHT BANNER ── */}
+        <div style={{ marginTop:"3rem" }}>
+          <div className="s-label" style={{ color:"#FFB547", letterSpacing:".14em" }}>Module 13 — Featured</div>
+          <div
+            className="cog-banner"
+            onClick={onOpenCognitive}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => e.key === "Enter" && onOpenCognitive()}
+          >
+            <div className="cog-banner-grid"/>
+            {/* Header row */}
+            <div style={{ position:"relative", zIndex:1, display:"flex", alignItems:"flex-start", justifyContent:"space-between", flexWrap:"wrap", gap:"1.4rem" }}>
+              <div style={{ flex:1, minWidth:260 }}>
+                <div className="cog-preview-bar">
+                  <div style={{ width:8, height:8, borderRadius:"50%", background:"#4ade80", boxShadow:"0 0 8px #4ade80" }}/>
+                  <span style={{ fontSize:10, letterSpacing:".18em", color:"rgba(148,163,184,.6)", fontFamily:"var(--mono)" }}>AI-POWERED · REAL-TIME · ADAPTIVE</span>
+                </div>
+                <h3 style={{ fontFamily:"var(--disp)", fontSize:"clamp(1.3rem,2.8vw,2rem)", fontWeight:800, letterSpacing:"-.03em", color:"#fff", marginBottom:".5rem", lineHeight:1.1 }}>
+                  Cognitive <span className="hp-grad-amber">Analytics Dashboard</span>
+                </h3>
+                <p style={{ fontSize:".88rem", color:"var(--text-2)", maxWidth:480, lineHeight:1.75 }}>
+                  Track productivity trends, measure focus depth, and surface weak concepts — all powered by the CKC-OS knowledge engine with real-time AI insights.
+                </p>
+                <div style={{ display:"flex", gap:"2rem", marginTop:"1.4rem" }}>
+                  {[["84%","Productivity"],["3.2h","Avg Focus"],["5","Weak Concepts"],["18","Sessions"]].map(([v,l]) => (
+                    <div key={l}>
+                      <div style={{ fontFamily:"var(--disp)", fontSize:"1.4rem", fontWeight:800, color:"#FFB547" }}>{v}</div>
+                      <div style={{ fontSize:".6rem", color:"rgba(148,163,184,.5)", letterSpacing:".1em", textTransform:"uppercase", marginTop:2 }}>{l}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display:"flex", gap:8, marginTop:"1.4rem", flexWrap:"wrap" }}>
+                  <span className="cog-pill cog-pill-amber">📊 Productivity Trends</span>
+                  <span className="cog-pill cog-pill-rose">◎ Focus Levels</span>
+                  <span className="cog-pill cog-pill-viol">⚠ Weak Concepts</span>
+                </div>
+              </div>
+
+              {/* Mini preview panel */}
+              <div style={{
+                width:260, background:"rgba(6,11,20,.85)", border:"1px solid rgba(255,181,71,.18)",
+                borderRadius:12, overflow:"hidden", flexShrink:0,
+              }}>
+                {/* Fake toolbar */}
+                <div style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 12px", background:"rgba(255,255,255,.02)", borderBottom:"1px solid rgba(255,181,71,.1)" }}>
+                  <span style={{ width:7, height:7, borderRadius:"50%", background:"#FF5F56" }}/>
+                  <span style={{ width:7, height:7, borderRadius:"50%", background:"#FFBD2E" }}/>
+                  <span style={{ width:7, height:7, borderRadius:"50%", background:"#27C93F" }}/>
+                  <span style={{ fontFamily:"var(--mono)", fontSize:9, color:"rgba(148,163,184,.4)", marginLeft:4 }}>cognitive.tsx</span>
+                </div>
+                <div style={{ padding:"12px 14px" }}>
+                  {/* Stat rows */}
+                  {[
+                    { lbl:"Productivity score", val:"84%", color:"#38bdf8", data:[68,75,82,91,87,55,60] },
+                    { lbl:"Avg focus depth",    val:"3.2h", color:"#2dd4bf", data:[2.1,3,3.5,4.2,3.8,1.2,1.5] },
+                    { lbl:"Weak concepts",      val:"5",   color:"#f87171", data:[5,5,5,5,5,5,5] },
+                  ].map(row => (
+                    <div key={row.lbl} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                      <div>
+                        <div style={{ fontSize:9, color:"rgba(148,163,184,.45)", letterSpacing:".06em", marginBottom:2 }}>{row.lbl.toUpperCase()}</div>
+                        <div style={{ fontFamily:"var(--mono)", fontSize:13, fontWeight:700, color:"#e2e8f0" }}>{row.val}</div>
+                      </div>
+                      <MiniSparkline values={row.data} color={row.color} />
+                    </div>
+                  ))}
+                  {/* Mini heatmap preview */}
+                  <div style={{ marginTop:8, borderTop:"1px solid rgba(255,181,71,.08)", paddingTop:8 }}>
+                    <div style={{ fontSize:9, color:"rgba(148,163,184,.35)", letterSpacing:".08em", marginBottom:6 }}>FOCUS HEATMAP</div>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(8,1fr)", gap:2 }}>
+                      {[1,2,4,3,5,4,3,2, 0,3,5,4,5,5,4,3, 2,3,4,5,5,3,2,1].map((v,i) => (
+                        <div key={i} style={{
+                          height:8, borderRadius:2,
+                          background: v === 0 ? "rgba(255,255,255,.04)" : `rgba(56,189,248,${v * 0.18})`,
+                          border:"1px solid rgba(56,189,248,.06)",
+                        }}/>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ padding:"8px 14px 10px", borderTop:"1px solid rgba(255,181,71,.1)", display:"flex", alignItems:"center", justifyContent:"center", gap:6, cursor:"pointer", background:"rgba(255,181,71,.04)" }}>
+                  <span style={{ fontSize:10, color:"#FFB547", fontWeight:700, letterSpacing:".06em", fontFamily:"var(--mono)" }}>OPEN DASHBOARD</span>
+                  <span style={{ color:"#FFB547", fontSize:12 }}>→</span>
+                </div>
+              </div>
+            </div>
+
+            {/* CTA row */}
+            <div style={{ position:"relative", zIndex:1, display:"flex", alignItems:"center", gap:12, marginTop:"1.6rem", paddingTop:"1.4rem", borderTop:"1px solid rgba(255,181,71,.1)" }}>
+              <button
+                onClick={e => { e.stopPropagation(); onOpenCognitive(); }}
+                className="btn-amber"
+                style={{ fontSize:".85rem", padding:"10px 22px" }}
+              >
+                📊 Open Cognitive Analytics <span style={{ transition:"transform .2s", display:"inline-block" }}>→</span>
+              </button>
+              <span style={{ fontSize:".78rem", color:"rgba(148,163,184,.45)", fontFamily:"var(--mono)" }}>
+                cognitive.jsx · Module 13 · v2.4.1
+              </span>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* 3 LAYERS */}
@@ -392,10 +566,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
       <section className="section" id="modules">
         <div className="s-label">Core Modules</div>
         <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:"1.4rem", alignItems:"flex-end", marginBottom:"1.8rem" }}>
-          <div>
-            <h2 className="s-title">13 Integrated Modules</h2>
-            <p className="s-desc">Every module communicates in real time, forming a cohesive ecosystem.</p>
-          </div>
+          <div><h2 className="s-title">13 Integrated Modules</h2><p className="s-desc">Every module communicates in real time, forming a cohesive ecosystem.</p></div>
         </div>
         <div className="tabs">
           {[["all","All Modules"],["collab","Collaboration"],["ai","AI & Cognition"]].map(([v,l]) => (
@@ -406,7 +577,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
         <div className="modules-grid">
           {filtered.map((m, idx) => (
             <div
-              className="mod-card"
+              className={`mod-card${m.isCognitive ? " mod-cog" : ""}`}
               key={`${m.idx}-${idx}`}
               onClick={
                 m.isEditor      ? onLaunch
@@ -415,54 +586,38 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
                 : m.isApi       ? onOpenApi
                 : m.isPerf      ? onOpenPerf
                 : m.isBehavior  ? onOpenBehavior
-                : m.isKnowledge ? onOpenKnowledge
-                : m.isMentor    ? onOpenMentor
-                : m.isDebug     ? onOpenDebug
-                : m.isLogs      ? onOpenLogs
+                : m.isFrustration ? onOpenFrustration
+                : m.isCognitive   ? onOpenCognitive
                 : undefined
               }
               style={{
-                cursor: (m.isEditor || m.isChat || m.isSandbox || m.isApi || m.isPerf || m.isBehavior || m.isKnowledge || m.isMentor || m.isDebug || m.isLogs) ? "pointer" : undefined,
-                borderColor: m.isEditor      ? "rgba(79,193,255,.2)"
-                           : m.isChat        ? "rgba(167,139,250,.2)"
-                           : m.isSandbox     ? "rgba(78,201,176,.2)"
-                           : m.isApi         ? "rgba(255,107,157,.2)"
-                           : m.isPerf        ? "rgba(78,201,176,.2)"
-                           : m.isBehavior    ? "rgba(255,181,71,.2)"
-                           : m.isKnowledge   ? "rgba(167,139,250,.2)"
-                           : m.isMentor      ? "rgba(79,193,255,.2)"
-                           : m.isDebug       ? "rgba(78,201,176,.2)"
-                           : m.isLogs        ? "rgba(255,181,71,.2)"
-                           : undefined,
+                cursor: (m.isEditor||m.isChat||m.isSandbox||m.isApi||m.isPerf||m.isBehavior||m.isFrustration||m.isCognitive) ? "pointer" : undefined,
               }}
             >
-              {m.core        && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:600 }}>CORE</span>}
-              {m.isEditor    && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(79,193,255,.1)",color:"#8DD8FF",border:"1px solid rgba(79,193,255,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ LIVE</span>}
-              {m.isExec && !m.isSandbox && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ RUN</span>}
-              {m.isSandbox   && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ RUN</span>}
-              {m.isChat      && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(167,139,250,.1)",color:"#A78BFA",border:"1px solid rgba(167,139,250,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>💬 CHAT</span>}
-              {m.isApi       && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,107,157,.1)",color:"#FF6B9D",border:"1px solid rgba(255,107,157,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>⚡ API</span>}
-              {m.isPerf      && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>📊 PERF</span>}
-              {m.isBehavior  && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🧠 TRACK</span>}
-              {m.isKnowledge && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(167,139,250,.1)",color:"#A78BFA",border:"1px solid rgba(167,139,250,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🕸️ GRAPH</span>}
-              {m.isMentor    && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(79,193,255,.1)",color:"#8DD8FF",border:"1px solid rgba(79,193,255,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🎓 AI</span>}
-              {m.isDebug     && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🐛 DEBUG</span>}
-              {m.isLogs      && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>📡 LOGS</span>}
-
+              {m.core         && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:600 }}>CORE</span>}
+              {m.isEditor     && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(79,193,255,.1)",color:"#8DD8FF",border:"1px solid rgba(79,193,255,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ LIVE</span>}
+              {m.isSandbox    && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ RUN</span>}
+              {m.isChat       && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(167,139,250,.1)",color:"#A78BFA",border:"1px solid rgba(167,139,250,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>💬 CHAT</span>}
+              {m.isApi        && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,107,157,.1)",color:"#FF6B9D",border:"1px solid rgba(255,107,157,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>⚡ API</span>}
+              {m.isPerf       && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,246,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>📊 PERF</span>}
+              {m.isBehavior   && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🧠 TRACK</span>}
+              {m.isFrustration&& <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,107,157,.1)",color:"#FF6B9D",border:"1px solid rgba(255,107,157,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>😤 DETECT</span>}
+              {m.isCognitive  && (
+                <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"linear-gradient(135deg,rgba(255,181,71,.18),rgba(255,107,157,.12))",color:"#FFB547",border:"1px solid rgba(255,181,71,.38)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>
+                  📊 ANALYTICS
+                </span>
+              )}
               <div className="mod-idx">{m.idx}</div>
-              <h3>{m.title}</h3><p>{m.desc}</p>
-
-              {m.isEditor    && <p style={{ fontSize:".75rem", color:"var(--blue)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isChat      && <p style={{ fontSize:".75rem", color:"var(--violet)", marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isSandbox   && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isApi       && <p style={{ fontSize:".75rem", color:"var(--rose)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isPerf      && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isBehavior  && <p style={{ fontSize:".75rem", color:"var(--amber)",  marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isKnowledge && <p style={{ fontSize:".75rem", color:"var(--violet)", marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isMentor    && <p style={{ fontSize:".75rem", color:"var(--blue)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isDebug     && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isLogs      && <p style={{ fontSize:".75rem", color:"var(--amber)",  marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-
+              <h3>{m.title}</h3>
+              <p>{m.desc}</p>
+              {m.isEditor     && <p style={{ fontSize:".75rem", color:"var(--blue)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isChat       && <p style={{ fontSize:".75rem", color:"var(--violet)", marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isSandbox    && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isApi        && <p style={{ fontSize:".75rem", color:"var(--rose)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isPerf       && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isBehavior   && <p style={{ fontSize:".75rem", color:"var(--amber)",  marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isFrustration&& <p style={{ fontSize:".75rem", color:"var(--rose)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isCognitive  && <p style={{ fontSize:".75rem", color:"#FFB547",       marginTop:".65rem", fontWeight:700 }}>Click to open analytics →</p>}
               <div className="mod-accent" style={{ background:m.accent }}/>
             </div>
           ))}
@@ -599,6 +754,20 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
         <p>CKC-OS transforms how developers build and students learn — collaboratively, adaptively, in any language.</p>
         <div className="cta-btns">
           <button className="btn-primary" onClick={onLaunch}>⚡ Launch Collaborative Editor <span className="arrow">→</span></button>
+          <button
+            onClick={onOpenCognitive}
+            style={{
+              background:"transparent", color:"#FFB547",
+              border:"1px solid rgba(255,181,71,.35)", borderRadius:10,
+              padding:"13px 30px", fontSize:".95rem", fontWeight:700,
+              cursor:"pointer", fontFamily:"var(--disp)",
+              transition:"all .2s",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor="rgba(255,181,71,.7)"; e.currentTarget.style.background="rgba(255,181,71,.08)"; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor="rgba(255,181,71,.35)"; e.currentTarget.style.background="transparent"; }}
+          >
+            📊 View Analytics
+          </button>
           <button className="btn-ghost" onClick={() => scrollTo("overview")}>Read System Overview</button>
         </div>
       </section>
@@ -745,20 +914,20 @@ export default function Index() {
   const navigate = useNavigate();
   const [route, setRoute] = useState("home");
 
-  const toEditor    = (me, sid, lang) => {
+  const toEditor      = (me, sid, lang) => {
     authStore.set({ me, sid, lang });
     navigate("/editor", { state: { me, sid, lang } });
   };
 
-  const toChat      = () => navigate("/devchat");
-  const toSandbox   = () => navigate("/sandbox");
-  const toApi       = () => navigate("/api");
-  const toPerf      = () => navigate("/performance");
-  const toBehavior  = () => navigate("/behavior");
-  const toKnowledge = () => navigate("/knowledge-graph");
-  const toAibot     = () => navigate("/aibot");
-  const toDebug     = () => navigate("/debuggingroom");
-  const toLogs      = () => navigate("/liveserverlogs");
+  const toChat        = () => navigate("/devchat");
+  const toSandbox     = () => navigate("/sandbox");
+  const toApi         = () => navigate("/api");
+  const toPerf        = () => navigate("/performance");
+  const toBehavior    = () => navigate("/behavior");
+  const toFrustration = () => navigate("/frustration");
+
+  /* ── Navigate to Cognitive Analytics dashboard ── */
+  const toCognitive   = () => navigate("/cognitive");
 
   return (
     <>
@@ -771,14 +940,11 @@ export default function Index() {
           onOpenApi={toApi}
           onOpenPerf={toPerf}
           onOpenBehavior={toBehavior}
-          onOpenKnowledge={toKnowledge}
-          onOpenMentor={toAibot}
-          onOpenDebug={toDebug}
-          onOpenLogs={toLogs}
+          onOpenFrustration={toFrustration}
+          onOpenCognitive={toCognitive}
         />
       )}
       {route === "login" && <LoginScreen onJoin={toEditor} onBack={() => setRoute("home")} />}
-
     </>
   );
 }

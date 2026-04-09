@@ -14,6 +14,7 @@ import AIBot                from "./pages/AIBOT.jsx"
 import Auth               from "./pages/auth.jsx"
 import Debuggingroom         from "./pages/Debuggingroom.jsx"
 import Liveserverlogs        from "./pages/Liveserverlogs.jsx"
+import Frustration         from "./pages/frustration.jsx"
 
 
 
@@ -34,6 +35,7 @@ function App() {
           <Route path="/auth"            element={<Auth />} />
           <Route path="/debuggingroom"   element={<Debuggingroom />} />
           <Route path="/liveserverlogs"   element={<Liveserverlogs />} />
+          <Route path="/frustration"      element={<Frustration />} />
 
         </Routes>
       </AuthProvider>
