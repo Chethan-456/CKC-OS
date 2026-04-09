@@ -708,7 +708,7 @@ class MockWS {
 const WS = new MockWS();
 
 // ═══════════ BOTS ═══════════
-const BOTS = [
+export const BOTS = [
   { name: "Aria K.", inits: "AK", color: "#FF6B9D", bg: "rgba(255,107,157,.18)" },
   { name: "Dev M.", inits: "DM", color: "#4EC9B0", bg: "rgba(78,201,176,.18)" },
   { name: "Sam T.", inits: "ST", color: "#DCDCAA", bg: "rgba(220,220,170,.18)" },

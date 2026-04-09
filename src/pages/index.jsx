@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { authStore, PALETTE, LANGS, LK, initials, genSid } from "./editor.jsx";
+import { authStore } from "./auth.jsx";
+import { PALETTE, LANGS, LK, initials, genSid } from "./editor.jsx";
 
 /* ═══════════════════════════════════════════════════════════════
    GLOBAL CSS
@@ -196,8 +197,8 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 ═══════════════════════════════════════════════════════════════ */
 const MODULES = [
   { idx:"01", title:"Live Collaborative Editor",     desc:"Google Docs-style real-time coding with multi-user cursor tracking via WebSockets, full CRDT/OT, and CodeMirror 6.", accent:"#4FC1FF", isEditor:true },
-  { idx:"02", title:"Real-Time Debugging Room",      desc:"Share logs instantly. Teams view, annotate, and suggest fixes collaboratively — for students and developers alike.", accent:"#4EC9B0" },
-  { idx:"03", title:"Live Server Logs Dashboard",    desc:"Stream server events in real-time. Acts as a mini DevOps monitoring layer with live error surfacing.", accent:"#FFB547" },
+  { idx:"02", title:"Real-Time Debugging Room",      desc:"Share logs instantly. Teams view, annotate, and suggest fixes collaboratively — for students and developers alike.", accent:"#4EC9B0", isDebug:true },
+  { idx:"03", title:"Live Server Logs Dashboard",    desc:"Stream server events in real-time. Acts as a mini DevOps monitoring layer with live error surfacing.", accent:"#FFB547", isLogs:true },
   { idx:"04", title:"Collaborative API Testing",     desc:"Like Postman, but real-time. Teams test endpoints, share requests, and view responses together live.", accent:"#FF6B9D", isApi:true },
   { idx:"05", title:"Context-Based Dev Chat",        desc:"Chat linked to specific files, errors, and projects. Threaded discussions with @mention support.", accent:"#A78BFA", isChat:true },
   { idx:"06", title:"Code Execution Sandbox",        desc:"Run 8 languages in-browser: TypeScript, JavaScript, Python, Java, C++, Rust, Go, SQL — with simulated output.", accent:"#4FC1FF", isExec:true, isSandbox:true },
@@ -222,7 +223,7 @@ const WORKFLOW_STEPS = [
 /* ═══════════════════════════════════════════════════════════════
    HOME PAGE
 ═══════════════════════════════════════════════════════════════ */
-function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, onOpenBehavior, onOpenKnowledge, onOpenMentor }) {
+function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, onOpenBehavior, onOpenKnowledge, onOpenMentor, onOpenDebug, onOpenLogs }) {
   const [activeTab, setActiveTab] = useState("all");
   const filtered = activeTab === "all" ? MODULES
     : activeTab === "collab" ? MODULES.filter((_,i) => i < 6)
@@ -391,7 +392,10 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
       <section className="section" id="modules">
         <div className="s-label">Core Modules</div>
         <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:"1.4rem", alignItems:"flex-end", marginBottom:"1.8rem" }}>
-          <div><h2 className="s-title">13 Integrated Modules</h2><p className="s-desc">Every module communicates in real time, forming a cohesive ecosystem.</p></div>
+          <div>
+            <h2 className="s-title">13 Integrated Modules</h2>
+            <p className="s-desc">Every module communicates in real time, forming a cohesive ecosystem.</p>
+          </div>
         </div>
         <div className="tabs">
           {[["all","All Modules"],["collab","Collaboration"],["ai","AI & Cognition"]].map(([v,l]) => (
@@ -413,10 +417,12 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
                 : m.isBehavior  ? onOpenBehavior
                 : m.isKnowledge ? onOpenKnowledge
                 : m.isMentor    ? onOpenMentor
+                : m.isDebug     ? onOpenDebug
+                : m.isLogs      ? onOpenLogs
                 : undefined
               }
               style={{
-                cursor: (m.isEditor || m.isChat || m.isSandbox || m.isApi || m.isPerf || m.isBehavior || m.isKnowledge || m.isMentor) ? "pointer" : undefined,
+                cursor: (m.isEditor || m.isChat || m.isSandbox || m.isApi || m.isPerf || m.isBehavior || m.isKnowledge || m.isMentor || m.isDebug || m.isLogs) ? "pointer" : undefined,
                 borderColor: m.isEditor      ? "rgba(79,193,255,.2)"
                            : m.isChat        ? "rgba(167,139,250,.2)"
                            : m.isSandbox     ? "rgba(78,201,176,.2)"
@@ -425,6 +431,8 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
                            : m.isBehavior    ? "rgba(255,181,71,.2)"
                            : m.isKnowledge   ? "rgba(167,139,250,.2)"
                            : m.isMentor      ? "rgba(79,193,255,.2)"
+                           : m.isDebug       ? "rgba(78,201,176,.2)"
+                           : m.isLogs        ? "rgba(255,181,71,.2)"
                            : undefined,
               }}
             >
@@ -438,8 +446,12 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
               {m.isBehavior  && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🧠 TRACK</span>}
               {m.isKnowledge && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(167,139,250,.1)",color:"#A78BFA",border:"1px solid rgba(167,139,250,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🕸️ GRAPH</span>}
               {m.isMentor    && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(79,193,255,.1)",color:"#8DD8FF",border:"1px solid rgba(79,193,255,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🎓 AI</span>}
+              {m.isDebug     && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🐛 DEBUG</span>}
+              {m.isLogs      && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>📡 LOGS</span>}
+
               <div className="mod-idx">{m.idx}</div>
               <h3>{m.title}</h3><p>{m.desc}</p>
+
               {m.isEditor    && <p style={{ fontSize:".75rem", color:"var(--blue)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
               {m.isChat      && <p style={{ fontSize:".75rem", color:"var(--violet)", marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
               {m.isSandbox   && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
@@ -448,6 +460,9 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
               {m.isBehavior  && <p style={{ fontSize:".75rem", color:"var(--amber)",  marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
               {m.isKnowledge && <p style={{ fontSize:".75rem", color:"var(--violet)", marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
               {m.isMentor    && <p style={{ fontSize:".75rem", color:"var(--blue)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isDebug     && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+              {m.isLogs      && <p style={{ fontSize:".75rem", color:"var(--amber)",  marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
+
               <div className="mod-accent" style={{ background:m.accent }}/>
             </div>
           ))}
@@ -742,6 +757,8 @@ export default function Index() {
   const toBehavior  = () => navigate("/behavior");
   const toKnowledge = () => navigate("/knowledge-graph");
   const toAibot     = () => navigate("/aibot");
+  const toDebug     = () => navigate("/debuggingroom");
+  const toLogs      = () => navigate("/liveserverlogs");
 
   return (
     <>
@@ -756,9 +773,12 @@ export default function Index() {
           onOpenBehavior={toBehavior}
           onOpenKnowledge={toKnowledge}
           onOpenMentor={toAibot}
+          onOpenDebug={toDebug}
+          onOpenLogs={toLogs}
         />
       )}
       {route === "login" && <LoginScreen onJoin={toEditor} onBack={() => setRoute("home")} />}
+
     </>
   );
 }
