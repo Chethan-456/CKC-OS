@@ -15,6 +15,10 @@ import Auth               from "./pages/auth.jsx"
 import Debug        from "./pages/Debug.jsx"
 import Logs        from "./pages/Logs.jsx"
 import Cognitive         from "./pages/cognitive.jsx"
+import Debuggingroom         from "./pages/Debuggingroom.jsx"
+import Liveserverlogs        from "./pages/Liveserverlogs.jsx"
+import Frustration         from "./pages/frustration.jsx"
+import Gitbridge        from "./pages/Gitbridge.jsx"
 
 
 
@@ -37,6 +41,10 @@ function App() {
           <Route path="/logs"   element={<Logs />} />
          
           <Route path="/cognitive"      element={<Cognitive />} />
+          <Route path="/debuggingroom"   element={<Debuggingroom />} />
+          <Route path="/liveserverlogs"   element={<Liveserverlogs />} />
+          <Route path="/frustration"      element={<Frustration />} />
+          <Route path="/gitbridge"        element={<Gitbridge />} />
 
         </Routes>
       </AuthProvider>
