@@ -30,7 +30,6 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 @keyframes spin    { to{transform:rotate(360deg)} }
 @keyframes cardIn  { from{opacity:0;transform:translateY(26px) scale(.96)} to{opacity:1;transform:none} }
 @keyframes float   { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
-@keyframes pulseGlow { 0%,100%{box-shadow:0 0 0 0 rgba(255,181,71,.4)} 50%{box-shadow:0 0 18px 4px rgba(255,181,71,.18)} }
 
 .page-in  { animation: pageIn .4s cubic-bezier(.22,1,.36,1) both; }
 .a-cin    { animation: cardIn .38s cubic-bezier(.34,1.4,.64,1) both; }
@@ -90,38 +89,6 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .s-label { font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--blue-l);font-weight:600;margin-bottom:.6rem; }
 .s-title { font-family:var(--disp);font-size:clamp(1.8rem,3.8vw,2.8rem);font-weight:800;color:#fff;letter-spacing:-.03em;line-height:1.05;margin-bottom:.9rem; }
 .s-desc  { font-size:.95rem;color:var(--text-2);max-width:500px;line-height:1.8; }
-
-/* ── Cognitive Analytics spotlight banner ── */
-.cog-banner {
-  position: relative; overflow: hidden;
-  background: linear-gradient(135deg, rgba(255,181,71,.07) 0%, rgba(255,107,157,.06) 50%, rgba(167,139,250,.06) 100%);
-  border: 1px solid rgba(255,181,71,.22);
-  border-radius: 18px; padding: 2.2rem 2.4rem;
-  margin-top: 3rem; cursor: pointer;
-  transition: border-color .25s, transform .25s;
-  animation: pulseGlow 3s ease-in-out infinite;
-}
-.cog-banner:hover { border-color: rgba(255,181,71,.55); transform: translateY(-3px); }
-.cog-banner::before {
-  content:''; position:absolute; inset:0;
-  background: radial-gradient(ellipse 55% 70% at 85% 50%, rgba(255,181,71,.08), transparent 65%);
-  pointer-events:none;
-}
-.cog-banner-grid {
-  position:absolute; inset:0; pointer-events:none;
-  background-image: linear-gradient(rgba(255,181,71,.04) 1px,transparent 1px), linear-gradient(90deg,rgba(255,181,71,.04) 1px,transparent 1px);
-  background-size: 32px 32px;
-}
-.cog-preview-bar {
-  display: flex; gap: 10px; align-items: center; margin-bottom: 1.2rem;
-}
-.cog-pill {
-  font-size: .6rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
-  padding: 3px 10px; border-radius: 100px; border: 1px solid;
-}
-.cog-pill-amber { background:rgba(255,181,71,.12); color:#FFB547; border-color:rgba(255,181,71,.35); }
-.cog-pill-rose  { background:rgba(255,107,157,.1);  color:#FF6B9D; border-color:rgba(255,107,157,.3); }
-.cog-pill-viol  { background:rgba(167,139,250,.1);  color:#A78BFA; border-color:rgba(167,139,250,.3); }
 
 .efc { background:rgba(17,19,24,.75);border:1px solid rgba(79,193,255,.18);border-radius:18px;overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,.5);margin-top:3rem; }
 .efc-bar { display:flex;align-items:center;justify-content:space-between;padding:1.1rem 1.6rem;background:rgba(255,255,255,.02);border-bottom:1px solid rgba(255,255,255,.06); }
@@ -231,7 +198,6 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
   .ckc-nav{padding:.9rem 1.5rem;} .nav-links{display:none;}
   .section{padding:4rem 1.5rem;} .cta-section{padding:4.5rem 1.5rem;} .footer{padding:1.3rem 1.5rem;}
   .layers-grid{grid-template-columns:1fr;} .apps-grid{grid-template-columns:1fr;} .efc-body{grid-template-columns:1fr;}
-  .cog-banner { padding:1.6rem; }
 }
 `;
 
@@ -239,18 +205,18 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
    DATA
 ═══════════════════════════════════════════════════════════════ */
 const MODULES = [
-  { idx:"01", title:"Live Collaborative Editor",     desc:"Google Docs-style real-time coding with multi-user cursor tracking via WebSockets, full CRDT/OT, and CodeMirror 6.", accent:"#4FC1FF", isEditor:true },
-  { idx:"02", title:"Real-Time Debugging Room",      desc:"Share logs instantly. Teams view, annotate, and suggest fixes collaboratively — for students and developers alike.", accent:"#4EC9B0" },
-  { idx:"03", title:"Live Server Logs Dashboard",    desc:"Stream server events in real-time. Acts as a mini DevOps monitoring layer with live error surfacing.", accent:"#FFB547" },
-  { idx:"04", title:"Collaborative API Testing",     desc:"Like Postman, but real-time. Teams test endpoints, share requests, and view responses together live.", accent:"#FF6B9D", isApi:true },
-  { idx:"05", title:"Context-Based Dev Chat",        desc:"Chat linked to specific files, errors, and projects. Threaded discussions with @mention support.", accent:"#A78BFA", isChat:true },
-  { idx:"06", title:"Code Execution Sandbox",        desc:"Run 8 languages in-browser: TypeScript, JavaScript, Python, Java, C++, Rust, Go, SQL — with simulated output.", accent:"#4FC1FF", isExec:true, isSandbox:true },
-  { idx:"07", title:"Performance Monitor",           desc:"Track API response time, errors per second, and execution latency with real-time graph visualization.", accent:"#4EC9B0", isPerf:true },
-  { idx:"08", title:"Behavior Tracking Engine",      desc:"Monitors typing speed, backspace frequency, error rate, and idle time to understand developer cognition.", accent:"#FFB547", isBehavior:true },
-  { idx:"09", title:"Frustration Detection",         desc:"Detects when users are stuck and intelligently triggers hints, learning mode, or contextual suggestions.", accent:"#FF6B9D", isFrustration:true },
-  { idx:"10", title:"Live Knowledge Graph Engine",   desc:"Converts code into concepts, errors, and fixes. Builds a live visual graph: Loop → Array → Error → Fix.", accent:"#A78BFA", core:true },
-  { idx:"11", title:"Adaptive AI Mentor",            desc:"Beginner gets deep explanations. Intermediate gets hints. Advanced gets optimizations. Fully adaptive.", accent:"#4FC1FF" },
-  { idx:"12", title:"Adaptive UI Engine",            desc:"Dynamically changes the interface: hints for beginners, guidance for stuck users, minimal for experts.", accent:"#4EC9B0" },
+  { idx:"01", title:"Live Collaborative Editor",     desc:"Google Docs-style real-time coding with multi-user cursor tracking via WebSockets, full CRDT/OT, and CodeMirror 6.",    accent:"#4FC1FF", isEditor:true },
+  { idx:"02", title:"Real-Time Debugging Room",      desc:"Share logs instantly. Teams view, annotate, and suggest fixes collaboratively — for students and developers alike.",       accent:"#4EC9B0", isDebug:true },
+  { idx:"03", title:"Live Server Logs Dashboard",    desc:"Stream server events in real-time. Acts as a mini DevOps monitoring layer with live error surfacing.",                    accent:"#FFB547", isLogs:true },
+  { idx:"04", title:"Collaborative API Testing",     desc:"Like Postman, but real-time. Teams test endpoints, share requests, and view responses together live.",                    accent:"#FF6B9D", isApi:true },
+  { idx:"05", title:"Context-Based Dev Chat",        desc:"Chat linked to specific files, errors, and projects. Threaded discussions with @mention support.",                        accent:"#A78BFA", isChat:true },
+  { idx:"06", title:"Code Execution Sandbox",        desc:"Run 8 languages in-browser: TypeScript, JavaScript, Python, Java, C++, Rust, Go, SQL — with simulated output.",         accent:"#4FC1FF", isExec:true, isSandbox:true },
+  { idx:"07", title:"Performance Monitor",           desc:"Track API response time, errors per second, and execution latency with real-time graph visualization.",                  accent:"#4EC9B0", isPerf:true },
+  { idx:"08", title:"Behavior Tracking Engine",      desc:"Monitors typing speed, backspace frequency, error rate, and idle time to understand developer cognition.",               accent:"#FFB547", isBehavior:true },
+  { idx:"09", title:"Frustration Detection",         desc:"Detects when users are stuck and intelligently triggers hints, learning mode, or contextual suggestions.",               accent:"#FF6B9D", isFrustration:true },
+  { idx:"10", title:"Live Knowledge Graph Engine",   desc:"Converts code into concepts, errors, and fixes. Builds a live visual graph: Loop → Array → Error → Fix.",              accent:"#A78BFA", core:true, isKnowledge:true },
+  { idx:"11", title:"Adaptive AI Mentor",            desc:"Beginner gets deep explanations. Intermediate gets hints. Advanced gets optimizations. Fully adaptive.",                 accent:"#4FC1FF", isAiMentor:true },
+  { idx:"12", title:"Adaptive UI Engine",            desc:"Dynamically changes the interface: hints for beginners, guidance for stuck users, minimal for experts.",                 accent:"#4EC9B0" },
   { idx:"13", title:"Cognitive Analytics Dashboard", desc:"Displays productivity trends, focus levels, and weak concept identification across sessions. AI-powered insights in real time.", accent:"#FFB547", isCognitive:true },
   { idx:"14", title:"Version Control Integration",   desc:"Connect sessions to GitHub / GitLab. View real-time diffs, commit history, branch status, and AI-generated commit messages — directly inside the editor.", accent:"#4EC9B0", isGitBridge:true },
 ];
@@ -264,31 +230,70 @@ const WORKFLOW_STEPS = [
   { n:"6", title:"System Responds Adaptively",  desc:"Suggestions surface, knowledge graph updates, UI adapts — all in real time without interruption." },
 ];
 
-/* ── Mini sparkline for stat cards in the cognitive banner ── */
-function MiniSparkline({ values, color }) {
-  const W = 80, H = 28, pad = 2;
-  const max = Math.max(...values), min = Math.min(...values);
-  const pts = values.map((v, i) => {
-    const x = pad + (i / (values.length - 1)) * (W - pad * 2);
-    const y = H - pad - ((v - min) / (max - min || 1)) * (H - pad * 2);
-    return `${x},${y}`;
-  }).join(" ");
-  return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" opacity="0.8" />
-    </svg>
-  );
-}
+/* ═══════════════════════════════════════════════════════════════
+   BADGE + CLICK CONFIG
+   Maps each module flag → { badge style, click color, handler key }
+═══════════════════════════════════════════════════════════════ */
+const BADGE_CFG = {
+  isEditor:     { bg:"rgba(79,193,255,.1)",   color:"#8DD8FF", border:"rgba(79,193,255,.28)",  label:"▶ LIVE"      },
+  isDebug:      { bg:"rgba(255,107,157,.1)",  color:"#FF6B9D", border:"rgba(255,107,157,.28)", label:"🐛 DEBUG"    },
+  isLogs:       { bg:"rgba(78,201,176,.1)",   color:"#4EC9B0", border:"rgba(78,201,176,.28)",  label:"📡 LOGS"     },
+  isApi:        { bg:"rgba(255,107,157,.1)",  color:"#FF6B9D", border:"rgba(255,107,157,.28)", label:"⚡ API"       },
+  isChat:       { bg:"rgba(167,139,250,.1)",  color:"#A78BFA", border:"rgba(167,139,250,.28)", label:"💬 CHAT"     },
+  isSandbox:    { bg:"rgba(78,201,176,.1)",   color:"#4EC9B0", border:"rgba(78,201,176,.28)",  label:"▶ RUN"       },
+  isPerf:       { bg:"rgba(78,201,176,.1)",   color:"#4EC9B0", border:"rgba(78,201,246,.28)",  label:"📊 PERF"     },
+  isBehavior:   { bg:"rgba(255,181,71,.1)",   color:"#FFB547", border:"rgba(255,181,71,.28)",  label:"🧠 TRACK"    },
+  isFrustration:{ bg:"rgba(255,107,157,.1)",  color:"#FF6B9D", border:"rgba(255,107,157,.28)", label:"😤 DETECT"   },
+  isKnowledge:  { bg:"rgba(167,139,250,.1)",  color:"#A78BFA", border:"rgba(167,139,250,.28)", label:"🕸 GRAPH"    },
+  isAiMentor:   { bg:"rgba(79,193,255,.1)",   color:"#8DD8FF", border:"rgba(79,193,255,.28)",  label:"🤖 MENTOR"   },
+  isCognitive:  { bg:"linear-gradient(135deg,rgba(255,181,71,.18),rgba(255,107,157,.12))", color:"#FFB547", border:"rgba(255,181,71,.38)", label:"📊 ANALYTICS" },
+  core:         { bg:"rgba(255,181,71,.1)",   color:"#FFB547", border:"rgba(255,181,71,.28)",  label:"CORE"        },
+};
+
+const CLICK_COLOR = {
+  isEditor:"var(--blue)", isDebug:"var(--teal)", isLogs:"var(--amber)",
+  isChat:"var(--violet)", isSandbox:"var(--teal)", isApi:"var(--rose)",
+  isPerf:"var(--teal)", isBehavior:"var(--amber)", isFrustration:"var(--rose)",
+  isKnowledge:"var(--violet)", isAiMentor:"var(--blue)", isCognitive:"#FFB547",
+};
+
+/* flag keys that make a card clickable (ordered: first match wins for badge) */
+const CLICKABLE = ["isEditor","isDebug","isLogs","isChat","isSandbox","isApi","isPerf","isBehavior","isFrustration","isKnowledge","isAiMentor","isCognitive"];
 
 /* ═══════════════════════════════════════════════════════════════
    HOME PAGE
 ═══════════════════════════════════════════════════════════════ */
+function HomePage({
+  onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf,
+  onOpenBehavior, onOpenFrustration, onOpenCognitive,
+  onOpenDebug, onOpenLogs, onOpenKnowledge, onOpenAiMentor,
+}) {
 function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, onOpenBehavior, onOpenFrustration, onOpenCognitive, onOpenGitBridge }) {
   const [activeTab, setActiveTab] = useState("all");
   const filtered = activeTab === "all" ? MODULES
     : activeTab === "collab" ? MODULES.filter((_,i) => i < 6)
     : MODULES.filter((_,i) => i >= 6);
   const scrollTo = id => document.getElementById(id)?.scrollIntoView({ behavior:"smooth" });
+
+  /* resolve click handler per module */
+  const getHandler = m => {
+    if (m.isEditor)       return onLaunch;
+    if (m.isDebug)        return onOpenDebug;
+    if (m.isLogs)         return onOpenLogs;
+    if (m.isChat)         return onOpenChat;
+    if (m.isSandbox)      return onOpenSandbox;
+    if (m.isApi)          return onOpenApi;
+    if (m.isPerf)         return onOpenPerf;
+    if (m.isBehavior)     return onOpenBehavior;
+    if (m.isFrustration)  return onOpenFrustration;
+    if (m.isKnowledge)    return onOpenKnowledge;
+    if (m.isAiMentor)     return onOpenAiMentor;
+    if (m.isCognitive)    return onOpenCognitive;
+    return undefined;
+  };
+
+  const isClickable  = m => CLICKABLE.some(k => m[k]);
+  const getBadgeKey  = m => CLICKABLE.find(k => m[k]) || (m.core ? "core" : null);
 
   return (
     <div className="page-in" style={{ minHeight:"100vh" }}>
@@ -304,19 +309,6 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
           ))}
         </div>
         <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-          <button
-            onClick={onOpenCognitive}
-            style={{
-              background:"linear-gradient(135deg,rgba(255,181,71,.18),rgba(255,107,157,.14))",
-              color:"#FFB547", border:"1px solid rgba(255,181,71,.38)", borderRadius:7,
-              padding:"7px 16px", fontSize:".78rem", fontWeight:700, cursor:"pointer",
-              fontFamily:"var(--disp)", letterSpacing:".04em", transition:"all .2s",
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background="linear-gradient(135deg,rgba(255,181,71,.3),rgba(255,107,157,.22))"; e.currentTarget.style.borderColor="rgba(255,181,71,.6)"; }}
-            onMouseLeave={e => { e.currentTarget.style.background="linear-gradient(135deg,rgba(255,181,71,.18),rgba(255,107,157,.14))"; e.currentTarget.style.borderColor="rgba(255,181,71,.38)"; }}
-          >
-            📊 Analytics
-          </button>
           <button className="btn-nav" onClick={onLaunch}>⚡ Launch Editor</button>
         </div>
       </nav>
@@ -449,109 +441,6 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
             </div>
           </div>
         </div>
-
-        {/* ── COGNITIVE ANALYTICS SPOTLIGHT BANNER ── */}
-        <div style={{ marginTop:"3rem" }}>
-          <div className="s-label" style={{ color:"#FFB547", letterSpacing:".14em" }}>Module 13 — Featured</div>
-          <div
-            className="cog-banner"
-            onClick={onOpenCognitive}
-            role="button"
-            tabIndex={0}
-            onKeyDown={e => e.key === "Enter" && onOpenCognitive()}
-          >
-            <div className="cog-banner-grid"/>
-            {/* Header row */}
-            <div style={{ position:"relative", zIndex:1, display:"flex", alignItems:"flex-start", justifyContent:"space-between", flexWrap:"wrap", gap:"1.4rem" }}>
-              <div style={{ flex:1, minWidth:260 }}>
-                <div className="cog-preview-bar">
-                  <div style={{ width:8, height:8, borderRadius:"50%", background:"#4ade80", boxShadow:"0 0 8px #4ade80" }}/>
-                  <span style={{ fontSize:10, letterSpacing:".18em", color:"rgba(148,163,184,.6)", fontFamily:"var(--mono)" }}>AI-POWERED · REAL-TIME · ADAPTIVE</span>
-                </div>
-                <h3 style={{ fontFamily:"var(--disp)", fontSize:"clamp(1.3rem,2.8vw,2rem)", fontWeight:800, letterSpacing:"-.03em", color:"#fff", marginBottom:".5rem", lineHeight:1.1 }}>
-                  Cognitive <span className="hp-grad-amber">Analytics Dashboard</span>
-                </h3>
-                <p style={{ fontSize:".88rem", color:"var(--text-2)", maxWidth:480, lineHeight:1.75 }}>
-                  Track productivity trends, measure focus depth, and surface weak concepts — all powered by the CKC-OS knowledge engine with real-time AI insights.
-                </p>
-                <div style={{ display:"flex", gap:"2rem", marginTop:"1.4rem" }}>
-                  {[["84%","Productivity"],["3.2h","Avg Focus"],["5","Weak Concepts"],["18","Sessions"]].map(([v,l]) => (
-                    <div key={l}>
-                      <div style={{ fontFamily:"var(--disp)", fontSize:"1.4rem", fontWeight:800, color:"#FFB547" }}>{v}</div>
-                      <div style={{ fontSize:".6rem", color:"rgba(148,163,184,.5)", letterSpacing:".1em", textTransform:"uppercase", marginTop:2 }}>{l}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display:"flex", gap:8, marginTop:"1.4rem", flexWrap:"wrap" }}>
-                  <span className="cog-pill cog-pill-amber">📊 Productivity Trends</span>
-                  <span className="cog-pill cog-pill-rose">◎ Focus Levels</span>
-                  <span className="cog-pill cog-pill-viol">⚠ Weak Concepts</span>
-                </div>
-              </div>
-
-              {/* Mini preview panel */}
-              <div style={{
-                width:260, background:"rgba(6,11,20,.85)", border:"1px solid rgba(255,181,71,.18)",
-                borderRadius:12, overflow:"hidden", flexShrink:0,
-              }}>
-                {/* Fake toolbar */}
-                <div style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 12px", background:"rgba(255,255,255,.02)", borderBottom:"1px solid rgba(255,181,71,.1)" }}>
-                  <span style={{ width:7, height:7, borderRadius:"50%", background:"#FF5F56" }}/>
-                  <span style={{ width:7, height:7, borderRadius:"50%", background:"#FFBD2E" }}/>
-                  <span style={{ width:7, height:7, borderRadius:"50%", background:"#27C93F" }}/>
-                  <span style={{ fontFamily:"var(--mono)", fontSize:9, color:"rgba(148,163,184,.4)", marginLeft:4 }}>cognitive.tsx</span>
-                </div>
-                <div style={{ padding:"12px 14px" }}>
-                  {/* Stat rows */}
-                  {[
-                    { lbl:"Productivity score", val:"84%", color:"#38bdf8", data:[68,75,82,91,87,55,60] },
-                    { lbl:"Avg focus depth",    val:"3.2h", color:"#2dd4bf", data:[2.1,3,3.5,4.2,3.8,1.2,1.5] },
-                    { lbl:"Weak concepts",      val:"5",   color:"#f87171", data:[5,5,5,5,5,5,5] },
-                  ].map(row => (
-                    <div key={row.lbl} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-                      <div>
-                        <div style={{ fontSize:9, color:"rgba(148,163,184,.45)", letterSpacing:".06em", marginBottom:2 }}>{row.lbl.toUpperCase()}</div>
-                        <div style={{ fontFamily:"var(--mono)", fontSize:13, fontWeight:700, color:"#e2e8f0" }}>{row.val}</div>
-                      </div>
-                      <MiniSparkline values={row.data} color={row.color} />
-                    </div>
-                  ))}
-                  {/* Mini heatmap preview */}
-                  <div style={{ marginTop:8, borderTop:"1px solid rgba(255,181,71,.08)", paddingTop:8 }}>
-                    <div style={{ fontSize:9, color:"rgba(148,163,184,.35)", letterSpacing:".08em", marginBottom:6 }}>FOCUS HEATMAP</div>
-                    <div style={{ display:"grid", gridTemplateColumns:"repeat(8,1fr)", gap:2 }}>
-                      {[1,2,4,3,5,4,3,2, 0,3,5,4,5,5,4,3, 2,3,4,5,5,3,2,1].map((v,i) => (
-                        <div key={i} style={{
-                          height:8, borderRadius:2,
-                          background: v === 0 ? "rgba(255,255,255,.04)" : `rgba(56,189,248,${v * 0.18})`,
-                          border:"1px solid rgba(56,189,248,.06)",
-                        }}/>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ padding:"8px 14px 10px", borderTop:"1px solid rgba(255,181,71,.1)", display:"flex", alignItems:"center", justifyContent:"center", gap:6, cursor:"pointer", background:"rgba(255,181,71,.04)" }}>
-                  <span style={{ fontSize:10, color:"#FFB547", fontWeight:700, letterSpacing:".06em", fontFamily:"var(--mono)" }}>OPEN DASHBOARD</span>
-                  <span style={{ color:"#FFB547", fontSize:12 }}>→</span>
-                </div>
-              </div>
-            </div>
-
-            {/* CTA row */}
-            <div style={{ position:"relative", zIndex:1, display:"flex", alignItems:"center", gap:12, marginTop:"1.6rem", paddingTop:"1.4rem", borderTop:"1px solid rgba(255,181,71,.1)" }}>
-              <button
-                onClick={e => { e.stopPropagation(); onOpenCognitive(); }}
-                className="btn-amber"
-                style={{ fontSize:".85rem", padding:"10px 22px" }}
-              >
-                📊 Open Cognitive Analytics <span style={{ transition:"transform .2s", display:"inline-block" }}>→</span>
-              </button>
-              <span style={{ fontSize:".78rem", color:"rgba(148,163,184,.45)", fontFamily:"var(--mono)" }}>
-                cognitive.jsx · Module 13 · v2.4.1
-              </span>
-            </div>
-          </div>
-        </div>
       </section>
 
       {/* GIT BRIDGE SPOTLIGHT */}
@@ -651,6 +540,47 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
         </div>
 
         <div className="modules-grid">
+          {filtered.map((m, idx) => {
+            const bk         = getBadgeKey(m);
+            const badge      = bk ? BADGE_CFG[bk] : null;
+            const clickKey   = CLICKABLE.find(k => m[k]);
+            const clickColor = clickKey ? CLICK_COLOR[clickKey] : null;
+            return (
+              <div
+                className={`mod-card${m.isCognitive ? " mod-cog" : ""}`}
+                key={`${m.idx}-${idx}`}
+                onClick={getHandler(m)}
+                style={{ cursor: isClickable(m) ? "pointer" : undefined }}
+              >
+                {/* Badge */}
+                {badge && (
+                  <span style={{
+                    position:"absolute", top:".9rem", right:".9rem",
+                    fontSize:".6rem",
+                    background: badge.bg,
+                    color: badge.color,
+                    border:`1px solid ${badge.border}`,
+                    borderRadius:"100px", padding:"2px 9px", fontWeight:700,
+                  }}>
+                    {badge.label}
+                  </span>
+                )}
+
+                <div className="mod-idx">{m.idx}</div>
+                <h3>{m.title}</h3>
+                <p>{m.desc}</p>
+
+                {/* Click hint */}
+                {isClickable(m) && (
+                  <p style={{ fontSize:".75rem", color: clickColor || "var(--blue)", marginTop:".65rem", fontWeight:700 }}>
+                    Click to open →
+                  </p>
+                )}
+
+                <div className="mod-accent" style={{ background:m.accent }}/>
+              </div>
+            );
+          })}
           {filtered.map((m, idx) => (
             <div
               className={`mod-card${m.isCognitive ? " mod-cog" : m.isGitBridge ? " mod-git" : ""}`}
@@ -833,20 +763,6 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
         <p>CKC-OS transforms how developers build and students learn — collaboratively, adaptively, in any language.</p>
         <div className="cta-btns">
           <button className="btn-primary" onClick={onLaunch}>⚡ Launch Collaborative Editor <span className="arrow">→</span></button>
-          <button
-            onClick={onOpenCognitive}
-            style={{
-              background:"transparent", color:"#FFB547",
-              border:"1px solid rgba(255,181,71,.35)", borderRadius:10,
-              padding:"13px 30px", fontSize:".95rem", fontWeight:700,
-              cursor:"pointer", fontFamily:"var(--disp)",
-              transition:"all .2s",
-            }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor="rgba(255,181,71,.7)"; e.currentTarget.style.background="rgba(255,181,71,.08)"; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor="rgba(255,181,71,.35)"; e.currentTarget.style.background="transparent"; }}
-          >
-            📊 View Analytics
-          </button>
           <button className="btn-ghost" onClick={() => scrollTo("overview")}>Read System Overview</button>
         </div>
       </section>
@@ -988,6 +904,12 @@ function LoginScreen({ onJoin, onBack }) {
 
 /* ═══════════════════════════════════════════════════════════════
    ROOT
+   ─────────────────────────────────────────────────────────────
+   Route map (add these to your react-router config):
+     /debug      → DebuggingRoom.jsx   (default export)
+     /logs       → LiveServerLogs.jsx  (default export, pass onClose)
+     /knowledge  → KnowledgeGraphEngine.jsx (default export)
+     /aimentor   → AIBot.jsx           (default export)
 ═══════════════════════════════════════════════════════════════ */
 export default function Index() {
   const navigate = useNavigate();
@@ -998,16 +920,21 @@ export default function Index() {
     navigate("/editor", { state: { me, sid, lang } });
   };
 
+  /* existing routes */
   const toChat        = () => navigate("/devchat");
   const toSandbox     = () => navigate("/sandbox");
   const toApi         = () => navigate("/api");
   const toPerf        = () => navigate("/performance");
   const toBehavior    = () => navigate("/behavior");
   const toFrustration = () => navigate("/frustration");
-
-  /* ── Navigate to Cognitive Analytics dashboard ── */
   const toCognitive   = () => navigate("/cognitive");
   const toGitBridge   = () => navigate("/gitbridge");
+
+  /* ── four new routes linked to the uploaded components ── */
+  const toDebug       = () => navigate("/debug");      // DebuggingRoom.jsx
+  const toLogs        = () => navigate("/logs");       // LiveServerLogs.jsx
+  const toKnowledge   = () => navigate("/knowledge");  // KnowledgeGraphEngine.jsx
+  const toAiMentor    = () => navigate("/aimentor");   // AIBot.jsx
 
   return (
     <>
@@ -1022,6 +949,10 @@ export default function Index() {
           onOpenBehavior={toBehavior}
           onOpenFrustration={toFrustration}
           onOpenCognitive={toCognitive}
+          onOpenDebug={toDebug}
+          onOpenLogs={toLogs}
+          onOpenKnowledge={toKnowledge}
+          onOpenAiMentor={toAiMentor}
           onOpenGitBridge={toGitBridge}
         />
       )}
