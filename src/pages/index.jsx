@@ -165,6 +165,9 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .mod-card:hover { background:rgba(255,255,255,.05);border-color:rgba(79,193,255,.28);transform:translateY(-3px); }
 .mod-card.mod-cog { background:linear-gradient(145deg,rgba(255,181,71,.07),rgba(255,107,157,.04)); border-color:rgba(255,181,71,.2); }
 .mod-card.mod-cog:hover { border-color:rgba(255,181,71,.5); transform:translateY(-4px); box-shadow:0 16px 48px rgba(255,181,71,.12); }
+.mod-card.mod-git { background:linear-gradient(145deg,rgba(78,201,176,.08),rgba(79,193,255,.04)); border-color:rgba(78,201,176,.2); }
+.mod-card.mod-git:hover { border-color:rgba(78,201,176,.5); transform:translateY(-4px); box-shadow:0 16px 48px rgba(78,201,176,.12); }
+.mod-card.mod-git .mod-idx { color:rgba(78,201,176,.6); }
 .mod-idx  { font-family:var(--mono);font-size:.64rem;color:rgba(79,193,255,.5);font-weight:600;letter-spacing:.08em;margin-bottom:.7rem; }
 .mod-card.mod-cog .mod-idx { color:rgba(255,181,71,.6); }
 .mod-card h3 { font-family:var(--disp);font-size:.95rem;font-weight:700;color:#fff;margin-bottom:.4rem; }
@@ -249,6 +252,7 @@ const MODULES = [
   { idx:"11", title:"Adaptive AI Mentor",            desc:"Beginner gets deep explanations. Intermediate gets hints. Advanced gets optimizations. Fully adaptive.", accent:"#4FC1FF" },
   { idx:"12", title:"Adaptive UI Engine",            desc:"Dynamically changes the interface: hints for beginners, guidance for stuck users, minimal for experts.", accent:"#4EC9B0" },
   { idx:"13", title:"Cognitive Analytics Dashboard", desc:"Displays productivity trends, focus levels, and weak concept identification across sessions. AI-powered insights in real time.", accent:"#FFB547", isCognitive:true },
+  { idx:"14", title:"Version Control Integration",   desc:"Connect sessions to GitHub / GitLab. View real-time diffs, commit history, branch status, and AI-generated commit messages — directly inside the editor.", accent:"#4EC9B0", isGitBridge:true },
 ];
 
 const WORKFLOW_STEPS = [
@@ -279,7 +283,7 @@ function MiniSparkline({ values, color }) {
 /* ═══════════════════════════════════════════════════════════════
    HOME PAGE
 ═══════════════════════════════════════════════════════════════ */
-function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, onOpenBehavior, onOpenFrustration, onOpenCognitive }) {
+function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, onOpenBehavior, onOpenFrustration, onOpenCognitive, onOpenGitBridge }) {
   const [activeTab, setActiveTab] = useState("all");
   const filtered = activeTab === "all" ? MODULES
     : activeTab === "collab" ? MODULES.filter((_,i) => i < 6)
@@ -550,6 +554,78 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
         </div>
       </section>
 
+      {/* GIT BRIDGE SPOTLIGHT */}
+      <section className="section" style={{ paddingTop:"3rem", paddingBottom:"3rem" }}>
+        <div className="s-label" style={{ color:"#4EC9B0" }}>Module 14 — Featured</div>
+        <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:"1.4rem", alignItems:"flex-end" }}>
+          <div>
+            <h2 className="s-title">Version Control Integration</h2>
+            <p className="s-desc">Connect GitHub / GitLab repositories directly inside the editor — live diffs, commit history, branch status, and AI-powered commit message generation.</p>
+          </div>
+          <button className="btn-primary" onClick={onOpenGitBridge} style={{ fontSize:".85rem", padding:"11px 22px", background:"linear-gradient(135deg,#4EC9B0,#4FC1FF)" }}>
+            Open Git Bridge <span className="arrow">→</span>
+          </button>
+        </div>
+        <div className="efc" style={{ borderColor:"rgba(78,201,176,.18)" }}>
+          <div className="efc-bar">
+            <div className="efc-dots"><span className="dot-r"/><span className="dot-y"/><span className="dot-g"/></div>
+            <div style={{ display:"flex", alignItems:"center", gap:7, fontFamily:"var(--mono)", fontSize:".68rem", color:"var(--text-2)" }}>
+              <span className="a-blink live-dot" style={{ width:6, height:6, background:"#4EC9B0", boxShadow:"0 0 7px #4EC9B0" }}/>
+              feat/git-bridge · 4 commits ahead · GitHub REST API
+            </div>
+            <div className="efc-pills">
+              <span className="pill-sm" style={{ background:"rgba(78,201,176,.1)",color:"#4EC9B0",borderColor:"rgba(78,201,176,.3)" }}>● Live Diff</span>
+              <span className="pill-sm" style={{ background:"rgba(167,139,250,.1)",color:"#A78BFA",borderColor:"rgba(167,139,250,.3)" }}>✨ AI Commits</span>
+              <span className="pill-sm" style={{ background:"rgba(79,193,255,.1)",color:"#4FC1FF",borderColor:"rgba(79,193,255,.3)" }}>🔀 PRs</span>
+            </div>
+          </div>
+          <div className="efc-body">
+            <div className="efc-preview">
+              <div className="efc-ph">GitBridge.jsx — Live Diff · feat/git-bridge → main</div>
+              <div className="efc-pb">
+                {[
+                  <><span className="c-cmt">@@ -14,6 +14,18 @@ import {'{'} useState {'}'} from 'react';</span></>,
+                  <><span style={{color:"rgba(255,255,255,.35)"}}> import {'{'} simpleGit {'}'} from 'simple-git';</span></>,
+                  <><span className="c-kw" style={{color:"#FF6B9D",textDecoration:"line-through",opacity:.6}}>-const git = simpleGit();</span></>,
+                  <><span style={{color:"#4EC9B0"}}>+const git = simpleGit({'{'} baseDir: process.cwd() {'}'});</span></>,
+                  <><span style={{color:"#4EC9B0"}}>+const ws  = new WebSocketServer({'{'} port: 9001 {'}'});</span></>,
+                  <><span style={{color:"rgba(255,255,255,.35)"}}> </span></>,
+                  <><span style={{color:"#4EC9B0"}}>+export async function streamDiff(sessionId) {'{'}</span></>,
+                  <><span style={{color:"#4EC9B0"}}>+  ws.clients.forEach(c =&gt; c.send(diff));</span></>,
+                ].map((l,i) => <div key={i} style={{ fontFamily:"var(--mono)", fontSize:".68rem", lineHeight:"21px", whiteSpace:"pre" }}>{l}</div>)}
+              </div>
+            </div>
+            <div className="efc-right">
+              <div className="efc-stats">
+                <div className="efc-stat"><div className="efc-sv" style={{color:"#4EC9B0"}}>14</div><div className="efc-sl">Module</div></div>
+                <div className="efc-stat"><div className="efc-sv" style={{color:"#4FC1FF"}}>6</div><div className="efc-sl">Files Changed</div></div>
+                <div className="efc-stat"><div className="efc-sv" style={{color:"#A78BFA"}}>AI</div><div className="efc-sl">Commit Gen</div></div>
+              </div>
+              <div style={{ fontSize:".65rem", color:"var(--text-3)", letterSpacing:".08em", textTransform:"uppercase", fontWeight:700 }}>Tech Stack</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:".5rem" }}>
+                {[
+                  { icon:"🐙", name:"GitHub REST API / GraphQL", sub:"Repos, branches, PRs, commits" },
+                  { icon:"🦊", name:"GitLab Integration",         sub:"MR, pipelines, branch status" },
+                  { icon:"⚙️", name:"simple-git (Node.js)",        sub:"Local git ops over WebSocket" },
+                  { icon:"✨", name:"CKC-AI Commit Engine",        sub:"Context-aware message gen" },
+                ].map((t,i) => (
+                  <div key={i} style={{ display:"flex", alignItems:"center", gap:".55rem" }}>
+                    <div style={{ width:26, height:26, borderRadius:7, display:"flex", alignItems:"center", justifyContent:"center", fontSize:".85rem", background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.06)", flexShrink:0 }}>{t.icon}</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:".75rem", color:"var(--text)", fontWeight:500 }}>{t.name}</div>
+                      <div style={{ fontSize:".62rem", color:"rgba(255,255,255,.28)", marginTop:1 }}>{t.sub}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button className="btn-primary" onClick={onOpenGitBridge} style={{ fontSize:".8rem", padding:"10px 18px", width:"100%", justifyContent:"center", background:"linear-gradient(135deg,#4EC9B0,#4FC1FF)", boxShadow:"0 8px 32px rgba(78,201,176,.35)" }}>
+                🔀 Open Git Bridge <span className="arrow">→</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* 3 LAYERS */}
       <section className="section darker">
         <div className="s-label">System Overview</div>
@@ -577,7 +653,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
         <div className="modules-grid">
           {filtered.map((m, idx) => (
             <div
-              className={`mod-card${m.isCognitive ? " mod-cog" : ""}`}
+              className={`mod-card${m.isCognitive ? " mod-cog" : m.isGitBridge ? " mod-git" : ""}`}
               key={`${m.idx}-${idx}`}
               onClick={
                 m.isEditor      ? onLaunch
@@ -588,10 +664,11 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
                 : m.isBehavior  ? onOpenBehavior
                 : m.isFrustration ? onOpenFrustration
                 : m.isCognitive   ? onOpenCognitive
+                : m.isGitBridge   ? onOpenGitBridge
                 : undefined
               }
               style={{
-                cursor: (m.isEditor||m.isChat||m.isSandbox||m.isApi||m.isPerf||m.isBehavior||m.isFrustration||m.isCognitive) ? "pointer" : undefined,
+                cursor: (m.isEditor||m.isChat||m.isSandbox||m.isApi||m.isPerf||m.isBehavior||m.isFrustration||m.isCognitive||m.isGitBridge) ? "pointer" : undefined,
               }}
             >
               {m.core         && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:600 }}>CORE</span>}
@@ -607,6 +684,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
                   📊 ANALYTICS
                 </span>
               )}
+              {m.isGitBridge  && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"#4EC9B0",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🔀 GIT</span>}
               <div className="mod-idx">{m.idx}</div>
               <h3>{m.title}</h3>
               <p>{m.desc}</p>
@@ -618,6 +696,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
               {m.isBehavior   && <p style={{ fontSize:".75rem", color:"var(--amber)",  marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
               {m.isFrustration&& <p style={{ fontSize:".75rem", color:"var(--rose)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
               {m.isCognitive  && <p style={{ fontSize:".75rem", color:"#FFB547",       marginTop:".65rem", fontWeight:700 }}>Click to open analytics →</p>}
+              {m.isGitBridge  && <p style={{ fontSize:".75rem", color:"var(--teal)",  marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
               <div className="mod-accent" style={{ background:m.accent }}/>
             </div>
           ))}
@@ -928,6 +1007,7 @@ export default function Index() {
 
   /* ── Navigate to Cognitive Analytics dashboard ── */
   const toCognitive   = () => navigate("/cognitive");
+  const toGitBridge   = () => navigate("/gitbridge");
 
   return (
     <>
@@ -942,6 +1022,7 @@ export default function Index() {
           onOpenBehavior={toBehavior}
           onOpenFrustration={toFrustration}
           onOpenCognitive={toCognitive}
+          onOpenGitBridge={toGitBridge}
         />
       )}
       {route === "login" && <LoginScreen onJoin={toEditor} onBack={() => setRoute("home")} />}
