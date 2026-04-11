@@ -18,6 +18,7 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
   --border-h: rgba(79,193,255,.4);
   --blue: #4FC1FF; --blue-d: #2196D3; --blue-l: #8DD8FF;
   --teal: #4EC9B0; --rose: #FF6B9D; --amber: #FFB547; --violet: #A78BFA;
+  --indigo: #7c83ff;
   --text: #e0e6ff; --text-2: #7a8aaa; --text-3: #3f4d66;
   --mono: 'JetBrains Mono', monospace;
   --disp: 'Syne', sans-serif;
@@ -30,6 +31,8 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 @keyframes spin    { to{transform:rotate(360deg)} }
 @keyframes cardIn  { from{opacity:0;transform:translateY(26px) scale(.96)} to{opacity:1;transform:none} }
 @keyframes float   { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+@keyframes pulseGlow  { 0%,100%{box-shadow:0 0 0 0 rgba(255,181,71,.4)}  50%{box-shadow:0 0 18px 4px rgba(255,181,71,.18)} }
+@keyframes pulseBlue  { 0%,100%{box-shadow:0 0 0 0 rgba(124,131,255,.35)} 50%{box-shadow:0 0 18px 4px rgba(124,131,255,.15)} }
 
 .page-in  { animation: pageIn .4s cubic-bezier(.22,1,.36,1) both; }
 .a-cin    { animation: cardIn .38s cubic-bezier(.34,1.4,.64,1) both; }
@@ -45,6 +48,7 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .hp-grad      { background: linear-gradient(135deg,var(--blue) 0%,var(--teal) 50%,var(--rose) 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
 .hp-grad-blue { background: linear-gradient(135deg,var(--blue),var(--teal)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
 .hp-grad-amber{ background: linear-gradient(135deg,#FFB547,#FF6B9D); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.hp-grad-indigo{ background: linear-gradient(135deg,#7c83ff,#a78bfa); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
 
 .ckc-nav { position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:1rem 2.8rem;background:rgba(13,15,20,.88);backdrop-filter:blur(24px);border-bottom:1px solid rgba(255,255,255,.05); }
 .nav-logo { font-family:var(--disp);font-size:1.2rem;font-weight:800;color:#fff;display:flex;align-items:center;gap:9px; }
@@ -64,6 +68,9 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 
 .btn-amber { display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#FFB547,#FF6B9D);color:#0d0f14;border:none;border-radius:10px;padding:13px 30px;font-size:.95rem;font-weight:700;cursor:pointer;font-family:var(--disp);box-shadow:0 8px 32px rgba(255,181,71,.35);transition:transform .2s,box-shadow .2s; }
 .btn-amber:hover { transform:translateY(-2px);box-shadow:0 14px 44px rgba(255,181,71,.5); }
+
+.btn-indigo { display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#7c83ff,#a78bfa);color:#0d0f14;border:none;border-radius:10px;padding:13px 30px;font-size:.95rem;font-weight:700;cursor:pointer;font-family:var(--disp);box-shadow:0 8px 32px rgba(124,131,255,.35);transition:transform .2s,box-shadow .2s; }
+.btn-indigo:hover { transform:translateY(-2px);box-shadow:0 14px 44px rgba(124,131,255,.5); }
 
 .hero { min-height:100vh;display:flex;align-items:center;position:relative;overflow:hidden;padding:8rem 2.8rem 5rem; }
 .hero-mesh { position:absolute;inset:0;z-index:0;background:radial-gradient(ellipse 65% 50% at 70% 10%,rgba(79,193,255,.13) 0%,transparent 65%),radial-gradient(ellipse 40% 38% at 10% 80%,rgba(78,201,176,.09) 0%,transparent 60%),radial-gradient(ellipse 30% 28% at 90% 80%,rgba(167,139,250,.07) 0%,transparent 55%); }
@@ -89,6 +96,63 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .s-label { font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--blue-l);font-weight:600;margin-bottom:.6rem; }
 .s-title { font-family:var(--disp);font-size:clamp(1.8rem,3.8vw,2.8rem);font-weight:800;color:#fff;letter-spacing:-.03em;line-height:1.05;margin-bottom:.9rem; }
 .s-desc  { font-size:.95rem;color:var(--text-2);max-width:500px;line-height:1.8; }
+
+/* ── Cognitive Analytics spotlight banner ── */
+.cog-banner {
+  position: relative; overflow: hidden;
+  background: linear-gradient(135deg, rgba(255,181,71,.07) 0%, rgba(255,107,157,.06) 50%, rgba(167,139,250,.06) 100%);
+  border: 1px solid rgba(255,181,71,.22);
+  border-radius: 18px; padding: 2.2rem 2.4rem;
+  margin-top: 3rem; cursor: pointer;
+  transition: border-color .25s, transform .25s;
+  animation: pulseGlow 3s ease-in-out infinite;
+}
+.cog-banner:hover { border-color: rgba(255,181,71,.55); transform: translateY(-3px); }
+.cog-banner::before {
+  content:''; position:absolute; inset:0;
+  background: radial-gradient(ellipse 55% 70% at 85% 50%, rgba(255,181,71,.08), transparent 65%);
+  pointer-events:none;
+}
+.cog-banner-grid {
+  position:absolute; inset:0; pointer-events:none;
+  background-image: linear-gradient(rgba(255,181,71,.04) 1px,transparent 1px), linear-gradient(90deg,rgba(255,181,71,.04) 1px,transparent 1px);
+  background-size: 32px 32px;
+}
+.cog-preview-bar {
+  display: flex; gap: 10px; align-items: center; margin-bottom: 1.2rem;
+}
+.cog-pill {
+  font-size: .6rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  padding: 3px 10px; border-radius: 100px; border: 1px solid;
+}
+.cog-pill-amber { background:rgba(255,181,71,.12); color:#FFB547; border-color:rgba(255,181,71,.35); }
+.cog-pill-rose  { background:rgba(255,107,157,.1);  color:#FF6B9D; border-color:rgba(255,107,157,.3); }
+.cog-pill-viol  { background:rgba(167,139,250,.1);  color:#A78BFA; border-color:rgba(167,139,250,.3); }
+
+/* ── AI Pair Programmer spotlight banner ── */
+.aip-banner {
+  position: relative; overflow: hidden;
+  background: linear-gradient(135deg, rgba(124,131,255,.07) 0%, rgba(167,139,250,.06) 50%, rgba(79,193,255,.05) 100%);
+  border: 1px solid rgba(124,131,255,.22);
+  border-radius: 18px; padding: 2.2rem 2.4rem;
+  margin-top: 3rem; cursor: pointer;
+  transition: border-color .25s, transform .25s, box-shadow .25s;
+  animation: pulseBlue 3s ease-in-out infinite;
+}
+.aip-banner:hover { border-color: rgba(124,131,255,.55); transform: translateY(-3px); box-shadow: 0 20px 60px rgba(124,131,255,.12); }
+.aip-banner::before {
+  content:''; position:absolute; inset:0;
+  background: radial-gradient(ellipse 55% 70% at 85% 50%, rgba(124,131,255,.08), transparent 65%);
+  pointer-events:none;
+}
+.aip-banner-grid {
+  position:absolute; inset:0; pointer-events:none;
+  background-image: linear-gradient(rgba(124,131,255,.03) 1px,transparent 1px), linear-gradient(90deg,rgba(124,131,255,.03) 1px,transparent 1px);
+  background-size: 32px 32px;
+}
+.aip-pill-indigo { background:rgba(124,131,255,.12); color:#a5abff; border-color:rgba(124,131,255,.35); }
+.aip-pill-violet { background:rgba(167,139,250,.1);  color:#A78BFA; border-color:rgba(167,139,250,.3); }
+.aip-pill-blue   { background:rgba(79,193,255,.1);   color:#4FC1FF; border-color:rgba(79,193,255,.3); }
 
 .efc { background:rgba(17,19,24,.75);border:1px solid rgba(79,193,255,.18);border-radius:18px;overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,.5);margin-top:3rem; }
 .efc-bar { display:flex;align-items:center;justify-content:space-between;padding:1.1rem 1.6rem;background:rgba(255,255,255,.02);border-bottom:1px solid rgba(255,255,255,.06); }
@@ -134,9 +198,12 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .mod-card.mod-cog:hover { border-color:rgba(255,181,71,.5); transform:translateY(-4px); box-shadow:0 16px 48px rgba(255,181,71,.12); }
 .mod-card.mod-git { background:linear-gradient(145deg,rgba(78,201,176,.08),rgba(79,193,255,.04)); border-color:rgba(78,201,176,.2); }
 .mod-card.mod-git:hover { border-color:rgba(78,201,176,.5); transform:translateY(-4px); box-shadow:0 16px 48px rgba(78,201,176,.12); }
-.mod-card.mod-git .mod-idx { color:rgba(78,201,176,.6); }
+.mod-card.mod-aipair { background:linear-gradient(145deg,rgba(124,131,255,.09),rgba(167,139,250,.04)); border-color:rgba(124,131,255,.2); }
+.mod-card.mod-aipair:hover { border-color:rgba(124,131,255,.5); transform:translateY(-4px); box-shadow:0 16px 48px rgba(124,131,255,.12); }
 .mod-idx  { font-family:var(--mono);font-size:.64rem;color:rgba(79,193,255,.5);font-weight:600;letter-spacing:.08em;margin-bottom:.7rem; }
-.mod-card.mod-cog .mod-idx { color:rgba(255,181,71,.6); }
+.mod-card.mod-cog .mod-idx    { color:rgba(255,181,71,.6); }
+.mod-card.mod-git .mod-idx    { color:rgba(78,201,176,.6); }
+.mod-card.mod-aipair .mod-idx { color:rgba(124,131,255,.6); }
 .mod-card h3 { font-family:var(--disp);font-size:.95rem;font-weight:700;color:#fff;margin-bottom:.4rem; }
 .mod-card p  { font-size:.8rem;color:var(--text-3);line-height:1.7; }
 .mod-accent  { position:absolute;bottom:0;left:0;height:2px;border-radius:0 0 0 13px;width:0;transition:width .35s ease; }
@@ -198,6 +265,7 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
   .ckc-nav{padding:.9rem 1.5rem;} .nav-links{display:none;}
   .section{padding:4rem 1.5rem;} .cta-section{padding:4.5rem 1.5rem;} .footer{padding:1.3rem 1.5rem;}
   .layers-grid{grid-template-columns:1fr;} .apps-grid{grid-template-columns:1fr;} .efc-body{grid-template-columns:1fr;}
+  .cog-banner { padding:1.6rem; } .aip-banner { padding:1.6rem; }
 }
 `;
 
@@ -219,6 +287,7 @@ const MODULES = [
   { idx:"12", title:"Adaptive UI Engine",            desc:"Dynamically changes the interface: hints for beginners, guidance for stuck users, minimal for experts.",                 accent:"#4EC9B0" },
   { idx:"13", title:"Cognitive Analytics Dashboard", desc:"Displays productivity trends, focus levels, and weak concept identification across sessions. AI-powered insights in real time.", accent:"#FFB547", isCognitive:true },
   { idx:"14", title:"Version Control Integration",   desc:"Connect sessions to GitHub / GitLab. View real-time diffs, commit history, branch status, and AI-generated commit messages — directly inside the editor.", accent:"#4EC9B0", isGitBridge:true },
+  { idx:"15", title:"AI Pair Programmer",            desc:"Inline co-pilot powered by Claude API — suggests next lines, explains selected code in plain English, generates boilerplate, and refactors on demand with RAG-enhanced context.", accent:"#7c83ff", isAIPair:true },
 ];
 
 const WORKFLOW_STEPS = [
@@ -230,9 +299,24 @@ const WORKFLOW_STEPS = [
   { n:"6", title:"System Responds Adaptively",  desc:"Suggestions surface, knowledge graph updates, UI adapts — all in real time without interruption." },
 ];
 
+/* ── Mini sparkline ── */
+function MiniSparkline({ values, color }) {
+  const W = 80, H = 28, pad = 2;
+  const max = Math.max(...values), min = Math.min(...values);
+  const pts = values.map((v, i) => {
+    const x = pad + (i / (values.length - 1)) * (W - pad * 2);
+    const y = H - pad - ((v - min) / (max - min || 1)) * (H - pad * 2);
+    return `${x},${y}`;
+  }).join(" ");
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ overflow:"visible" }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" opacity="0.8" />
+    </svg>
+  );
+}
+
 /* ═══════════════════════════════════════════════════════════════
    BADGE + CLICK CONFIG
-   Maps each module flag → { badge style, click color, handler key }
 ═══════════════════════════════════════════════════════════════ */
 const BADGE_CFG = {
   isEditor:     { bg:"rgba(79,193,255,.1)",   color:"#8DD8FF", border:"rgba(79,193,255,.28)",  label:"▶ LIVE"      },
@@ -247,6 +331,8 @@ const BADGE_CFG = {
   isKnowledge:  { bg:"rgba(167,139,250,.1)",  color:"#A78BFA", border:"rgba(167,139,250,.28)", label:"🕸 GRAPH"    },
   isAiMentor:   { bg:"rgba(79,193,255,.1)",   color:"#8DD8FF", border:"rgba(79,193,255,.28)",  label:"🤖 MENTOR"   },
   isCognitive:  { bg:"linear-gradient(135deg,rgba(255,181,71,.18),rgba(255,107,157,.12))", color:"#FFB547", border:"rgba(255,181,71,.38)", label:"📊 ANALYTICS" },
+  isGitBridge:  { bg:"rgba(78,201,176,.1)",   color:"#4EC9B0", border:"rgba(78,201,176,.28)",  label:"🔀 GIT"      },
+  isAIPair:     { bg:"linear-gradient(135deg,rgba(124,131,255,.18),rgba(167,139,250,.12))", color:"#a5abff", border:"rgba(124,131,255,.38)", label:"⌥ COPILOT" },
   core:         { bg:"rgba(255,181,71,.1)",   color:"#FFB547", border:"rgba(255,181,71,.28)",  label:"CORE"        },
 };
 
@@ -255,20 +341,26 @@ const CLICK_COLOR = {
   isChat:"var(--violet)", isSandbox:"var(--teal)", isApi:"var(--rose)",
   isPerf:"var(--teal)", isBehavior:"var(--amber)", isFrustration:"var(--rose)",
   isKnowledge:"var(--violet)", isAiMentor:"var(--blue)", isCognitive:"#FFB547",
+  isGitBridge:"var(--teal)", isAIPair:"#7c83ff",
 };
 
 /* flag keys that make a card clickable (ordered: first match wins for badge) */
-const CLICKABLE = ["isEditor","isDebug","isLogs","isChat","isSandbox","isApi","isPerf","isBehavior","isFrustration","isKnowledge","isAiMentor","isCognitive"];
+const CLICKABLE = [
+  "isEditor","isDebug","isLogs","isChat","isSandbox","isApi",
+  "isPerf","isBehavior","isFrustration","isKnowledge","isAiMentor",
+  "isCognitive","isGitBridge","isAIPair",
+];
 
 /* ═══════════════════════════════════════════════════════════════
    HOME PAGE
 ═══════════════════════════════════════════════════════════════ */
 function HomePage({
-  onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf,
-  onOpenBehavior, onOpenFrustration, onOpenCognitive,
-  onOpenDebug, onOpenLogs, onOpenKnowledge, onOpenAiMentor,
+  onLaunch, onOpenChat, onOpenSandbox, onOpenApi,
+  onOpenPerf, onOpenBehavior, onOpenFrustration,
+  onOpenCognitive, onOpenDebug, onOpenLogs,
+  onOpenKnowledge, onOpenAiMentor,
+  onOpenGitBridge, onOpenAIPair,
 }) {
-function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, onOpenBehavior, onOpenFrustration, onOpenCognitive, onOpenGitBridge }) {
   const [activeTab, setActiveTab] = useState("all");
   const filtered = activeTab === "all" ? MODULES
     : activeTab === "collab" ? MODULES.filter((_,i) => i < 6)
@@ -289,6 +381,8 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
     if (m.isKnowledge)    return onOpenKnowledge;
     if (m.isAiMentor)     return onOpenAiMentor;
     if (m.isCognitive)    return onOpenCognitive;
+    if (m.isGitBridge)    return onOpenGitBridge;
+    if (m.isAIPair)       return onOpenAIPair;
     return undefined;
   };
 
@@ -298,7 +392,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
   return (
     <div className="page-in" style={{ minHeight:"100vh" }}>
 
-      {/* NAV */}
+      {/* ── NAV ── */}
       <nav className="ckc-nav">
         <div className="nav-logo">
           <div className="nav-logo-mark">⚡</div>CKC-OS
@@ -309,11 +403,39 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
           ))}
         </div>
         <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+          {/* AI Copilot nav button */}
+          <button
+            onClick={onOpenAIPair}
+            style={{
+              background:"linear-gradient(135deg,rgba(124,131,255,.18),rgba(167,139,250,.14))",
+              color:"#a5abff", border:"1px solid rgba(124,131,255,.38)", borderRadius:7,
+              padding:"7px 16px", fontSize:".78rem", fontWeight:700, cursor:"pointer",
+              fontFamily:"var(--disp)", letterSpacing:".04em", transition:"all .2s",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background="linear-gradient(135deg,rgba(124,131,255,.3),rgba(167,139,250,.22))"; e.currentTarget.style.borderColor="rgba(124,131,255,.6)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background="linear-gradient(135deg,rgba(124,131,255,.18),rgba(167,139,250,.14))"; e.currentTarget.style.borderColor="rgba(124,131,255,.38)"; }}
+          >
+            ⌥ AI Copilot
+          </button>
+          {/* Analytics nav button */}
+          <button
+            onClick={onOpenCognitive}
+            style={{
+              background:"linear-gradient(135deg,rgba(255,181,71,.18),rgba(255,107,157,.14))",
+              color:"#FFB547", border:"1px solid rgba(255,181,71,.38)", borderRadius:7,
+              padding:"7px 16px", fontSize:".78rem", fontWeight:700, cursor:"pointer",
+              fontFamily:"var(--disp)", letterSpacing:".04em", transition:"all .2s",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background="linear-gradient(135deg,rgba(255,181,71,.3),rgba(255,107,157,.22))"; e.currentTarget.style.borderColor="rgba(255,181,71,.6)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background="linear-gradient(135deg,rgba(255,181,71,.18),rgba(255,107,157,.14))"; e.currentTarget.style.borderColor="rgba(255,181,71,.38)"; }}
+          >
+            📊 Analytics
+          </button>
           <button className="btn-nav" onClick={onLaunch}>⚡ Launch Editor</button>
         </div>
       </nav>
 
-      {/* HERO */}
+      {/* ── HERO ── */}
       <section className="hero">
         <div className="hero-mesh"/><div className="hero-grid"/>
         <div style={{ width:"100%" }}>
@@ -335,7 +457,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
               <button className="btn-ghost" onClick={() => scrollTo("overview")}>System Overview</button>
             </div>
             <div className="hero-stats fade-5">
-              {[["13","Core Modules"],["8","Languages"],["3","System Layers"],["∞","Real-time"]].map(([n,l]) => (
+              {[["14","Core Modules"],["8","Languages"],["3","System Layers"],["∞","Real-time"]].map(([n,l]) => (
                 <div className="stat" key={l}><div className="stat-num">{n}</div><div className="stat-lbl">{l}</div></div>
               ))}
             </div>
@@ -369,7 +491,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
         </div>
       </section>
 
-      {/* EDITOR FEATURE HIGHLIGHT */}
+      {/* ── EDITOR FEATURE HIGHLIGHT ── */}
       <section className="section dark" id="overview">
         <div className="s-label">Module 01 — Featured</div>
         <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:"1.4rem", alignItems:"flex-end" }}>
@@ -420,10 +542,10 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
               <div style={{ fontSize:".65rem", color:"var(--text-3)", letterSpacing:".08em", textTransform:"uppercase", fontWeight:700 }}>Collaborators</div>
               <div style={{ display:"flex", flexDirection:"column", gap:".5rem" }}>
                 {[
-                  { name:"You",     color:"#4FC1FF", bg:"rgba(79,193,255,.18)", inits:"Y",  status:"Typing…",       isMe:true },
-                  { name:"Aria K.", color:"#FF6B9D", bg:"rgba(255,107,157,.18)",inits:"AK", status:"Ln 42, Col 18" },
-                  { name:"Dev M.",  color:"#4EC9B0", bg:"rgba(78,201,176,.18)", inits:"DM", status:"Reviewing diff" },
-                  { name:"Sam T.",  color:"#DCDCAA", bg:"rgba(220,220,170,.18)",inits:"ST", status:"Ln 17, Col 3"  },
+                  { name:"You",     color:"#4FC1FF", bg:"rgba(79,193,255,.18)",  inits:"Y",  status:"Typing…",       isMe:true },
+                  { name:"Aria K.", color:"#FF6B9D", bg:"rgba(255,107,157,.18)", inits:"AK", status:"Ln 42, Col 18" },
+                  { name:"Dev M.",  color:"#4EC9B0", bg:"rgba(78,201,176,.18)",  inits:"DM", status:"Reviewing diff" },
+                  { name:"Sam T.",  color:"#DCDCAA", bg:"rgba(220,220,170,.18)", inits:"ST", status:"Ln 17, Col 3"  },
                 ].map((u,i) => (
                   <div key={i} style={{ display:"flex", alignItems:"center", gap:".55rem" }}>
                     <div style={{ width:26, height:26, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".57rem", fontWeight:700, background:u.bg, color:u.color, fontFamily:"var(--mono)", flexShrink:0 }}>{u.inits}</div>
@@ -441,9 +563,89 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
             </div>
           </div>
         </div>
+
+        {/* ── COGNITIVE ANALYTICS SPOTLIGHT BANNER ── */}
+        <div style={{ marginTop:"3rem" }}>
+          <div className="s-label" style={{ color:"#FFB547", letterSpacing:".14em" }}>Module 13 — Featured</div>
+          <div
+            className="cog-banner"
+            onClick={onOpenCognitive}
+            role="button" tabIndex={0}
+            onKeyDown={e => e.key === "Enter" && onOpenCognitive()}
+          >
+            <div className="cog-banner-grid"/>
+            <div style={{ position:"relative", zIndex:1, display:"flex", alignItems:"flex-start", justifyContent:"space-between", flexWrap:"wrap", gap:"1.4rem" }}>
+              <div style={{ flex:1, minWidth:260 }}>
+                <div className="cog-preview-bar">
+                  <div style={{ width:8, height:8, borderRadius:"50%", background:"#4ade80", boxShadow:"0 0 8px #4ade80" }}/>
+                  <span style={{ fontSize:10, letterSpacing:".18em", color:"rgba(148,163,184,.6)", fontFamily:"var(--mono)" }}>AI-POWERED · REAL-TIME · ADAPTIVE</span>
+                </div>
+                <h3 style={{ fontFamily:"var(--disp)", fontSize:"clamp(1.3rem,2.8vw,2rem)", fontWeight:800, letterSpacing:"-.03em", color:"#fff", marginBottom:".5rem", lineHeight:1.1 }}>
+                  Cognitive <span className="hp-grad-amber">Analytics Dashboard</span>
+                </h3>
+                <p style={{ fontSize:".88rem", color:"var(--text-2)", maxWidth:480, lineHeight:1.75 }}>
+                  Track productivity trends, measure focus depth, and surface weak concepts — all powered by the CKC-OS knowledge engine with real-time AI insights.
+                </p>
+                <div style={{ display:"flex", gap:"2rem", marginTop:"1.4rem" }}>
+                  {[["84%","Productivity"],["3.2h","Avg Focus"],["5","Weak Concepts"],["18","Sessions"]].map(([v,l]) => (
+                    <div key={l}>
+                      <div style={{ fontFamily:"var(--disp)", fontSize:"1.4rem", fontWeight:800, color:"#FFB547" }}>{v}</div>
+                      <div style={{ fontSize:".6rem", color:"rgba(148,163,184,.5)", letterSpacing:".1em", textTransform:"uppercase", marginTop:2 }}>{l}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display:"flex", gap:8, marginTop:"1.4rem", flexWrap:"wrap" }}>
+                  <span className="cog-pill cog-pill-amber">📊 Productivity Trends</span>
+                  <span className="cog-pill cog-pill-rose">◎ Focus Levels</span>
+                  <span className="cog-pill cog-pill-viol">⚠ Weak Concepts</span>
+                </div>
+              </div>
+              {/* Mini preview panel */}
+              <div style={{ width:260, background:"rgba(6,11,20,.85)", border:"1px solid rgba(255,181,71,.18)", borderRadius:12, overflow:"hidden", flexShrink:0 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 12px", background:"rgba(255,255,255,.02)", borderBottom:"1px solid rgba(255,181,71,.1)" }}>
+                  <span style={{ width:7, height:7, borderRadius:"50%", background:"#FF5F56" }}/><span style={{ width:7, height:7, borderRadius:"50%", background:"#FFBD2E" }}/><span style={{ width:7, height:7, borderRadius:"50%", background:"#27C93F" }}/>
+                  <span style={{ fontFamily:"var(--mono)", fontSize:9, color:"rgba(148,163,184,.4)", marginLeft:4 }}>cognitive.tsx</span>
+                </div>
+                <div style={{ padding:"12px 14px" }}>
+                  {[
+                    { lbl:"Productivity score", val:"84%",  color:"#38bdf8", data:[68,75,82,91,87,55,60] },
+                    { lbl:"Avg focus depth",    val:"3.2h", color:"#2dd4bf", data:[2.1,3,3.5,4.2,3.8,1.2,1.5] },
+                    { lbl:"Weak concepts",      val:"5",    color:"#f87171", data:[5,5,5,5,5,5,5] },
+                  ].map(row => (
+                    <div key={row.lbl} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                      <div>
+                        <div style={{ fontSize:9, color:"rgba(148,163,184,.45)", letterSpacing:".06em", marginBottom:2 }}>{row.lbl.toUpperCase()}</div>
+                        <div style={{ fontFamily:"var(--mono)", fontSize:13, fontWeight:700, color:"#e2e8f0" }}>{row.val}</div>
+                      </div>
+                      <MiniSparkline values={row.data} color={row.color} />
+                    </div>
+                  ))}
+                  <div style={{ marginTop:8, borderTop:"1px solid rgba(255,181,71,.08)", paddingTop:8 }}>
+                    <div style={{ fontSize:9, color:"rgba(148,163,184,.35)", letterSpacing:".08em", marginBottom:6 }}>FOCUS HEATMAP</div>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(8,1fr)", gap:2 }}>
+                      {[1,2,4,3,5,4,3,2,0,3,5,4,5,5,4,3,2,3,4,5,5,3,2,1].map((v,i) => (
+                        <div key={i} style={{ height:8, borderRadius:2, background:v===0?"rgba(255,255,255,.04)":`rgba(56,189,248,${v*0.18})`, border:"1px solid rgba(56,189,248,.06)" }}/>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ padding:"8px 14px 10px", borderTop:"1px solid rgba(255,181,71,.1)", display:"flex", alignItems:"center", justifyContent:"center", gap:6, cursor:"pointer", background:"rgba(255,181,71,.04)" }}>
+                  <span style={{ fontSize:10, color:"#FFB547", fontWeight:700, letterSpacing:".06em", fontFamily:"var(--mono)" }}>OPEN DASHBOARD</span>
+                  <span style={{ color:"#FFB547", fontSize:12 }}>→</span>
+                </div>
+              </div>
+            </div>
+            <div style={{ position:"relative", zIndex:1, display:"flex", alignItems:"center", gap:12, marginTop:"1.6rem", paddingTop:"1.4rem", borderTop:"1px solid rgba(255,181,71,.1)" }}>
+              <button onClick={e => { e.stopPropagation(); onOpenCognitive(); }} className="btn-amber" style={{ fontSize:".85rem", padding:"10px 22px" }}>
+                📊 Open Cognitive Analytics <span style={{ transition:"transform .2s", display:"inline-block" }}>→</span>
+              </button>
+              <span style={{ fontSize:".78rem", color:"rgba(148,163,184,.45)", fontFamily:"var(--mono)" }}>cognitive.jsx · Module 13 · v2.4.1</span>
+            </div>
+          </div>
+        </div>
       </section>
 
-      {/* GIT BRIDGE SPOTLIGHT */}
+      {/* ── GIT BRIDGE SPOTLIGHT ── */}
       <section className="section" style={{ paddingTop:"3rem", paddingBottom:"3rem" }}>
         <div className="s-label" style={{ color:"#4EC9B0" }}>Module 14 — Featured</div>
         <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:"1.4rem", alignItems:"flex-end" }}>
@@ -465,7 +667,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
             <div className="efc-pills">
               <span className="pill-sm" style={{ background:"rgba(78,201,176,.1)",color:"#4EC9B0",borderColor:"rgba(78,201,176,.3)" }}>● Live Diff</span>
               <span className="pill-sm" style={{ background:"rgba(167,139,250,.1)",color:"#A78BFA",borderColor:"rgba(167,139,250,.3)" }}>✨ AI Commits</span>
-              <span className="pill-sm" style={{ background:"rgba(79,193,255,.1)",color:"#4FC1FF",borderColor:"rgba(79,193,255,.3)" }}>🔀 PRs</span>
+              <span className="pill-sm" style={{ background:"rgba(79,193,255,.1)", color:"#4FC1FF",borderColor:"rgba(79,193,255,.3)"  }}>🔀 PRs</span>
             </div>
           </div>
           <div className="efc-body">
@@ -515,7 +717,184 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
         </div>
       </section>
 
-      {/* 3 LAYERS */}
+      {/* ── AI PAIR PROGRAMMER SPOTLIGHT ── */}
+      <section className="section dark" style={{ paddingTop:"3rem", paddingBottom:"3rem" }}>
+        <div className="s-label" style={{ color:"#a5abff" }}>Module 15 — Featured</div>
+        <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:"1.4rem", alignItems:"flex-end" }}>
+          <div>
+            <h2 className="s-title">AI Pair Programmer</h2>
+            <p className="s-desc">
+              An inline coding co-pilot powered by Claude API and RAG — suggests next lines,
+              explains selected code in plain English, generates boilerplate, and refactors on demand.
+            </p>
+          </div>
+          <button
+            className="btn-primary"
+            onClick={onOpenAIPair}
+            style={{ fontSize:".85rem", padding:"11px 22px", background:"linear-gradient(135deg,#7c83ff,#a78bfa)", boxShadow:"0 8px 32px rgba(124,131,255,.35)" }}
+          >
+            Open AI Copilot <span className="arrow">→</span>
+          </button>
+        </div>
+
+        <div className="efc" style={{ borderColor:"rgba(124,131,255,.18)" }}>
+          <div className="efc-bar">
+            <div className="efc-dots"><span className="dot-r"/><span className="dot-y"/><span className="dot-g"/></div>
+            <div style={{ display:"flex", alignItems:"center", gap:7, fontFamily:"var(--mono)", fontSize:".68rem", color:"var(--text-2)" }}>
+              <span className="a-blink live-dot" style={{ width:6, height:6, background:"#7c83ff", boxShadow:"0 0 7px #7c83ff" }}/>
+              copilot.ts · Claude API · RAG-enhanced · 42 files indexed
+            </div>
+            <div className="efc-pills">
+              <span className="pill-sm" style={{ background:"rgba(124,131,255,.1)", color:"#a5abff", borderColor:"rgba(124,131,255,.3)" }}>⌥ Copilot</span>
+              <span className="pill-sm" style={{ background:"rgba(167,139,250,.1)", color:"#A78BFA", borderColor:"rgba(167,139,250,.3)" }}>RAG</span>
+              <span className="pill-sm" style={{ background:"rgba(79,193,255,.1)",  color:"#4FC1FF", borderColor:"rgba(79,193,255,.3)"  }}>Claude API</span>
+            </div>
+          </div>
+          <div className="efc-body">
+            <div className="efc-preview">
+              <div className="efc-ph">useAuth.ts — TypeScript · Suggestion Active</div>
+              <div className="efc-pb">
+                {[
+                  <><span className="c-kw">import</span> {"{"} <span className="c-fn">useState</span>, <span className="c-fn">useCallback</span> {"}"} <span className="c-kw">from</span> <span className="c-str">'react'</span>;</>,
+                  <></>,
+                  <><span className="c-cmt">// ⌥ AI: detected pattern → custom hook</span></>,
+                  <><span className="c-kw">export function</span> <span className="c-fn">useAuth</span>() {"{"}</>,
+                  <>{"  "}<span className="c-kw">const</span> [<span className="c-var">user</span>, <span className="c-var">setUser</span>] = <span className="c-fn">useState</span>(<span className="c-kw">null</span>);</>,
+                  <>{"  "}<span className="c-kw">const</span> [<span className="c-var">loading</span>, <span className="c-var">setLoading</span>] = <span className="c-fn">useState</span>(<span className="c-kw">false</span>);</>,
+                  <></>,
+                  <>{"  "}<span style={{ background:"rgba(124,131,255,.13)", borderRadius:3, padding:"1px 4px", borderBottom:"1px dashed #7c83ff" }}>
+                      <span className="c-kw">const</span> <span className="c-var">login</span> = <span className="c-fn">useCallback</span>(<span className="c-kw">async</span> (<span className="c-var">creds</span>) =&gt; {"{"}</span></>,
+                  <>{"    "}<span style={{ opacity:.45, fontStyle:"italic", color:"#7c83ff" }}>▸ suggested: setLoading(true); await…</span></>,
+                  <>{"  "}{"})"}</>,
+                ].map((l,i) => (
+                  <div key={i} style={{ fontFamily:"var(--mono)", fontSize:".68rem", lineHeight:"21px", whiteSpace:"pre" }}>{l}</div>
+                ))}
+              </div>
+            </div>
+            <div className="efc-right">
+              <div className="efc-stats">
+                <div className="efc-stat"><div className="efc-sv" style={{color:"#a5abff"}}>15</div><div className="efc-sl">Module</div></div>
+                <div className="efc-stat"><div className="efc-sv" style={{color:"#4FC1FF"}}>~40ms</div><div className="efc-sl">Latency</div></div>
+                <div className="efc-stat"><div className="efc-sv" style={{color:"#4EC9B0"}}>RAG</div><div className="efc-sl">Context</div></div>
+              </div>
+              <div style={{ fontSize:".65rem", color:"var(--text-3)", letterSpacing:".08em", textTransform:"uppercase", fontWeight:700 }}>Capabilities</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:".5rem" }}>
+                {[
+                  { icon:"✦", label:"Inline Suggestions",   sub:"Next-line completions from code context", color:"#a5abff" },
+                  { icon:"◈", label:"Code Explanation",      sub:"Plain-English breakdown of any selection", color:"#4FC1FF" },
+                  { icon:"⊞", label:"Boilerplate Generator", sub:"React, Express, FastAPI, Hooks & more",   color:"#4EC9B0" },
+                  { icon:"⟳", label:"Refactor on Demand",    sub:"TypeScript, a11y, performance upgrades",  color:"#A78BFA" },
+                ].map((f,i) => (
+                  <div key={i} style={{ display:"flex", alignItems:"center", gap:".55rem" }}>
+                    <div style={{ width:26, height:26, borderRadius:7, display:"flex", alignItems:"center", justifyContent:"center", fontSize:".8rem", background:`${f.color}18`, border:`1px solid ${f.color}30`, flexShrink:0, color:f.color }}>{f.icon}</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:".75rem", color:"var(--text)", fontWeight:500 }}>{f.label}</div>
+                      <div style={{ fontSize:".62rem", color:"rgba(255,255,255,.28)", marginTop:1 }}>{f.sub}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button
+                className="btn-primary"
+                onClick={onOpenAIPair}
+                style={{ fontSize:".8rem", padding:"10px 18px", width:"100%", justifyContent:"center", background:"linear-gradient(135deg,#7c83ff,#a78bfa)", boxShadow:"0 8px 32px rgba(124,131,255,.3)" }}
+              >
+                ⌥ Open AI Copilot <span className="arrow">→</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── AI Pair compact spotlight banner ── */}
+        <div
+          className="aip-banner"
+          onClick={onOpenAIPair}
+          role="button" tabIndex={0}
+          onKeyDown={e => e.key === "Enter" && onOpenAIPair()}
+        >
+          <div className="aip-banner-grid"/>
+          <div style={{ position:"relative", zIndex:1, display:"flex", alignItems:"flex-start", justifyContent:"space-between", flexWrap:"wrap", gap:"1.4rem" }}>
+            <div style={{ flex:1, minWidth:260 }}>
+              <div className="cog-preview-bar">
+                <div style={{ width:8, height:8, borderRadius:"50%", background:"#a5abff", boxShadow:"0 0 8px #7c83ff" }}/>
+                <span style={{ fontSize:10, letterSpacing:".18em", color:"rgba(148,163,184,.6)", fontFamily:"var(--mono)" }}>CLAUDE API · RAG · CODEX-STYLE · REAL-TIME</span>
+              </div>
+              <h3 style={{ fontFamily:"var(--disp)", fontSize:"clamp(1.2rem,2.6vw,1.8rem)", fontWeight:800, letterSpacing:"-.03em", color:"#fff", marginBottom:".5rem", lineHeight:1.1 }}>
+                Your Intelligent <span className="hp-grad-indigo">Coding Co-Pilot</span>
+              </h3>
+              <p style={{ fontSize:".88rem", color:"var(--text-2)", maxWidth:480, lineHeight:1.75 }}>
+                Powered by Claude API with RAG-enhanced retrieval — context-aware completions,
+                instant refactoring, and plain-English explanations directly in your editor.
+              </p>
+              <div style={{ display:"flex", gap:"2rem", marginTop:"1.4rem" }}>
+                {[["~40ms","Suggestion"],["4","Modes"],["42+","Files RAG"],["8","Languages"]].map(([v,l]) => (
+                  <div key={l}>
+                    <div style={{ fontFamily:"var(--disp)", fontSize:"1.35rem", fontWeight:800, color:"#a5abff" }}>{v}</div>
+                    <div style={{ fontSize:".6rem", color:"rgba(148,163,184,.5)", letterSpacing:".1em", textTransform:"uppercase", marginTop:2 }}>{l}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display:"flex", gap:8, marginTop:"1.4rem", flexWrap:"wrap" }}>
+                <span className="cog-pill aip-pill-indigo">✦ Inline Suggestions</span>
+                <span className="cog-pill aip-pill-violet">◈ Code Explanation</span>
+                <span className="cog-pill aip-pill-blue">⟳ Refactor Mode</span>
+              </div>
+            </div>
+
+            <div style={{ width:250, background:"rgba(6,11,20,.88)", border:"1px solid rgba(124,131,255,.18)", borderRadius:12, overflow:"hidden", flexShrink:0 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 12px", background:"rgba(255,255,255,.02)", borderBottom:"1px solid rgba(124,131,255,.1)" }}>
+                <span style={{ width:7, height:7, borderRadius:"50%", background:"#FF5F56" }}/><span style={{ width:7, height:7, borderRadius:"50%", background:"#FFBD2E" }}/><span style={{ width:7, height:7, borderRadius:"50%", background:"#27C93F" }}/>
+                <span style={{ fontFamily:"var(--mono)", fontSize:9, color:"rgba(148,163,184,.4)", marginLeft:4 }}>copilot.ts</span>
+                <span style={{ marginLeft:"auto", fontSize:9, color:"#a5abff", fontFamily:"var(--mono)" }}>⌥ active</span>
+              </div>
+              <div style={{ padding:"12px 14px" }}>
+                {[
+                  { label:"Next line",     val:"useCallback", color:"#a5abff", data:[3,5,4,5,4,5,4] },
+                  { label:"Refactor type", val:"TypeScript",  color:"#A78BFA", data:[2,3,5,4,3,5,4] },
+                  { label:"Boilerplate",   val:"React Hook",  color:"#4FC1FF", data:[4,3,5,5,4,3,5] },
+                ].map(row => (
+                  <div key={row.label} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                    <div>
+                      <div style={{ fontSize:9, color:"rgba(148,163,184,.45)", letterSpacing:".06em", marginBottom:2 }}>{row.label.toUpperCase()}</div>
+                      <div style={{ fontFamily:"var(--mono)", fontSize:12, fontWeight:700, color:"#e2e8f0" }}>{row.val}</div>
+                    </div>
+                    <div style={{ display:"flex", alignItems:"flex-end", gap:2, height:20 }}>
+                      {row.data.map((v,i) => (
+                        <div key={i} style={{ width:6, borderRadius:2, height:`${v*18}%`, background:row.color, opacity:0.4+v*0.12 }}/>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <div style={{ marginTop:8, borderTop:"1px solid rgba(124,131,255,.08)", paddingTop:8 }}>
+                  <div style={{ fontSize:9, color:"rgba(148,163,184,.35)", letterSpacing:".08em", marginBottom:6 }}>ACTIVE TABS</div>
+                  <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+                    {["Suggest","Explain","Refactor","Templates"].map((t,i) => (
+                      <span key={t} style={{ fontSize:8, padding:"2px 6px", borderRadius:4, background:i===0?"rgba(124,131,255,.2)":"rgba(255,255,255,.04)", color:i===0?"#a5abff":"rgba(148,163,184,.4)", border:`1px solid ${i===0?"rgba(124,131,255,.4)":"rgba(255,255,255,.06)"}`, fontFamily:"var(--mono)" }}>{t}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div style={{ padding:"8px 14px 10px", borderTop:"1px solid rgba(124,131,255,.1)", display:"flex", alignItems:"center", justifyContent:"center", gap:6, cursor:"pointer", background:"rgba(124,131,255,.04)" }}>
+                <span style={{ fontSize:10, color:"#a5abff", fontWeight:700, letterSpacing:".06em", fontFamily:"var(--mono)" }}>OPEN COPILOT</span>
+                <span style={{ color:"#a5abff", fontSize:12 }}>→</span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ position:"relative", zIndex:1, display:"flex", alignItems:"center", gap:12, marginTop:"1.6rem", paddingTop:"1.4rem", borderTop:"1px solid rgba(124,131,255,.1)" }}>
+            <button
+              onClick={e => { e.stopPropagation(); onOpenAIPair(); }}
+              className="btn-indigo"
+              style={{ fontSize:".85rem", padding:"10px 22px" }}
+            >
+              ⌥ Open AI Pair Programmer <span style={{ display:"inline-block", transition:"transform .2s" }}>→</span>
+            </button>
+            <span style={{ fontSize:".78rem", color:"rgba(148,163,184,.45)", fontFamily:"var(--mono)" }}>aipair.jsx · Module 15 · Claude API</span>
+          </div>
+        </div>
+      </section>
+
+      {/* ── 3 LAYERS ── */}
       <section className="section darker">
         <div className="s-label">System Overview</div>
         <h2 className="s-title">Three Intelligent Layers<br/>Working in Concert</h2>
@@ -527,32 +906,31 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
         </div>
       </section>
 
-      {/* MODULES */}
+      {/* ── MODULES ── */}
       <section className="section" id="modules">
         <div className="s-label">Core Modules</div>
         <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:"1.4rem", alignItems:"flex-end", marginBottom:"1.8rem" }}>
-          <div><h2 className="s-title">13 Integrated Modules</h2><p className="s-desc">Every module communicates in real time, forming a cohesive ecosystem.</p></div>
+          <div><h2 className="s-title">15 Integrated Modules</h2><p className="s-desc">Every module communicates in real time, forming a cohesive ecosystem.</p></div>
         </div>
         <div className="tabs">
           {[["all","All Modules"],["collab","Collaboration"],["ai","AI & Cognition"]].map(([v,l]) => (
             <button key={v} className={`tab-btn${activeTab===v?" active":""}`} onClick={() => setActiveTab(v)}>{l}</button>
           ))}
         </div>
-
         <div className="modules-grid">
           {filtered.map((m, idx) => {
             const bk         = getBadgeKey(m);
             const badge      = bk ? BADGE_CFG[bk] : null;
             const clickKey   = CLICKABLE.find(k => m[k]);
             const clickColor = clickKey ? CLICK_COLOR[clickKey] : null;
+            const cardClass  = `mod-card${m.isCognitive?" mod-cog":m.isGitBridge?" mod-git":m.isAIPair?" mod-aipair":""}`;
             return (
               <div
-                className={`mod-card${m.isCognitive ? " mod-cog" : ""}`}
+                className={cardClass}
                 key={`${m.idx}-${idx}`}
                 onClick={getHandler(m)}
                 style={{ cursor: isClickable(m) ? "pointer" : undefined }}
               >
-                {/* Badge */}
                 {badge && (
                   <span style={{
                     position:"absolute", top:".9rem", right:".9rem",
@@ -565,75 +943,22 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
                     {badge.label}
                   </span>
                 )}
-
                 <div className="mod-idx">{m.idx}</div>
                 <h3>{m.title}</h3>
                 <p>{m.desc}</p>
-
-                {/* Click hint */}
                 {isClickable(m) && (
                   <p style={{ fontSize:".75rem", color: clickColor || "var(--blue)", marginTop:".65rem", fontWeight:700 }}>
-                    Click to open →
+                    {m.isCognitive ? "Click to open analytics →" : "Click to open →"}
                   </p>
                 )}
-
                 <div className="mod-accent" style={{ background:m.accent }}/>
               </div>
             );
           })}
-          {filtered.map((m, idx) => (
-            <div
-              className={`mod-card${m.isCognitive ? " mod-cog" : m.isGitBridge ? " mod-git" : ""}`}
-              key={`${m.idx}-${idx}`}
-              onClick={
-                m.isEditor      ? onLaunch
-                : m.isChat      ? onOpenChat
-                : m.isSandbox   ? onOpenSandbox
-                : m.isApi       ? onOpenApi
-                : m.isPerf      ? onOpenPerf
-                : m.isBehavior  ? onOpenBehavior
-                : m.isFrustration ? onOpenFrustration
-                : m.isCognitive   ? onOpenCognitive
-                : m.isGitBridge   ? onOpenGitBridge
-                : undefined
-              }
-              style={{
-                cursor: (m.isEditor||m.isChat||m.isSandbox||m.isApi||m.isPerf||m.isBehavior||m.isFrustration||m.isCognitive||m.isGitBridge) ? "pointer" : undefined,
-              }}
-            >
-              {m.core         && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:600 }}>CORE</span>}
-              {m.isEditor     && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(79,193,255,.1)",color:"#8DD8FF",border:"1px solid rgba(79,193,255,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ LIVE</span>}
-              {m.isSandbox    && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>▶ RUN</span>}
-              {m.isChat       && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(167,139,250,.1)",color:"#A78BFA",border:"1px solid rgba(167,139,250,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>💬 CHAT</span>}
-              {m.isApi        && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,107,157,.1)",color:"#FF6B9D",border:"1px solid rgba(255,107,157,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>⚡ API</span>}
-              {m.isPerf       && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"var(--teal)",border:"1px solid rgba(78,201,246,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>📊 PERF</span>}
-              {m.isBehavior   && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,181,71,.1)",color:"#FFB547",border:"1px solid rgba(255,181,71,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🧠 TRACK</span>}
-              {m.isFrustration&& <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(255,107,157,.1)",color:"#FF6B9D",border:"1px solid rgba(255,107,157,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>😤 DETECT</span>}
-              {m.isCognitive  && (
-                <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"linear-gradient(135deg,rgba(255,181,71,.18),rgba(255,107,157,.12))",color:"#FFB547",border:"1px solid rgba(255,181,71,.38)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>
-                  📊 ANALYTICS
-                </span>
-              )}
-              {m.isGitBridge  && <span style={{ position:"absolute",top:".9rem",right:".9rem",fontSize:".6rem",background:"rgba(78,201,176,.1)",color:"#4EC9B0",border:"1px solid rgba(78,201,176,.28)",borderRadius:"100px",padding:"2px 9px",fontWeight:700 }}>🔀 GIT</span>}
-              <div className="mod-idx">{m.idx}</div>
-              <h3>{m.title}</h3>
-              <p>{m.desc}</p>
-              {m.isEditor     && <p style={{ fontSize:".75rem", color:"var(--blue)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isChat       && <p style={{ fontSize:".75rem", color:"var(--violet)", marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isSandbox    && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isApi        && <p style={{ fontSize:".75rem", color:"var(--rose)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isPerf       && <p style={{ fontSize:".75rem", color:"var(--teal)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isBehavior   && <p style={{ fontSize:".75rem", color:"var(--amber)",  marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isFrustration&& <p style={{ fontSize:".75rem", color:"var(--rose)",   marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              {m.isCognitive  && <p style={{ fontSize:".75rem", color:"#FFB547",       marginTop:".65rem", fontWeight:700 }}>Click to open analytics →</p>}
-              {m.isGitBridge  && <p style={{ fontSize:".75rem", color:"var(--teal)",  marginTop:".65rem", fontWeight:700 }}>Click to open →</p>}
-              <div className="mod-accent" style={{ background:m.accent }}/>
-            </div>
-          ))}
         </div>
       </section>
 
-      {/* LANGUAGES */}
+      {/* ── LANGUAGES ── */}
       <section className="section dark" id="langs">
         <div className="s-label">Code Execution</div>
         <h2 className="s-title">Run Code in 8 Languages</h2>
@@ -654,7 +979,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
         </div>
       </section>
 
-      {/* ARCHITECTURE */}
+      {/* ── ARCHITECTURE ── */}
       <section className="section darker" id="arch">
         <div className="s-label">System Architecture</div>
         <h2 className="s-title">Full-Stack Pipeline</h2>
@@ -688,7 +1013,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
         </div>
       </section>
 
-      {/* WORKFLOW */}
+      {/* ── WORKFLOW ── */}
       <section className="section">
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"3.5rem", alignItems:"start" }}>
           <div>
@@ -708,7 +1033,7 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
         </div>
       </section>
 
-      {/* APPS */}
+      {/* ── APPS ── */}
       <section className="section dark">
         <div className="s-label">Applications</div>
         <h2 className="s-title">Built for Two Audiences</h2>
@@ -737,17 +1062,17 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
         </div>
       </section>
 
-      {/* NOVELTY */}
+      {/* ── NOVELTY ── */}
       <section className="section darker">
         <div className="s-label">Innovation</div>
         <h2 className="s-title">What Makes CKC-OS Unique</h2>
         <p className="s-desc">The first platform to integrate cognitive analysis, real-time collaboration, and live knowledge graph learning.</p>
         <div className="novelty-grid">
           {[
-            { icon:"🧠", cls:"ni-b", title:"Behavior-Aware Coding", desc:"The system understands how you code — not just what you type — and responds accordingly." },
-            { icon:"🕸️", cls:"ni-t", title:"Live Knowledge Graphs",  desc:"Code is automatically transformed into interconnected concept maps powered by Neo4j." },
-            { icon:"▶",  cls:"ni-v", title:"8-Language Execution",   desc:"Run TypeScript, Python, Java, Go, Rust, C++, JavaScript, and SQL in the browser via CodeMirror 6." },
-            { icon:"🎯", cls:"ni-r", title:"Unified Dev + Learning", desc:"No more context-switching. Everything lives in one adaptive, intelligent environment." },
+            { icon:"🧠", cls:"ni-b", title:"Behavior-Aware Coding",  desc:"The system understands how you code — not just what you type — and responds accordingly." },
+            { icon:"🕸️", cls:"ni-t", title:"Live Knowledge Graphs",   desc:"Code is automatically transformed into interconnected concept maps powered by Neo4j." },
+            { icon:"▶",  cls:"ni-v", title:"8-Language Execution",    desc:"Run TypeScript, Python, Java, Go, Rust, C++, JavaScript, and SQL in the browser via CodeMirror 6." },
+            { icon:"🎯", cls:"ni-r", title:"Unified Dev + Learning",  desc:"No more context-switching. Everything lives in one adaptive, intelligent environment." },
           ].map(n => (
             <div key={n.title} className="novelty-card">
               <div className={`novelty-icon ${n.cls}`}>{n.icon}</div>
@@ -757,24 +1082,40 @@ function HomePage({ onLaunch, onOpenChat, onOpenSandbox, onOpenApi, onOpenPerf, 
         </div>
       </section>
 
-      {/* CTA */}
+      {/* ── CTA ── */}
       <section className="cta-section">
         <h2>Code Together,<br/><span className="hp-grad-blue">Run Instantly</span></h2>
         <p>CKC-OS transforms how developers build and students learn — collaboratively, adaptively, in any language.</p>
         <div className="cta-btns">
           <button className="btn-primary" onClick={onLaunch}>⚡ Launch Collaborative Editor <span className="arrow">→</span></button>
+          <button
+            onClick={onOpenAIPair}
+            style={{ background:"transparent", color:"#a5abff", border:"1px solid rgba(124,131,255,.35)", borderRadius:10, padding:"13px 30px", fontSize:".95rem", fontWeight:700, cursor:"pointer", fontFamily:"var(--disp)", transition:"all .2s" }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor="rgba(124,131,255,.7)"; e.currentTarget.style.background="rgba(124,131,255,.08)"; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor="rgba(124,131,255,.35)"; e.currentTarget.style.background="transparent"; }}
+          >
+            ⌥ AI Copilot
+          </button>
+          <button
+            onClick={onOpenCognitive}
+            style={{ background:"transparent", color:"#FFB547", border:"1px solid rgba(255,181,71,.35)", borderRadius:10, padding:"13px 30px", fontSize:".95rem", fontWeight:700, cursor:"pointer", fontFamily:"var(--disp)", transition:"all .2s" }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor="rgba(255,181,71,.7)"; e.currentTarget.style.background="rgba(255,181,71,.08)"; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor="rgba(255,181,71,.35)"; e.currentTarget.style.background="transparent"; }}
+          >
+            📊 View Analytics
+          </button>
           <button className="btn-ghost" onClick={() => scrollTo("overview")}>Read System Overview</button>
         </div>
       </section>
 
-      {/* FOOTER */}
+      {/* ── FOOTER ── */}
       <footer className="footer">
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <div className="nav-logo-mark" style={{ width:22, height:22, fontSize:10 }}>⚡</div>
           <span style={{ fontFamily:"var(--disp)", fontWeight:800, fontSize:".95rem", color:"var(--text-2)" }}>CKC-OS</span>
         </div>
         <div style={{ fontSize:".75rem", color:"var(--text-3)" }}>Cognitive Knowledge Coding OS · CRDT/OT · CodeMirror 6 · 2025</div>
-        <div style={{ fontSize:".75rem", color:"var(--text-3)" }}>8 Languages · AI-Powered · Real-Time</div>
+        <div style={{ fontSize:".75rem", color:"var(--text-3)" }}>15 Modules · 8 Languages · AI-Powered · Real-Time</div>
       </footer>
     </div>
   );
@@ -816,7 +1157,8 @@ function LoginScreen({ onJoin, onBack }) {
       <div style={{ position:"absolute", inset:0, pointerEvents:"none", backgroundImage:"linear-gradient(rgba(79,193,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(79,193,255,.03) 1px,transparent 1px)", backgroundSize:"52px 52px" }}/>
 
       <div className="a-cin" style={{ position:"relative", zIndex:1, width:440, background:"rgba(17,19,24,.97)", border:"1px solid rgba(255,255,255,.08)", borderRadius:18, boxShadow:"0 40px 80px rgba(0,0,0,.75),0 0 0 1px rgba(79,193,255,.06)", padding:"2.1rem 2.1rem 1.7rem" }}>
-        <button onClick={onBack} style={{ position:"absolute", top:".9rem", left:".9rem", background:"none", border:"none", color:"rgba(255,255,255,.22)", cursor:"pointer", fontSize:".72rem", fontFamily:"var(--sans)", transition:"color .15s" }}
+        <button onClick={onBack}
+          style={{ position:"absolute", top:".9rem", left:".9rem", background:"none", border:"none", color:"rgba(255,255,255,.22)", cursor:"pointer", fontSize:".72rem", fontFamily:"var(--sans)", transition:"color .15s" }}
           onMouseEnter={e => e.currentTarget.style.color="var(--blue-l)"}
           onMouseLeave={e => e.currentTarget.style.color="rgba(255,255,255,.22)"}>
           ← Back to Home
@@ -847,7 +1189,7 @@ function LoginScreen({ onJoin, onBack }) {
               const l = LANGS[k]; const on = lang === k;
               return (
                 <button key={k} onClick={() => setLang(k)}
-                  style={{ padding:"6px 4px", borderRadius:6, border:`1px solid ${on ? l.c+"66":"rgba(255,255,255,.06)"}`, background:on ? l.bg:"rgba(255,255,255,.02)", color:on ? l.c:"rgba(255,255,255,.35)", cursor:"pointer", fontFamily:"var(--mono)", fontSize:".6rem", fontWeight:700, transition:"all .12s", textAlign:"center" }}>
+                  style={{ padding:"6px 4px", borderRadius:6, border:`1px solid ${on?l.c+"66":"rgba(255,255,255,.06)"}`, background:on?l.bg:"rgba(255,255,255,.02)", color:on?l.c:"rgba(255,255,255,.35)", cursor:"pointer", fontFamily:"var(--mono)", fontSize:".6rem", fontWeight:700, transition:"all .12s", textAlign:"center" }}>
                   <div style={{ fontSize:".75rem", marginBottom:1 }}>{l.ic}</div>
                   <div style={{ fontSize:".52rem", fontFamily:"var(--sans)", fontWeight:500 }}>{l.n}</div>
                 </button>
@@ -904,12 +1246,6 @@ function LoginScreen({ onJoin, onBack }) {
 
 /* ═══════════════════════════════════════════════════════════════
    ROOT
-   ─────────────────────────────────────────────────────────────
-   Route map (add these to your react-router config):
-     /debug      → DebuggingRoom.jsx   (default export)
-     /logs       → LiveServerLogs.jsx  (default export, pass onClose)
-     /knowledge  → KnowledgeGraphEngine.jsx (default export)
-     /aimentor   → AIBot.jsx           (default export)
 ═══════════════════════════════════════════════════════════════ */
 export default function Index() {
   const navigate = useNavigate();
@@ -920,7 +1256,6 @@ export default function Index() {
     navigate("/editor", { state: { me, sid, lang } });
   };
 
-  /* existing routes */
   const toChat        = () => navigate("/devchat");
   const toSandbox     = () => navigate("/sandbox");
   const toApi         = () => navigate("/api");
@@ -929,12 +1264,11 @@ export default function Index() {
   const toFrustration = () => navigate("/frustration");
   const toCognitive   = () => navigate("/cognitive");
   const toGitBridge   = () => navigate("/gitbridge");
-
-  /* ── four new routes linked to the uploaded components ── */
-  const toDebug       = () => navigate("/debug");      // DebuggingRoom.jsx
-  const toLogs        = () => navigate("/logs");       // LiveServerLogs.jsx
-  const toKnowledge   = () => navigate("/knowledge");  // KnowledgeGraphEngine.jsx
-  const toAiMentor    = () => navigate("/aimentor");   // AIBot.jsx
+  const toAIPair      = () => navigate("/aipair");
+  const toDebug       = () => navigate("/debug");
+  const toLogs        = () => navigate("/logs");
+  const toKnowledge   = () => navigate("/knowledge");
+  const toAiMentor    = () => navigate("/aimentor");
 
   return (
     <>
@@ -954,6 +1288,7 @@ export default function Index() {
           onOpenKnowledge={toKnowledge}
           onOpenAiMentor={toAiMentor}
           onOpenGitBridge={toGitBridge}
+          onOpenAIPair={toAIPair}
         />
       )}
       {route === "login" && <LoginScreen onJoin={toEditor} onBack={() => setRoute("home")} />}
