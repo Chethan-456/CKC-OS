@@ -1,21 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
-// ═══════════════════════════════════════════════════════
-// ════════ DEBUGGING ROOM — MODAL VERSION ══════════════
-// ═══════════════════════════════════════════════════════
-//
-// Usage:
-//   <DebuggingRoomModal
-//     isOpen={showDebug}
-//     onClose={() => setShowDebug(false)}
-//     lang="ts"          // optional, defaults to "ts"
-//   />
-//
-// Remove any <DebuggingRoomPage /> or <DebuggingRoomModal /> usage
-// from your index / landing page.
-// ═══════════════════════════════════════════════════════
-
 const BOTS = [
   { name: "Aria K.", inits: "AK", color: "#FF6B9D", bg: "rgba(255,107,157,.18)" },
   { name: "Dev M.",  inits: "DM", color: "#4EC9B0", bg: "rgba(78,201,176,.18)"  },
@@ -67,6 +52,57 @@ function generateBotAnnotation(error) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
+// ── AI Chat via Groq API (called directly from frontend) ──
+async function askGroq(messages, currentIssue, lang, userCode, groqApiKey) {
+  if (!groqApiKey || !groqApiKey.trim()) {
+    throw new Error("Groq API key is missing. Please enter your key above.");
+  }
+
+  // Build conversation history for Groq
+  const systemPrompt = `You are an expert debugging assistant helping developers fix code issues.
+Current issue being debugged:
+- Type: ${currentIssue?.type || "unknown"}
+- Message: ${currentIssue?.text || "unknown"}
+- Language: ${LANGS[lang]?.n || lang}
+${userCode ? `\nUser's code context:\n\`\`\`${lang}\n${userCode}\n\`\`\`` : ""}
+
+Provide clear, concise debugging help. Use code blocks when showing code examples.`;
+
+  // Convert message history to Groq format (skip the initial assistant welcome)
+  const groqMessages = messages
+    .filter((m) => m.role === "user" || (m.role === "assistant" && !m.id?.startsWith("init-")))
+    .map((m) => ({
+      role: m.role === "error" ? "assistant" : m.role,
+      content: m.text,
+    }));
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${groqApiKey.trim()}`,
+    },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...groqMessages,
+      ],
+      max_tokens: 1024,
+      temperature: 0.6,
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    const msg = err?.error?.message || `HTTP ${response.status}`;
+    throw new Error(msg);
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || "No response from Groq.";
+}
+
 // ── Styles injected once ──
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Syne:wght@500;600;700;800&display=swap');
@@ -94,294 +130,184 @@ const CSS = `
     --text3: #e0e0e0;
   }
 
-  /* ── Modal overlay backdrop ── */
   .dbgm-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    background: rgba(0,0,0,.55);
-    backdrop-filter: blur(3px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    position: fixed; inset: 0; z-index: 9999;
+    background: rgba(0,0,0,.55); backdrop-filter: blur(3px);
+    display: flex; align-items: center; justify-content: center;
     animation: dbgmFadeIn .15s ease both;
   }
   @keyframes dbgmFadeIn { from{opacity:0} to{opacity:1} }
 
-  /* ── Modal container ── */
   .dbgm-modal {
     font-family: var(--sans);
-    width: min(700px, 95vw);
-    height: min(480px, 90vh);
+    width: min(860px, 97vw);
+    height: min(580px, 92vh);
     background: #0f1219;
-    border: 1px solid rgba(255,107,157,.18);
-    border-radius: 14px;
+    border: 1px solid rgba(255,107,157,.18); border-radius: 14px;
     box-shadow: 0 24px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.04);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    display: flex; flex-direction: column; overflow: hidden;
     animation: dbgmSlideIn .18s cubic-bezier(.22,.9,.36,1) both;
   }
   @keyframes dbgmSlideIn { from{opacity:0;transform:translateY(14px) scale(.97)} to{opacity:1;transform:none} }
 
-  /* ── Modal title bar ── */
   .dbgm-titlebar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 0 16px;
-    height: 46px;
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 16px; height: 46px;
     background: rgba(255,107,157,.05);
-    border-bottom: 1px solid rgba(255,107,157,.1);
-    flex-shrink: 0;
+    border-bottom: 1px solid rgba(255,107,157,.1); flex-shrink: 0;
   }
-  .dbgm-titlebar-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: var(--pink);
-    box-shadow: 0 0 7px var(--pink);
-    flex-shrink: 0;
-  }
-  .dbgm-title {
-    font-family: var(--sans);
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--pink);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .dbgm-spacer { flex: 1; }
-  .dbgm-issues-badge {
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--muted);
-    padding: 2px 9px;
-    border-radius: 5px;
-    background: rgba(255,255,255,.03);
-    border: 1px solid var(--bdr);
-  }
-  .dbgm-issues-badge span { color: var(--text2); }
-  .dbgm-bots-row { display: flex; gap: 4px; align-items: center; }
-  .dbgm-bot-avatar {
-    width: 24px; height: 24px;
-    border-radius: 6px;
-    font-family: var(--mono);
-    font-size: 8px; font-weight: 700;
-    display: flex; align-items: center; justify-content: center;
-    transition: transform .15s;
-    cursor: default;
-  }
-  .dbgm-bot-avatar:hover { transform: scale(1.1); }
-  .dbgm-close-btn {
-    width: 24px; height: 24px;
-    border-radius: 6px;
-    background: rgba(255,255,255,.05);
-    border: 1px solid rgba(255,255,255,.09);
-    color: var(--muted);
-    font-size: 12px;
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
-    transition: all .15s;
-    flex-shrink: 0;
-  }
-  .dbgm-close-btn:hover { background: rgba(255,107,157,.15); border-color: rgba(255,107,157,.3); color: var(--pink); }
+  .dbgm-titlebar-dot { width:8px;height:8px;border-radius:50%;background:var(--pink);box-shadow:0 0 7px var(--pink);flex-shrink:0; }
+  .dbgm-title { font-family:var(--sans);font-size:13px;font-weight:700;color:var(--pink);display:flex;align-items:center;gap:6px; }
+  .dbgm-spacer { flex:1; }
+  .dbgm-issues-badge { font-family:var(--mono);font-size:10px;color:var(--muted);padding:2px 9px;border-radius:5px;background:rgba(255,255,255,.03);border:1px solid var(--bdr); }
+  .dbgm-issues-badge span { color:var(--text2); }
+  .dbgm-bots-row { display:flex;gap:4px;align-items:center; }
+  .dbgm-bot-avatar { width:24px;height:24px;border-radius:6px;font-family:var(--mono);font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;transition:transform .15s;cursor:default; }
+  .dbgm-bot-avatar:hover { transform:scale(1.1); }
+  .dbgm-ai-badge { display:flex;align-items:center;gap:4px;padding:2px 8px;border-radius:5px;font-family:var(--mono);font-size:9.5px;font-weight:700;background:rgba(78,201,176,.12);border:1px solid rgba(78,201,176,.3);color:var(--teal); }
+  .dbgm-ai-dot { width:5px;height:5px;border-radius:50%;background:var(--teal);box-shadow:0 0 5px var(--teal); }
+  .dbgm-close-btn { width:24px;height:24px;border-radius:6px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);color:var(--muted);font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;flex-shrink:0; }
+  .dbgm-close-btn:hover { background:rgba(255,107,157,.15);border-color:rgba(255,107,157,.3);color:var(--pink); }
 
-  /* ── Body: left + right ── */
-  .dbgm-body {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 220px 1fr;
-    min-height: 0;
-    overflow: hidden;
-  }
+  .dbgm-body { flex:1;display:grid;grid-template-columns:200px 1fr 290px;min-height:0;overflow:hidden; }
 
-  /* ── Left issues panel ── */
-  .dbgm-left {
-    background: rgba(255,255,255,.015);
-    border-right: 1px solid var(--bdr);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-  .dbgm-left-head {
-    padding: 9px 13px 7px;
-    border-bottom: 1px solid var(--bdr2);
-    flex-shrink: 0;
-  }
-  .dbgm-section-label {
-    font-family: var(--mono);
-    font-size: 8.5px;
-    font-weight: 700;
-    letter-spacing: .12em;
-    text-transform: uppercase;
-    color: var(--dim);
-  }
-  .dbgm-issues-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 6px;
-  }
-  .dbgm-issues-list::-webkit-scrollbar { width: 3px; }
-  .dbgm-issues-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,.07); border-radius: 2px; }
-  .dbgm-issue-item {
-    padding: 8px 10px;
-    border-radius: 7px;
-    margin-bottom: 4px;
-    cursor: pointer;
-    border: 1px solid transparent;
-    transition: background .12s, border-color .12s;
-  }
-  .dbgm-issue-item:hover { background: rgba(255,107,157,.06); border-color: rgba(255,107,157,.13); }
-  .dbgm-issue-item.sel { background: rgba(255,107,157,.1); border-color: rgba(255,107,157,.3); }
-  .dbgm-issue-top { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; }
-  .dbgm-issue-num { font-family: var(--mono); font-size: 8.5px; color: var(--dim); margin-left: auto; }
-  .dbgm-issue-text { font-family: var(--mono); font-size: 10px; line-height: 1.5; word-break: break-word; }
-  .dbgm-err-badge {
-    display: inline-flex; align-items: center;
-    padding: 1px 5px; border-radius: 4px;
-    font-size: 8.5px; font-weight: 700; font-family: var(--mono);
-    background: rgba(255,107,157,.15); color: var(--pink);
-    border: 1px solid rgba(255,107,157,.25);
-  }
-  .dbgm-warn-badge {
-    display: inline-flex; align-items: center;
-    padding: 1px 5px; border-radius: 4px;
-    font-size: 8.5px; font-weight: 700; font-family: var(--mono);
-    background: rgba(220,220,170,.12); color: var(--gold);
-    border: 1px solid rgba(220,220,170,.2);
-  }
-  .dbgm-no-issues {
-    text-align: center; padding: 28px 12px;
-    color: var(--muted); font-size: 11px;
-  }
-  .dbgm-no-issues-icon { font-size: 22px; margin-bottom: 5px; }
+  .dbgm-left { background:rgba(255,255,255,.015);border-right:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden; }
+  .dbgm-left-head { padding:9px 13px 7px;border-bottom:1px solid var(--bdr2);flex-shrink:0; }
+  .dbgm-section-label { font-family:var(--mono);font-size:8.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim); }
+  .dbgm-issues-list { flex:1;overflow-y:auto;padding:6px; }
+  .dbgm-issues-list::-webkit-scrollbar { width:3px; }
+  .dbgm-issues-list::-webkit-scrollbar-thumb { background:rgba(255,255,255,.07);border-radius:2px; }
+  .dbgm-issue-item { padding:8px 10px;border-radius:7px;margin-bottom:4px;cursor:pointer;border:1px solid transparent;transition:background .12s,border-color .12s; }
+  .dbgm-issue-item:hover { background:rgba(255,107,157,.06);border-color:rgba(255,107,157,.13); }
+  .dbgm-issue-item.sel { background:rgba(255,107,157,.1);border-color:rgba(255,107,157,.3); }
+  .dbgm-issue-top { display:flex;align-items:center;gap:5px;margin-bottom:3px; }
+  .dbgm-issue-num { font-family:var(--mono);font-size:8.5px;color:var(--dim);margin-left:auto; }
+  .dbgm-issue-text { font-family:var(--mono);font-size:10px;line-height:1.5;word-break:break-word; }
+  .dbgm-err-badge { display:inline-flex;align-items:center;padding:1px 5px;border-radius:4px;font-size:8.5px;font-weight:700;font-family:var(--mono);background:rgba(255,107,157,.15);color:var(--pink);border:1px solid rgba(255,107,157,.25); }
+  .dbgm-warn-badge { display:inline-flex;align-items:center;padding:1px 5px;border-radius:4px;font-size:8.5px;font-weight:700;font-family:var(--mono);background:rgba(220,220,170,.12);color:var(--gold);border:1px solid rgba(220,220,170,.2); }
+  .dbgm-no-issues { text-align:center;padding:28px 12px;color:var(--muted);font-size:11px; }
+  .dbgm-no-issues-icon { font-size:22px;margin-bottom:5px; }
+  .dbgm-left-foot { padding:8px 12px;border-top:1px solid var(--bdr2);flex-shrink:0; }
+  .dbgm-stat-row { display:flex;gap:10px;align-items:center;flex-wrap:wrap; }
+  .dbgm-stat-chip { display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:9.5px;color:var(--muted); }
+  .dbgm-stat-chip span { color:var(--text2); }
+  .dbgm-stat-dot { width:5px;height:5px;border-radius:50%;flex-shrink:0; }
 
-  /* ── Footer stats ── */
-  .dbgm-left-foot {
-    padding: 8px 12px;
-    border-top: 1px solid var(--bdr2);
-    flex-shrink: 0;
-  }
-  .dbgm-stat-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .dbgm-stat-chip {
-    display: flex; align-items: center; gap: 4px;
-    font-family: var(--mono); font-size: 9.5px; color: var(--muted);
-  }
-  .dbgm-stat-chip span { color: var(--text2); }
-  .dbgm-stat-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
-
-  /* ── Right chat panel ── */
-  .dbgm-right {
-    display: flex; flex-direction: column; overflow: hidden;
-    background: var(--bg2);
-  }
-  .dbgm-chat-head {
-    padding: 8px 14px;
-    border-bottom: 1px solid var(--bdr);
-    flex-shrink: 0;
-    display: flex; align-items: center; gap: 8px;
-    background: rgba(255,107,157,.03);
-  }
-  .dbgm-chat-head-label {
-    font-family: var(--mono); font-size: 9.5px; color: var(--pink);
-    font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-  }
-  .dbgm-chat-issue-preview {
-    font-family: var(--mono); font-size: 9.5px; color: var(--muted);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
-  }
-  .dbgm-chat-messages {
-    flex: 1; overflow-y: auto;
-    padding: 12px 14px;
-    display: flex; flex-direction: column; gap: 7px;
-  }
-  .dbgm-chat-messages::-webkit-scrollbar { width: 3px; }
-  .dbgm-chat-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,.07); border-radius: 2px; }
-  .dbgm-sys-msg { text-align: center; padding: 3px 0; }
-  .dbgm-sys-inner {
-    display: inline-block;
-    font-family: var(--mono); font-size: 9.5px; color: var(--muted);
-    background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06);
-    border-radius: 100px; padding: 2px 10px;
-  }
-  .dbgm-msg { display: flex; gap: 8px; animation: dbgFadeIn .18s ease both; }
+  .dbgm-right { display:flex;flex-direction:column;overflow:hidden;background:var(--bg2);border-right:1px solid var(--bdr); }
+  .dbgm-chat-head { padding:8px 14px;border-bottom:1px solid var(--bdr);flex-shrink:0;display:flex;align-items:center;gap:8px;background:rgba(255,107,157,.03); }
+  .dbgm-chat-head-label { font-family:var(--mono);font-size:9.5px;color:var(--pink);font-weight:700;letter-spacing:.06em;text-transform:uppercase; }
+  .dbgm-chat-issue-preview { font-family:var(--mono);font-size:9.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1; }
+  .dbgm-chat-messages { flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:7px; }
+  .dbgm-chat-messages::-webkit-scrollbar { width:3px; }
+  .dbgm-chat-messages::-webkit-scrollbar-thumb { background:rgba(255,255,255,.07);border-radius:2px; }
+  .dbgm-sys-msg { text-align:center;padding:3px 0; }
+  .dbgm-sys-inner { display:inline-block;font-family:var(--mono);font-size:9.5px;color:var(--muted);background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:100px;padding:2px 10px; }
+  .dbgm-msg { display:flex;gap:8px;animation:dbgFadeIn .18s ease both; }
   @keyframes dbgFadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:none} }
-  .dbgm-avatar {
-    width: 26px; height: 26px; border-radius: 7px;
-    font-family: var(--mono); font-size: 8.5px; font-weight: 700;
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-  }
-  .dbgm-msg-content { max-width: 80%; }
-  .dbgm-msg-name { font-size: 8.5px; color: var(--muted); margin-bottom: 2px; font-family: var(--mono); }
-  .dbgm-bubble {
-    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07);
-    border-radius: 7px 7px 7px 3px; padding: 7px 11px;
-    font-size: 11.5px; line-height: 1.65; font-family: var(--sans); color: var(--text3);
-  }
-  .dbgm-bubble.me {
-    background: rgba(79,193,255,.1); border-color: rgba(79,193,255,.22);
-    border-radius: 7px 7px 3px 7px; color: #a8d8ff;
-  }
-  .dbgm-bubble.bot { background: rgba(255,107,157,.07); border-color: rgba(255,107,157,.18); color: #ffb3c6; }
-  .dbgm-msg-time { font-size: 8.5px; color: var(--dim); margin-top: 2px; font-family: var(--mono); }
-  .dbgm-fix-btn {
-    display: inline-flex; align-items: center; gap: 4px;
-    margin-top: 5px; padding: 2px 8px; border-radius: 5px;
-    background: rgba(78,201,176,.12); border: 1px solid rgba(78,201,176,.3);
-    color: var(--teal); font-size: 9.5px; font-weight: 700;
-    font-family: var(--mono); cursor: pointer; transition: all .15s;
-  }
-  .dbgm-fix-btn:hover { background: rgba(78,201,176,.25); }
+  .dbgm-avatar { width:26px;height:26px;border-radius:7px;font-family:var(--mono);font-size:8.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0; }
+  .dbgm-msg-content { max-width:80%; }
+  .dbgm-msg-name { font-size:8.5px;color:var(--muted);margin-bottom:2px;font-family:var(--mono); }
+  .dbgm-bubble { background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:7px 7px 7px 3px;padding:7px 11px;font-size:11.5px;line-height:1.65;font-family:var(--sans);color:var(--text3); }
+  .dbgm-bubble.me { background:rgba(79,193,255,.1);border-color:rgba(79,193,255,.22);border-radius:7px 7px 3px 7px;color:#a8d8ff; }
+  .dbgm-bubble.bot { background:rgba(255,107,157,.07);border-color:rgba(255,107,157,.18);color:#ffb3c6; }
+  .dbgm-msg-time { font-size:8.5px;color:var(--dim);margin-top:2px;font-family:var(--mono); }
+  .dbgm-fix-btn { display:inline-flex;align-items:center;gap:4px;margin-top:5px;padding:2px 8px;border-radius:5px;background:rgba(78,201,176,.12);border:1px solid rgba(78,201,176,.3);color:var(--teal);font-size:9.5px;font-weight:700;font-family:var(--mono);cursor:pointer;transition:all .15s; }
+  .dbgm-fix-btn:hover { background:rgba(78,201,176,.25); }
+  .dbgm-input-row { display:flex;gap:6px;padding:9px 12px;border-top:1px solid var(--bdr);flex-shrink:0;background:var(--bg1); }
+  .dbgm-input { flex:1;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:8px 12px;color:var(--text3);font-size:11.5px;font-family:var(--sans);outline:none;transition:border-color .15s; }
+  .dbgm-input:focus { border-color:rgba(255,107,157,.4); }
+  .dbgm-input::placeholder { color:var(--muted); }
+  .dbgm-send-btn { padding:8px 16px;border-radius:7px;background:rgba(255,107,157,.15);border:1px solid rgba(255,107,157,.35);color:var(--pink);font-size:11px;font-weight:700;font-family:var(--sans);cursor:pointer;transition:all .15s;white-space:nowrap; }
+  .dbgm-send-btn:hover { background:rgba(255,107,157,.28); }
+  .dbgm-send-btn:disabled { opacity:.4;cursor:not-allowed; }
 
-  /* ── Input row ── */
-  .dbgm-input-row {
-    display: flex; gap: 6px;
-    padding: 9px 12px;
-    border-top: 1px solid var(--bdr);
-    flex-shrink: 0; background: var(--bg1);
-  }
-  .dbgm-input {
-    flex: 1; background: rgba(255,255,255,.04);
-    border: 1px solid rgba(255,255,255,.1); border-radius: 7px;
-    padding: 8px 12px; color: var(--text3);
-    font-size: 11.5px; font-family: var(--sans); outline: none; transition: border-color .15s;
-  }
-  .dbgm-input:focus { border-color: rgba(255,107,157,.4); }
-  .dbgm-input::placeholder { color: var(--muted); }
-  .dbgm-send-btn {
-    padding: 8px 16px; border-radius: 7px;
-    background: rgba(255,107,157,.15); border: 1px solid rgba(255,107,157,.35);
-    color: var(--pink); font-size: 11px; font-weight: 700;
-    font-family: var(--sans); cursor: pointer; transition: all .15s; white-space: nowrap;
-  }
-  .dbgm-send-btn:hover { background: rgba(255,107,157,.28); }
+  /* ── RIGHT: Groq AI Panel ── */
+  .dbgm-ai-panel { display:flex;flex-direction:column;overflow:hidden;background:#0b0e15; }
+  .dbgm-ai-head { padding:8px 14px;border-bottom:1px solid rgba(78,201,176,.15);flex-shrink:0;display:flex;align-items:center;gap:8px;background:rgba(78,201,176,.04); }
+  .dbgm-ai-head-label { font-family:var(--mono);font-size:9.5px;color:var(--teal);font-weight:700;letter-spacing:.06em;text-transform:uppercase; }
+  .dbgm-ai-model-tag { font-family:var(--mono);font-size:8.5px;color:var(--dim);margin-left:auto; }
 
-  /* ── Bottom status bar ── */
-  .dbgm-statusbar {
-    display: flex; align-items: center; gap: 14px;
-    padding: 5px 16px;
-    background: rgba(255,255,255,.02);
-    border-top: 1px solid var(--bdr);
-    flex-shrink: 0;
-  }
-  .dbgm-status-item {
-    font-family: var(--mono); font-size: 9.5px; color: var(--muted);
-    display: flex; align-items: center; gap: 4px;
-  }
-  .dbgm-status-item span { color: var(--text2); }
-  .dbgm-live-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 5px var(--teal); }
-  .dbgm-in-room { font-family: var(--mono); font-size: 9.5px; color: var(--teal); display: flex; align-items: center; gap: 4px; }
+  /* API key input strip */
+  .dbgm-apikey-strip { padding:6px 10px;border-bottom:1px solid rgba(78,201,176,.1);background:rgba(0,0,0,.25);flex-shrink:0;display:flex;align-items:center;gap:6px; }
+  .dbgm-apikey-input { flex:1;background:rgba(78,201,176,.05);border:1px solid rgba(78,201,176,.2);border-radius:5px;padding:4px 8px;color:var(--text3);font-size:9.5px;font-family:var(--mono);outline:none;transition:border-color .15s; }
+  .dbgm-apikey-input:focus { border-color:rgba(78,201,176,.5); }
+  .dbgm-apikey-input::placeholder { color:var(--dim); }
+  .dbgm-apikey-label { font-family:var(--mono);font-size:8.5px;color:var(--muted);white-space:nowrap; }
+
+  .dbgm-ai-messages { flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px; }
+  .dbgm-ai-messages::-webkit-scrollbar { width:3px; }
+  .dbgm-ai-messages::-webkit-scrollbar-thumb { background:rgba(78,201,176,.15);border-radius:2px; }
+  .dbgm-ai-msg { display:flex;flex-direction:column;gap:3px;animation:dbgFadeIn .18s ease both; }
+  .dbgm-ai-msg-label { font-family:var(--mono);font-size:8.5px;display:flex;align-items:center;gap:4px; }
+  .dbgm-ai-bubble { padding:9px 12px;border-radius:8px;font-size:11.5px;line-height:1.7;font-family:var(--sans);white-space:pre-wrap;word-break:break-word; }
+  .dbgm-ai-bubble.user { background:rgba(79,193,255,.08);border:1px solid rgba(79,193,255,.18);color:#a8d8ff;border-radius:8px 8px 3px 8px;align-self:flex-end;max-width:90%; }
+  .dbgm-ai-bubble.assistant { background:rgba(78,201,176,.08);border:1px solid rgba(78,201,176,.2);color:#8ffce8; }
+  .dbgm-ai-bubble.error-msg { background:rgba(255,107,157,.07);border:1px solid rgba(255,107,157,.18);color:#ff8090;font-family:var(--mono);font-size:10.5px; }
+  .dbgm-ai-typing { display:flex;align-items:center;gap:5px;padding:8px 12px;border-radius:8px;background:rgba(78,201,176,.06);border:1px solid rgba(78,201,176,.15);font-family:var(--mono);font-size:9.5px;color:var(--teal); }
+  .dbgm-typing-dots { display:flex;gap:3px; }
+  .dbgm-typing-dots span { width:4px;height:4px;border-radius:50%;background:var(--teal);animation:dbgTypeDot 1.2s ease-in-out infinite; }
+  .dbgm-typing-dots span:nth-child(2) { animation-delay:.2s; }
+  .dbgm-typing-dots span:nth-child(3) { animation-delay:.4s; }
+  @keyframes dbgTypeDot { 0%,80%,100%{opacity:.2;transform:scale(.8)} 40%{opacity:1;transform:scale(1)} }
+
+  .dbgm-ai-code { font-family:var(--mono);font-size:10px;line-height:1.6;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:8px 10px;margin-top:5px;overflow-x:auto;color:#9CDCFE;white-space:pre; }
+
+  .dbgm-ai-input-row { display:flex;flex-direction:column;gap:5px;padding:8px 10px;border-top:1px solid rgba(78,201,176,.12);flex-shrink:0;background:#090c12; }
+  .dbgm-ai-input-top { display:flex;gap:5px; }
+  .dbgm-ai-input { flex:1;background:rgba(78,201,176,.05);border:1px solid rgba(78,201,176,.18);border-radius:7px;padding:7px 10px;color:var(--text3);font-size:11px;font-family:var(--sans);outline:none;transition:border-color .15s;resize:none;height:38px;max-height:80px; }
+  .dbgm-ai-input:focus { border-color:rgba(78,201,176,.45); }
+  .dbgm-ai-input::placeholder { color:var(--muted);font-size:10.5px; }
+  .dbgm-ai-send-btn { padding:7px 13px;border-radius:7px;background:rgba(78,201,176,.15);border:1px solid rgba(78,201,176,.35);color:var(--teal);font-size:11px;font-weight:700;font-family:var(--sans);cursor:pointer;transition:all .15s;white-space:nowrap;align-self:flex-end; }
+  .dbgm-ai-send-btn:hover:not(:disabled) { background:rgba(78,201,176,.28); }
+  .dbgm-ai-send-btn:disabled { opacity:.4;cursor:not-allowed; }
+  .dbgm-ai-quick-btns { display:flex;gap:4px;flex-wrap:wrap; }
+  .dbgm-ai-quick-btn { padding:2px 8px;border-radius:5px;background:rgba(78,201,176,.07);border:1px solid rgba(78,201,176,.2);color:var(--teal);font-size:9px;font-family:var(--mono);cursor:pointer;transition:all .12s;white-space:nowrap; }
+  .dbgm-ai-quick-btn:hover { background:rgba(78,201,176,.18); }
+
+  .dbgm-code-area { padding:6px 10px;border-top:1px solid rgba(78,201,176,.08);flex-shrink:0;background:#090c12; }
+  .dbgm-code-area-label { font-family:var(--mono);font-size:8.5px;color:var(--dim);margin-bottom:3px;text-transform:uppercase;letter-spacing:.1em; }
+  .dbgm-code-input { width:100%;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:5px 8px;color:#9CDCFE;font-size:9.5px;font-family:var(--mono);outline:none;resize:none;height:50px;transition:border-color .15s; }
+  .dbgm-code-input:focus { border-color:rgba(78,201,176,.3); }
+  .dbgm-code-input::placeholder { color:var(--dim); }
+
+  .dbgm-statusbar { display:flex;align-items:center;gap:14px;padding:5px 16px;background:rgba(255,255,255,.02);border-top:1px solid var(--bdr);flex-shrink:0; }
+  .dbgm-status-item { font-family:var(--mono);font-size:9.5px;color:var(--muted);display:flex;align-items:center;gap:4px; }
+  .dbgm-status-item span { color:var(--text2); }
+  .dbgm-live-dot { width:5px;height:5px;border-radius:50%;background:var(--teal);box-shadow:0 0 5px var(--teal); }
+  .dbgm-in-room { font-family:var(--mono);font-size:9.5px;color:var(--teal);display:flex;align-items:center;gap:4px; }
 
   @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.35} }
-  .pulse { animation: pulse 1.8s ease-in-out infinite; }
+  .pulse { animation:pulse 1.8s ease-in-out infinite; }
 
-  @media (max-width: 560px) {
-    .dbgm-body { grid-template-columns: 1fr; grid-template-rows: 160px 1fr; }
-    .dbgm-left { border-right: none; border-bottom: 1px solid var(--bdr); }
-    .dbgm-modal { height: min(560px, 92vh); }
+  @media (max-width:700px) {
+    .dbgm-body { grid-template-columns:1fr;grid-template-rows:140px 1fr 240px; }
+    .dbgm-left { border-right:none;border-bottom:1px solid var(--bdr); }
+    .dbgm-right { border-right:none;border-bottom:1px solid var(--bdr); }
+    .dbgm-modal { width:99vw;height:96vh;border-radius:10px; }
   }
 `;
+
+function FormatAIResponse({ text }) {
+  const parts = text.split(/(```[\s\S]*?```|`[^`]+`)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.startsWith("```") && part.endsWith("```")) {
+          const inner = part.replace(/^```[a-z]*\n?/, "").replace(/```$/, "");
+          return <div key={i} className="dbgm-ai-code">{inner}</div>;
+        }
+        if (part.startsWith("`") && part.endsWith("`")) {
+          return (
+            <code key={i} style={{ fontFamily: "var(--mono)", fontSize: "10px", background: "rgba(0,0,0,.35)", padding: "1px 5px", borderRadius: "4px", color: "#9CDCFE" }}>
+              {part.slice(1, -1)}
+            </code>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
 
 // ═══════════════════════════════════════════════════════
 // ════════ MODAL COMPONENT ═════════════════════════════
@@ -394,13 +320,22 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts" }) {
   const [messages, setMessages] = useState([]);
   const [inputVal, setInputVal] = useState("");
   const [marked, setMarked] = useState(new Set());
+
+  // AI state
+  const [aiMessages, setAiMessages] = useState([]);
+  const [aiInput, setAiInput] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [userCode, setUserCode] = useState("");
+  // AFTER (use env variable instead)
+const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+
   const messagesEndRef = useRef(null);
+  const aiEndRef       = useRef(null);
   const botTypingRef   = useRef(null);
   const styleInjected  = useRef(false);
 
   const me = { name: "You", color: "#4FC1FF", bg: "rgba(79,193,255,.18)", inits: "ME" };
 
-  // Inject CSS once
   useEffect(() => {
     if (styleInjected.current) return;
     styleInjected.current = true;
@@ -409,7 +344,6 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts" }) {
     document.head.appendChild(tag);
   }, []);
 
-  // Close on Escape
   useEffect(() => {
     const handler = (e) => { if (e.key === "Escape" && isOpen) onClose?.(); };
     window.addEventListener("keydown", handler);
@@ -421,7 +355,6 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts" }) {
     ...warnings.map((w) => ({ type: "warning", text: w })),
   ];
 
-  // Bot auto-annotation when issue/lang changes
   useEffect(() => {
     if (!isOpen || allIssues.length === 0) return;
     const issue = allIssues[selectedIdx];
@@ -443,7 +376,6 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts" }) {
         ...prev,
         { id: Math.random().toString(36).slice(2), from: bot.name, color: bot.color, bg: bot.bg, inits: bot.inits, text: suggestion, t: nowTs(), isBot: true },
       ]);
-
       setTimeout(() => {
         const bot2 = BOTS[1];
         const langHint = `In ${LANGS[lang]?.n || lang}: ${
@@ -456,12 +388,23 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts" }) {
       }, 1600);
     }, 700);
 
+    setAiMessages([{
+      id: "init-" + selectedIdx,
+      role: "assistant",
+      text: `Ready to help debug: **${issue?.type === "error" ? "🔴 Error" : "⚠️ Warning"}**\n\n\`${issue?.text?.slice(0, 100)}${issue?.text?.length > 100 ? "…" : ""}\`\n\nEnter your Groq API key above, then ask me anything about this issue.`,
+      t: nowTs(),
+    }]);
+
     return () => clearTimeout(botTypingRef.current);
   }, [selectedIdx, lang, isOpen]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    aiEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [aiMessages, aiLoading]);
 
   const sendMessage = () => {
     const txt = inputVal.trim();
@@ -471,7 +414,6 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts" }) {
       { id: Math.random().toString(36).slice(2), from: me.name, color: me.color, bg: me.bg, inits: me.inits, text: txt, t: nowTs(), isMe: true },
     ]);
     setInputVal("");
-
     setTimeout(() => {
       const bot = BOTS[Math.floor(Math.random() * BOTS.length)];
       const replies = [
@@ -489,6 +431,40 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts" }) {
     }, 900 + Math.random() * 600);
   };
 
+  const sendAiMessage = async (overrideText) => {
+    const txt = (overrideText || aiInput).trim();
+    if (!txt || aiLoading) return;
+
+    const userMsg = { id: Math.random().toString(36).slice(2), role: "user", text: txt, t: nowTs() };
+    const newHistory = [...aiMessages, userMsg];
+    setAiMessages(newHistory);
+    setAiInput("");
+    setAiLoading(true);
+
+    try {
+      const currentIssue = allIssues[selectedIdx];
+      const aiReply = await askGroq(newHistory, currentIssue, lang, userCode, groqApiKey);
+      setAiMessages((prev) => [
+        ...prev,
+        { id: Math.random().toString(36).slice(2), role: "assistant", text: aiReply, t: nowTs() },
+      ]);
+    } catch (err) {
+      setAiMessages((prev) => [
+        ...prev,
+        { id: Math.random().toString(36).slice(2), role: "error", text: `⚠ Groq Error: ${err.message}`, t: nowTs() },
+      ]);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const quickPrompts = [
+    "Why does this happen?",
+    "Show me the fix",
+    "Explain step by step",
+    "Alternative approaches?",
+  ];
+
   const currentIssue = allIssues[selectedIdx];
 
   if (!isOpen) return null;
@@ -501,13 +477,14 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts" }) {
         <div className="dbgm-titlebar">
           <div className="dbgm-titlebar-dot pulse" />
           <div className="dbgm-title">🐛 Real-Time Debugging Room</div>
-
           <div className="dbgm-spacer" />
-
+          <div className="dbgm-ai-badge">
+            <div className="dbgm-ai-dot pulse" />
+            Groq AI
+          </div>
           <div className="dbgm-issues-badge">
             {LANGS[lang]?.n || lang} · <span>{allIssues.length} issue{allIssues.length !== 1 ? "s" : ""}</span>
           </div>
-
           <div className="dbgm-bots-row">
             {BOTS.map((b, i) => (
               <div
@@ -520,7 +497,6 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts" }) {
               </div>
             ))}
           </div>
-
           <button className="dbgm-close-btn" onClick={onClose} title="Close (Esc)">✕</button>
         </div>
 
@@ -532,7 +508,6 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts" }) {
             <div className="dbgm-left-head">
               <div className="dbgm-section-label">Issues</div>
             </div>
-
             <div className="dbgm-issues-list">
               {allIssues.length === 0 ? (
                 <div className="dbgm-no-issues">
@@ -560,7 +535,6 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts" }) {
                 ))
               )}
             </div>
-
             <div className="dbgm-left-foot">
               <div className="dbgm-stat-row">
                 <div className="dbgm-stat-chip">
@@ -569,7 +543,7 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts" }) {
                 </div>
                 <div className="dbgm-stat-chip">
                   <div className="dbgm-stat-dot" style={{ background: "var(--gold)" }} />
-                  Warnings: <span>{warnings.length}</span>
+                  Warns: <span>{warnings.length}</span>
                 </div>
                 <div className="dbgm-stat-chip" style={{ fontSize: 9 }}>
                   Lang: <span style={{ color: LANGS[lang]?.c }}>{LANGS[lang]?.n || lang}</span>
@@ -578,17 +552,16 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts" }) {
             </div>
           </div>
 
-          {/* Right: chat */}
+          {/* Center: team chat */}
           <div className="dbgm-right">
             <div className="dbgm-chat-head">
-              <div className="dbgm-chat-head-label">Debug Chat</div>
+              <div className="dbgm-chat-head-label">Team Chat</div>
               {currentIssue && (
                 <div className="dbgm-chat-issue-preview">
-                  {currentIssue.text.slice(0, 85)}{currentIssue.text.length > 85 ? "…" : ""}
+                  {currentIssue.text.slice(0, 60)}{currentIssue.text.length > 60 ? "…" : ""}
                 </div>
               )}
             </div>
-
             <div className="dbgm-chat-messages">
               {messages.map((msg) => {
                 if (msg.from === "system") {
@@ -629,18 +602,123 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts" }) {
               })}
               <div ref={messagesEndRef} />
             </div>
-
             <div className="dbgm-input-row">
               <input
                 className="dbgm-input"
                 value={inputVal}
                 onChange={(e) => setInputVal(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                placeholder="Describe what you're seeing, ask the team…"
+                placeholder="Chat with your team about this issue…"
               />
               <button className="dbgm-send-btn" onClick={sendMessage}>Send ↑</button>
             </div>
           </div>
+
+          {/* Right: Groq AI Panel */}
+          <div className="dbgm-ai-panel">
+            <div className="dbgm-ai-head">
+              <div className="dbgm-ai-head-label">⚡ Groq Debugger</div>
+              <div className="dbgm-ai-model-tag">llama-3.3-70b</div>
+            </div>
+
+            {/* API Key input */}
+            <div className="dbgm-apikey-strip">
+              <span className="dbgm-apikey-label">🔑 Key:</span>
+              <input
+                className="dbgm-apikey-input"
+                type="password"
+                value={groqApiKey}
+                onChange={(e) => setGroqApiKey(e.target.value)}
+                placeholder="gsk_xxxxxxxxxxxxxxxxxxxx"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+
+            <div className="dbgm-ai-messages">
+              {aiMessages.map((msg) => (
+                <div key={msg.id} className="dbgm-ai-msg">
+                  {msg.role === "user" ? (
+                    <>
+                      <div className="dbgm-ai-msg-label" style={{ justifyContent: "flex-end", color: "var(--blue)" }}>You · {msg.t}</div>
+                      <div className="dbgm-ai-bubble user">{msg.text}</div>
+                    </>
+                  ) : msg.role === "error" ? (
+                    <div className="dbgm-ai-bubble error-msg">{msg.text}</div>
+                  ) : (
+                    <>
+                      <div className="dbgm-ai-msg-label" style={{ color: "var(--teal)" }}>
+                        <span style={{ fontSize: 10 }}>⚡</span> Groq · {msg.t}
+                      </div>
+                      <div className="dbgm-ai-bubble assistant">
+                        <FormatAIResponse text={msg.text} />
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+              {aiLoading && (
+                <div className="dbgm-ai-typing">
+                  <span>Groq is thinking</span>
+                  <div className="dbgm-typing-dots">
+                    <span /><span /><span />
+                  </div>
+                </div>
+              )}
+              <div ref={aiEndRef} />
+            </div>
+
+            {/* Code context */}
+            <div className="dbgm-code-area">
+              <div className="dbgm-code-area-label">Paste code context (optional)</div>
+              <textarea
+                className="dbgm-code-input"
+                value={userCode}
+                onChange={(e) => setUserCode(e.target.value)}
+                placeholder={`// Paste relevant ${LANGS[lang]?.n || lang} code here…`}
+                spellCheck={false}
+              />
+            </div>
+
+            {/* Quick prompts + input */}
+            <div className="dbgm-ai-input-row">
+              <div className="dbgm-ai-quick-btns">
+                {quickPrompts.map((q) => (
+                  <button
+                    key={q}
+                    className="dbgm-ai-quick-btn"
+                    onClick={() => sendAiMessage(q)}
+                    disabled={aiLoading}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+              <div className="dbgm-ai-input-top">
+                <textarea
+                  className="dbgm-ai-input"
+                  value={aiInput}
+                  onChange={(e) => setAiInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      sendAiMessage();
+                    }
+                  }}
+                  placeholder="Ask Groq about this error… (Enter to send)"
+                  disabled={aiLoading}
+                />
+                <button
+                  className="dbgm-ai-send-btn"
+                  onClick={() => sendAiMessage()}
+                  disabled={aiLoading || !aiInput.trim()}
+                >
+                  {aiLoading ? "…" : "Ask ⚡"}
+                </button>
+              </div>
+            </div>
+          </div>
+
         </div>
 
         {/* ── Status bar ── */}
@@ -651,6 +729,7 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts" }) {
           <div className="dbgm-status-item">Errors: <span style={{ color: "var(--pink)" }}>{errors.length}</span></div>
           <div className="dbgm-status-item">Warnings: <span style={{ color: "var(--gold)" }}>{warnings.length}</span></div>
           <div className="dbgm-status-item">Lang: <span style={{ color: LANGS[lang]?.c }}>{LANGS[lang]?.n || lang}</span></div>
+          <div className="dbgm-status-item">AI: <span style={{ color: "var(--teal)" }}>groq · llama-3.3-70b</span></div>
         </div>
 
       </div>

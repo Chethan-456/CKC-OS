@@ -18,6 +18,12 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      // Forward WebSocket connections to /ws
+      '/ws': {
+        target: 'ws://localhost:5000',
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
 })

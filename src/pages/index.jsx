@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { authStore, PALETTE, LANGS, LK, initials, genSid } from "./editor.jsx";
+import { useAuth } from "./auth.jsx";
+
 
 /* ═══════════════════════════════════════════════════════════════
    GLOBAL CSS
@@ -204,6 +206,10 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 .mod-card.mod-cog .mod-idx    { color:rgba(255,181,71,.6); }
 .mod-card.mod-git .mod-idx    { color:rgba(78,201,176,.6); }
 .mod-card.mod-aipair .mod-idx { color:rgba(124,131,255,.6); }
+.mod-card.mod-git { background:linear-gradient(145deg,rgba(78,201,176,.08),rgba(79,193,255,.04)); border-color:rgba(78,201,176,.2); }
+.mod-card.mod-git:hover { border-color:rgba(78,201,176,.5); transform:translateY(-4px); box-shadow:0 16px 48px rgba(78,201,176,.12); }
+.mod-idx  { font-family:var(--mono);font-size:.64rem;color:rgba(79,193,255,.5);font-weight:600;letter-spacing:.08em;margin-bottom:.7rem; }
+.mod-card.mod-git .mod-idx    { color:rgba(78,201,176,.6); }
 .mod-card h3 { font-family:var(--disp);font-size:.95rem;font-weight:700;color:#fff;margin-bottom:.4rem; }
 .mod-card p  { font-size:.8rem;color:var(--text-3);line-height:1.7; }
 .mod-accent  { position:absolute;bottom:0;left:0;height:2px;border-radius:0 0 0 13px;width:0;transition:width .35s ease; }
@@ -271,6 +277,8 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 
 /* ═══════════════════════════════════════════════════════════════
    DATA
+   DATA  — 11 modules (Frustration Detection & Adaptive UI Engine removed)
+   Indices renumbered: 09 → Knowledge Graph, 10 → AI Mentor, 11 → Git Bridge
 ═══════════════════════════════════════════════════════════════ */
 const MODULES = [
   { idx:"01", title:"Live Collaborative Editor",     desc:"Google Docs-style real-time coding with multi-user cursor tracking via WebSockets, full CRDT/OT, and CodeMirror 6.",    accent:"#4FC1FF", isEditor:true },
@@ -288,6 +296,9 @@ const MODULES = [
   { idx:"13", title:"Cognitive Analytics Dashboard", desc:"Displays productivity trends, focus levels, and weak concept identification across sessions. AI-powered insights in real time.", accent:"#FFB547", isCognitive:true },
   { idx:"14", title:"Version Control Integration",   desc:"Connect sessions to GitHub / GitLab. View real-time diffs, commit history, branch status, and AI-generated commit messages — directly inside the editor.", accent:"#4EC9B0", isGitBridge:true },
   { idx:"15", title:"AI Pair Programmer",            desc:"Inline co-pilot powered by Claude API — suggests next lines, explains selected code in plain English, generates boilerplate, and refactors on demand with RAG-enhanced context.", accent:"#7c83ff", isAIPair:true },
+  { idx:"09", title:"Live Knowledge Graph Engine",   desc:"Converts code into concepts, errors, and fixes. Builds a live visual graph: Loop → Array → Error → Fix.",              accent:"#A78BFA", core:true, isKnowledge:true },
+  { idx:"10", title:"Adaptive AI Mentor",            desc:"Beginner gets deep explanations. Intermediate gets hints. Advanced gets optimizations. Fully adaptive.",                 accent:"#4FC1FF", isAiMentor:true },
+  { idx:"11", title:"Version Control Integration",   desc:"Connect sessions to GitHub / GitLab. View real-time diffs, commit history, branch status, and AI-generated commit messages — directly inside the editor.", accent:"#4EC9B0", isGitBridge:true },
 ];
 
 const WORKFLOW_STEPS = [
@@ -315,6 +326,9 @@ function MiniSparkline({ values, color }) {
   );
 }
 
+  { n:"6", title:"System Responds Adaptively",  desc:"Suggestions surface, knowledge graph updates — all in real time without interruption." },
+];
+
 /* ═══════════════════════════════════════════════════════════════
    BADGE + CLICK CONFIG
 ═══════════════════════════════════════════════════════════════ */
@@ -334,6 +348,18 @@ const BADGE_CFG = {
   isGitBridge:  { bg:"rgba(78,201,176,.1)",   color:"#4EC9B0", border:"rgba(78,201,176,.28)",  label:"🔀 GIT"      },
   isAIPair:     { bg:"linear-gradient(135deg,rgba(124,131,255,.18),rgba(167,139,250,.12))", color:"#a5abff", border:"rgba(124,131,255,.38)", label:"⌥ COPILOT" },
   core:         { bg:"rgba(255,181,71,.1)",   color:"#FFB547", border:"rgba(255,181,71,.28)",  label:"CORE"        },
+  isEditor:    { bg:"rgba(79,193,255,.1)",   color:"#8DD8FF", border:"rgba(79,193,255,.28)",  label:"▶ LIVE"    },
+  isDebug:     { bg:"rgba(255,107,157,.1)",  color:"#FF6B9D", border:"rgba(255,107,157,.28)", label:"🐛 DEBUG"  },
+  isLogs:      { bg:"rgba(78,201,176,.1)",   color:"#4EC9B0", border:"rgba(78,201,176,.28)",  label:"📡 LOGS"   },
+  isApi:       { bg:"rgba(255,107,157,.1)",  color:"#FF6B9D", border:"rgba(255,107,157,.28)", label:"⚡ API"     },
+  isChat:      { bg:"rgba(167,139,250,.1)",  color:"#A78BFA", border:"rgba(167,139,250,.28)", label:"💬 CHAT"   },
+  isSandbox:   { bg:"rgba(78,201,176,.1)",   color:"#4EC9B0", border:"rgba(78,201,176,.28)",  label:"▶ RUN"     },
+  isPerf:      { bg:"rgba(78,201,176,.1)",   color:"#4EC9B0", border:"rgba(78,201,246,.28)",  label:"📊 PERF"   },
+  isBehavior:  { bg:"rgba(255,181,71,.1)",   color:"#FFB547", border:"rgba(255,181,71,.28)",  label:"🧠 TRACK"  },
+  isKnowledge: { bg:"rgba(167,139,250,.1)",  color:"#A78BFA", border:"rgba(167,139,250,.28)", label:"🕸 GRAPH"  },
+  isAiMentor:  { bg:"rgba(79,193,255,.1)",   color:"#8DD8FF", border:"rgba(79,193,255,.28)",  label:"🤖 MENTOR" },
+  isGitBridge: { bg:"rgba(78,201,176,.1)",   color:"#4EC9B0", border:"rgba(78,201,176,.28)",  label:"🔀 GIT"    },
+  core:        { bg:"rgba(255,181,71,.1)",   color:"#FFB547", border:"rgba(255,181,71,.28)",  label:"CORE"      },
 };
 
 const CLICK_COLOR = {
@@ -349,6 +375,15 @@ const CLICKABLE = [
   "isEditor","isDebug","isLogs","isChat","isSandbox","isApi",
   "isPerf","isBehavior","isFrustration","isKnowledge","isAiMentor",
   "isCognitive","isGitBridge","isAIPair",
+  isPerf:"var(--teal)", isBehavior:"var(--amber)",
+  isKnowledge:"var(--violet)", isAiMentor:"var(--blue)",
+  isGitBridge:"var(--teal)",
+};
+
+const CLICKABLE = [
+  "isEditor","isDebug","isLogs","isChat","isSandbox","isApi",
+  "isPerf","isBehavior","isKnowledge","isAiMentor",
+  "isGitBridge",
 ];
 
 /* ═══════════════════════════════════════════════════════════════
@@ -360,6 +395,10 @@ function HomePage({
   onOpenCognitive, onOpenDebug, onOpenLogs,
   onOpenKnowledge, onOpenAiMentor,
   onOpenGitBridge, onOpenAIPair,
+  onOpenPerf, onOpenBehavior,
+  onOpenDebug, onOpenLogs,
+  onOpenKnowledge, onOpenAiMentor,
+  onOpenGitBridge,
 }) {
   const [activeTab, setActiveTab] = useState("all");
   const filtered = activeTab === "all" ? MODULES
@@ -383,6 +422,18 @@ function HomePage({
     if (m.isCognitive)    return onOpenCognitive;
     if (m.isGitBridge)    return onOpenGitBridge;
     if (m.isAIPair)       return onOpenAIPair;
+  const getHandler = m => {
+    if (m.isEditor)   return onLaunch;
+    if (m.isDebug)    return onOpenDebug;
+    if (m.isLogs)     return onOpenLogs;
+    if (m.isChat)     return onOpenChat;
+    if (m.isSandbox)  return onOpenSandbox;
+    if (m.isApi)      return onOpenApi;
+    if (m.isPerf)     return onOpenPerf;
+    if (m.isBehavior) return onOpenBehavior;
+    if (m.isKnowledge)return onOpenKnowledge;
+    if (m.isAiMentor) return onOpenAiMentor;
+    if (m.isGitBridge)return onOpenGitBridge;
     return undefined;
   };
 
@@ -433,6 +484,7 @@ function HomePage({
           </button>
           <button className="btn-nav" onClick={onLaunch}>⚡ Launch Editor</button>
         </div>
+        <button className="btn-nav" onClick={onLaunch}>⚡ Launch Editor</button>
       </nav>
 
       {/* ── HERO ── */}
@@ -458,6 +510,7 @@ function HomePage({
             </div>
             <div className="hero-stats fade-5">
               {[["14","Core Modules"],["8","Languages"],["3","System Layers"],["∞","Real-time"]].map(([n,l]) => (
+              {[["11","Core Modules"],["8","Languages"],["3","System Layers"],["∞","Real-time"]].map(([n,l]) => (
                 <div className="stat" key={l}><div className="stat-num">{n}</div><div className="stat-lbl">{l}</div></div>
               ))}
             </div>
@@ -648,6 +701,7 @@ function HomePage({
       {/* ── GIT BRIDGE SPOTLIGHT ── */}
       <section className="section" style={{ paddingTop:"3rem", paddingBottom:"3rem" }}>
         <div className="s-label" style={{ color:"#4EC9B0" }}>Module 14 — Featured</div>
+        <div className="s-label" style={{ color:"#4EC9B0" }}>Module 11 — Featured</div>
         <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:"1.4rem", alignItems:"flex-end" }}>
           <div>
             <h2 className="s-title">Version Control Integration</h2>
@@ -689,6 +743,7 @@ function HomePage({
             <div className="efc-right">
               <div className="efc-stats">
                 <div className="efc-stat"><div className="efc-sv" style={{color:"#4EC9B0"}}>14</div><div className="efc-sl">Module</div></div>
+                <div className="efc-stat"><div className="efc-sv" style={{color:"#4EC9B0"}}>11</div><div className="efc-sl">Module</div></div>
                 <div className="efc-stat"><div className="efc-sv" style={{color:"#4FC1FF"}}>6</div><div className="efc-sl">Files Changed</div></div>
                 <div className="efc-stat"><div className="efc-sv" style={{color:"#A78BFA"}}>AI</div><div className="efc-sl">Commit Gen</div></div>
               </div>
@@ -901,6 +956,7 @@ function HomePage({
         <p className="s-desc">CKC-OS bridges isolated tools into a unified, behavior-aware platform.</p>
         <div className="layers-grid">
           <div className="layer-card bc"><div className="layer-num">01</div><div className="layer-icon">🧠</div><h3>Cognitive Layer</h3><p>Tracks real-time developer behavior — typing cadence, error frequency, idle periods — to infer frustration, focus, and proficiency.</p><div className="layer-pills"><span className="pill pill-b">Behavior Tracking</span><span className="pill pill-b">Frustration Detection</span></div></div>
+          <div className="layer-card bc"><div className="layer-num">01</div><div className="layer-icon">🧠</div><h3>Cognitive Layer</h3><p>Tracks real-time developer behavior — typing cadence, error frequency, idle periods — to infer focus and proficiency.</p><div className="layer-pills"><span className="pill pill-b">Behavior Tracking</span></div></div>
           <div className="layer-card tc"><div className="layer-num">02</div><div className="layer-icon">🕸️</div><h3>Knowledge Layer</h3><p>Transforms raw code into structured knowledge: concepts, errors, and fixes linked in a live Neo4j graph that grows each session.</p><div className="layer-pills"><span className="pill pill-t">Knowledge Graph</span><span className="pill pill-t">Neo4j</span></div></div>
           <div className="layer-card vc"><div className="layer-num">03</div><div className="layer-icon">🔧</div><h3>Collaboration &amp; DevOps</h3><p>Real-time code editing, shared debugging, run-in-browser for 8 languages, live monitoring — all via WebSockets + CodeMirror 6.</p><div className="layer-pills"><span className="pill pill-v">WebSockets</span><span className="pill pill-v">CRDT/OT</span><span className="pill pill-v">CodeMirror 6</span></div></div>
         </div>
@@ -911,6 +967,7 @@ function HomePage({
         <div className="s-label">Core Modules</div>
         <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:"1.4rem", alignItems:"flex-end", marginBottom:"1.8rem" }}>
           <div><h2 className="s-title">15 Integrated Modules</h2><p className="s-desc">Every module communicates in real time, forming a cohesive ecosystem.</p></div>
+          <div><h2 className="s-title">11 Integrated Modules</h2><p className="s-desc">Every module communicates in real time, forming a cohesive ecosystem.</p></div>
         </div>
         <div className="tabs">
           {[["all","All Modules"],["collab","Collaboration"],["ai","AI & Cognition"]].map(([v,l]) => (
@@ -924,6 +981,7 @@ function HomePage({
             const clickKey   = CLICKABLE.find(k => m[k]);
             const clickColor = clickKey ? CLICK_COLOR[clickKey] : null;
             const cardClass  = `mod-card${m.isCognitive?" mod-cog":m.isGitBridge?" mod-git":m.isAIPair?" mod-aipair":""}`;
+            const cardClass  = `mod-card${m.isGitBridge?" mod-git":""}`;
             return (
               <div
                 className={cardClass}
@@ -949,6 +1007,7 @@ function HomePage({
                 {isClickable(m) && (
                   <p style={{ fontSize:".75rem", color: clickColor || "var(--blue)", marginTop:".65rem", fontWeight:700 }}>
                     {m.isCognitive ? "Click to open analytics →" : "Click to open →"}
+                    Click to open →
                   </p>
                 )}
                 <div className="mod-accent" style={{ background:m.accent }}/>
@@ -1116,6 +1175,7 @@ function HomePage({
         </div>
         <div style={{ fontSize:".75rem", color:"var(--text-3)" }}>Cognitive Knowledge Coding OS · CRDT/OT · CodeMirror 6 · 2025</div>
         <div style={{ fontSize:".75rem", color:"var(--text-3)" }}>15 Modules · 8 Languages · AI-Powered · Real-Time</div>
+        <div style={{ fontSize:".75rem", color:"var(--text-3)" }}>11 Modules · 8 Languages · Real-Time</div>
       </footer>
     </div>
   );
@@ -1249,6 +1309,7 @@ function LoginScreen({ onJoin, onBack }) {
 ═══════════════════════════════════════════════════════════════ */
 export default function Index() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [route, setRoute] = useState("home");
 
   const toEditor      = (me, sid, lang) => {
@@ -1257,6 +1318,19 @@ export default function Index() {
   };
 
   const toChat        = () => navigate("/devchat");
+  const toChat        = () => {
+    // Create a default user for the chat
+    const defaultUser = {
+      id: "user_" + Math.random().toString(36).substr(2, 9),
+      name: "Developer",
+      color: PALETTE[0].hex,
+      bg: PALETTE[0].bg,
+      initials: "DV",
+      role: "Member"
+    };
+    login(defaultUser);
+    navigate("/devchat");
+  };
   const toSandbox     = () => navigate("/sandbox");
   const toApi         = () => navigate("/api");
   const toPerf        = () => navigate("/performance");
@@ -1265,6 +1339,7 @@ export default function Index() {
   const toCognitive   = () => navigate("/cognitive");
   const toGitBridge   = () => navigate("/gitbridge");
   const toAIPair      = () => navigate("/aipair");
+  const toGitBridge   = () => navigate("/gitbridge");
   const toDebug       = () => navigate("/debug");
   const toLogs        = () => navigate("/logs");
   const toKnowledge   = () => navigate("/knowledge");

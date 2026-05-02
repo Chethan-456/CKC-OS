@@ -1,6 +1,8 @@
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import { createRequire } from "module";
+import http from "http";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -11,6 +13,9 @@ import cors     from "cors";
 import fetch    from "node-fetch";
 import neo4j    from "neo4j-driver";
 import { v4 as uuidv4 } from "uuid";
+
+const require = createRequire(import.meta.url);
+const { initChatServer, chatRouter, getHistory, getPresenceForChannel } = require("./server/chat.js");
 
 // ─── Startup diagnostics ──────────────────────────────────────────────────────
 console.log("─────────────────────────────────────────────");
@@ -108,6 +113,13 @@ app.post("/api/chat", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// ─── POST /api/chat  (Groq proxy + chat websocket integration) ─────────
+app.use("/api/chat", chatRouter);
+app.get("/api/chat/health", (_req, res) => res.json({ ok: true }));
+app.get("/api/chat/history/:channel", (req, res) => res.json(getHistory(req.params.channel)));
+app.get("/api/chat/presence/:channel", (req, res) =>
+  res.json({ users: getPresenceForChannel(req.params.channel) })
+);
 
 // ─── POST /api/graphs  (save) ────────────────────────────────────────────────
 app.post("/api/graphs", async (req, res) => {
@@ -312,8 +324,11 @@ app.get("/health", (_req, res) => res.json({ ok: true, ts: new Date().toISOStrin
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () =>
-  console.log(`🚀  Server running on http://localhost:${PORT}`)
+const server = http.createServer(app);
+initChatServer(server);
+
+server.listen(PORT, () =>
+  console.log(`🚀  Server running on http://localhost:${PORT}\n💬  Live Chat WebSocket → ws://localhost:${PORT}/ws`)
 );
 
 server.on("error", (err) => {

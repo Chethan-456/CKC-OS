@@ -1,1096 +1,646 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+﻿/**
+ * ═══════════════════════════════════════════════════════════════════
+ *  NEXUS CHAT — Supabase Realtime Edition
+ *  Uses: channels, messages, profiles, reactions tables
+ * ═══════════════════════════════════════════════════════════════════
+ */
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { createClient } from "@supabase/supabase-js";
 
-/* ─────────────────────────── GLOBAL STYLES ─────────────────────────── */
-const G = `
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+// ── Config ──
+const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL || "https://kljsouytovludochnyxl.supabase.co";
+const SUPABASE_ANON_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtsanNvdXl0b3ZsdWRvY2hueXhsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwNzgwNTcsImV4cCI6MjA5MjY1NDA1N30.I4eSCP0mk4L3dZJFSgcifa0M54pxd2MU6yS2CAgB-vc";
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-html,body{height:100%;overflow:hidden;}
+// ── Helpers ──
+const COLORS = [["#60a5fa","rgba(96,165,250,0.1)"],["#a78bfa","rgba(167,139,250,0.1)"],["#4ade80","rgba(74,222,128,0.1)"],["#f472b6","rgba(244,114,182,0.1)"],["#fb923c","rgba(251,146,60,0.1)"]];
+const getColor = (id) => { if(!id) return COLORS[0]; let h=0; for(let i=0;i<id.length;i++) h=id.charCodeAt(i)+((h<<5)-h); return COLORS[Math.abs(h)%COLORS.length]; };
+const initials = (n) => (n||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
 
-:root{
-  --bg0:#050709;--bg1:#080c12;--bg2:#0d1320;--bg3:#111928;--bg4:#162035;
-  --border:#ffffff0d;--border2:#ffffff14;--border3:#ffffff1f;
-  --cyan:#22d3ee;--cyan2:#06b6d4;--cyan-glow:rgba(34,211,238,0.18);
-  --teal:#2dd4bf;--teal-glow:rgba(45,212,191,0.15);
-  --violet:#a78bfa;--violet-glow:rgba(167,139,250,0.15);
-  --rose:#f87171;--rose-glow:rgba(248,113,113,0.15);
-  --amber:#fbbf24;--amber-glow:rgba(251,191,36,0.12);
-  --green:#4ade80;--green-glow:rgba(74,222,128,0.15);
-  --text1:#f1f5f9;--text2:#94a3b8;--text3:#475569;--text4:#1e293b;
-  --mono:'IBM Plex Mono',monospace;--sans:'Outfit',sans-serif;
-  --r4:4px;--r8:8px;--r12:12px;--r16:16px;--r20:20px;--r999:999px;
+// ── Styles ──
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600&display=swap');
+:root {
+  --wa-bg: #111b21;
+  --wa-panel: #202c33;
+  --wa-chat-bg: #0b141a;
+  --wa-bubble-in: #202c33;
+  --wa-bubble-out: #005c4b;
+  --wa-text: #e9edef;
+  --wa-text-dim: #8696a0;
+  --wa-green: #00a884;
+  --wa-border: #222d34;
+  --wa-hover: #202c33;
+  --wa-hover-list: #2a3942;
+  --wa-input: #2a3942;
+  --font: 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+.nx-wrap { font-family: var(--font); background: var(--wa-bg); color: var(--wa-text); height: 100vh; display: flex; overflow: hidden; }
 
-::-webkit-scrollbar{width:3px;height:3px;}
-::-webkit-scrollbar-track{background:transparent;}
-::-webkit-scrollbar-thumb{background:var(--border3);border-radius:2px;}
-::-webkit-scrollbar-thumb:hover{background:rgba(34,211,238,0.3);}
+/* SIDEBAR */
+.nx-side { width: 30%; min-width: 300px; max-width: 420px; background: var(--wa-bg); border-right: 1px solid var(--wa-border); display: flex; flex-direction: column; z-index: 2; }
+.nx-side-hd { height: 59px; background: var(--wa-panel); padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; border-right: 1px solid var(--wa-border); flex-shrink: 0; }
+.wa-user-profile { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.nx-logo { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; background: linear-gradient(135deg, #00a884, #005c4b); font-weight: bold; }
+.wa-icons { display: flex; gap: 16px; color: var(--wa-text-dim); font-size: 20px; }
+.wa-icon { cursor: pointer; padding: 8px; border-radius: 50%; transition: background .2s; display: flex; align-items: center; justify-content: center; }
+.wa-icon:hover { background: rgba(255,255,255,0.05); }
 
-body{font-family:var(--sans);background:var(--bg0);color:var(--text1);}
+/* SEARCH BAR */
+.wa-search-bar { padding: 8px 12px; background: var(--wa-bg); border-bottom: 1px solid var(--wa-border); display: flex; align-items: center; }
+.wa-search-inner { flex: 1; display: flex; align-items: center; background: var(--wa-panel); border-radius: 8px; padding: 6px 12px; gap: 10px; }
+.wa-search-inner input { flex: 1; background: transparent; border: none; color: var(--wa-text); font-size: 14px; outline: none; font-family: var(--font); }
+.wa-search-inner input::placeholder { color: var(--wa-text-dim); }
 
-/* ── ANIMATIONS ── */
-@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-@keyframes slideLeft{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:translateX(0)}}
-@keyframes slideRight{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
-@keyframes popIn{from{opacity:0;transform:scale(0.92)}to{opacity:1;transform:scale(1)}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
-@keyframes spin{to{transform:rotate(360deg)}}
-@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
-@keyframes ripple{0%{transform:scale(0);opacity:0.6}100%{transform:scale(2.5);opacity:0}}
-@keyframes glowPulse{0%,100%{box-shadow:0 0 12px var(--cyan-glow)}50%{box-shadow:0 0 28px rgba(34,211,238,0.4)}}
+/* CHAT LIST */
+.nx-chlist { flex: 1; overflow-y: auto; background: var(--wa-bg); }
+.nx-ch { width: 100%; padding: 0; border: none; background: transparent; color: var(--wa-text); display: flex; align-items: center; cursor: pointer; text-align: left; }
+.nx-ch:hover .nx-ch-inner { background: var(--wa-hover-list); }
+.nx-ch.on .nx-ch-inner { background: var(--wa-hover-list); }
+.nx-ch-av { width: 48px; height: 48px; border-radius: 50%; background: var(--wa-panel); margin: 0 14px 0 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; color: var(--wa-text-dim); }
+.nx-ch-inner { flex: 1; padding: 12px 14px 12px 0; border-bottom: 1px solid var(--wa-border); display: flex; flex-direction: column; gap: 4px; transition: background .2s; overflow: hidden; }
+.nx-ch-title { font-size: 16px; display: flex; justify-content: space-between; align-items: center; }
+.nx-ch-time { font-size: 12px; color: var(--wa-text-dim); }
+.nx-ch-desc { font-size: 13px; color: var(--wa-text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90%; }
 
-.anim-fadeUp{animation:fadeUp 0.2s ease both;}
-.anim-slideLeft{animation:slideLeft 0.25s ease both;}
-.anim-slideRight{animation:slideRight 0.28s ease both;}
-.anim-popIn{animation:popIn 0.18s cubic-bezier(0.34,1.56,0.64,1) both;}
-.anim-pulse{animation:pulse 2s ease infinite;}
-.blink{animation:pulse 1.6s ease infinite;}
+/* MAIN CHAT AREA */
+.nx-main { flex: 1; display: flex; flex-direction: column; background: var(--wa-chat-bg); position: relative; }
+.nx-main::before { content: ""; position: absolute; inset: 0; background-image: url('https://static.whatsapp.net/rsrc.php/v3/yl/r/1sMocOydvN8.png'); opacity: 0.05; background-size: 400px; pointer-events: none; z-index: 0; }
+.nx-top { height: 59px; background: var(--wa-panel); padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; z-index: 1; border-bottom: 1px solid var(--wa-border); flex-shrink: 0; }
+.wa-chat-header-info { display: flex; align-items: center; gap: 14px; cursor: pointer; }
+.wa-chat-avatar { width: 40px; height: 40px; border-radius: 50%; background: #3b4a54; display: flex; align-items: center; justify-content: center; font-size: 18px; color: var(--wa-text-dim); }
 
-/* ── LAYOUT ── */
-.app{display:flex;height:100vh;overflow:hidden;background:var(--bg0);position:relative;}
-.app::before{
-  content:'';position:absolute;inset:0;pointer-events:none;z-index:0;
-  background:radial-gradient(ellipse 60% 40% at 20% 0%,rgba(34,211,238,0.04) 0%,transparent 70%),
-             radial-gradient(ellipse 40% 60% at 80% 100%,rgba(167,139,250,0.03) 0%,transparent 70%);
-}
+/* MESSAGES */
+.nx-msgs { flex: 1; overflow-y: auto; padding: 20px 60px; display: flex; flex-direction: column; gap: 8px; z-index: 1; }
+.nx-row { display: flex; width: 100%; margin-bottom: 2px; }
+.nx-row.mine { justify-content: flex-end; }
+.nx-row:not(.mine) { justify-content: flex-start; }
 
-/* ── SIDEBAR ── */
-.sidebar{
-  width:256px;min-width:256px;background:var(--bg1);border-right:1px solid var(--border);
-  display:flex;flex-direction:column;flex-shrink:0;position:relative;z-index:1;
-  transition:all 0.3s cubic-bezier(0.4,0,0.2,1);overflow:hidden;
-}
-.sidebar.collapsed{width:0;min-width:0;}
+/* BUBBLES */
+.nx-bub { position: relative; max-width: 65%; padding: 6px 9px 8px 9px; border-radius: 7.5px; font-size: 14.2px; line-height: 19px; box-shadow: 0 1px 0.5px rgba(11,20,26,.13); word-break: break-word; }
+.nx-bub.in { background: var(--wa-bubble-in); color: var(--wa-text); border-top-left-radius: 0; margin-left: 10px; }
+.nx-bub.out { background: var(--wa-bubble-out); color: var(--wa-text); border-top-right-radius: 0; margin-right: 10px; }
+.nx-bub::after { content: ""; display: table; clear: both; }
 
-.sidebar-logo{
-  display:flex;align-items:center;gap:10px;padding:16px;
-  border-bottom:1px solid var(--border);flex-shrink:0;
-}
-.logo-icon{
-  width:34px;height:34px;border-radius:var(--r8);display:flex;align-items:center;
-  justify-content:center;font-size:16px;flex-shrink:0;position:relative;
-  background:linear-gradient(135deg,#22d3ee,#2dd4bf);
-  box-shadow:0 0 20px rgba(34,211,238,0.4);
-  animation:glowPulse 3s ease infinite;
-}
-.logo-text{font-weight:800;font-size:16px;letter-spacing:-0.02em;}
-.live-badge{
-  margin-left:auto;display:flex;align-items:center;gap:4px;
-  font-family:var(--mono);font-size:8px;font-weight:600;
-  color:var(--cyan);background:rgba(34,211,238,0.1);
-  border:1px solid rgba(34,211,238,0.25);padding:3px 8px;border-radius:var(--r999);
-  letter-spacing:0.1em;
-}
+/* TAILS */
+.wa-tail { position: absolute; top: 0; width: 8px; height: 13px; }
+.nx-bub.in .wa-tail { left: -8px; color: var(--wa-bubble-in); }
+.nx-bub.out .wa-tail { right: -8px; color: var(--wa-bubble-out); }
 
-.sidebar-section{padding:16px 10px 6px;}
-.section-label{
-  font-family:var(--mono);font-size:8px;color:var(--text3);
-  text-transform:uppercase;letter-spacing:0.2em;padding:0 8px 8px;
-}
-.ch-btn{
-  width:100%;display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r8);
-  font-size:13px;font-weight:500;color:var(--text2);background:transparent;border:none;
-  cursor:pointer;transition:all 0.12s;margin-bottom:2px;text-align:left;font-family:var(--sans);
-  position:relative;overflow:hidden;
-}
-.ch-btn::before{content:'';position:absolute;inset:0;background:transparent;transition:background 0.12s;}
-.ch-btn:hover{color:var(--text1);background:var(--border);}
-.ch-btn.active{color:var(--cyan);background:rgba(34,211,238,0.08);}
-.ch-btn.active::after{content:'';position:absolute;left:0;top:20%;bottom:20%;width:2px;background:var(--cyan);border-radius:0 2px 2px 0;}
-.ch-badge{
-  margin-left:auto;font-family:var(--mono);font-size:9px;font-weight:700;
-  padding:2px 7px;border-radius:var(--r999);flex-shrink:0;
-}
-.ch-badge.red{background:var(--rose);color:#fff;}
-.ch-badge.cyan{background:var(--cyan);color:#000;}
+.wa-sender { font-size: 12.8px; font-weight: 600; margin-bottom: 2px; line-height: 22px; cursor: pointer; display: block; }
+.wa-msg-content { display: inline; word-wrap: break-word; }
+.wa-msg-spacer { display: inline-block; width: 60px; height: 11px; vertical-align: middle; }
+.wa-timestamp { float: right; margin-top: 4px; margin-left: -50px; position: relative; z-index: 2; font-size: 11px; color: rgba(255,255,255,0.6); display: flex; align-items: center; gap: 4px; }
 
-.sidebar-bottom{padding:10px;border-top:1px solid var(--border);margin-top:auto;}
-.quick-label{font-family:var(--mono);font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:0.18em;padding:0 8px 8px;}
-.quick-btn{
-  width:100%;display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:var(--r8);
-  font-family:var(--mono);font-size:11px;color:var(--text3);background:transparent;border:none;
-  cursor:pointer;transition:all 0.12s;margin-bottom:1px;text-align:left;white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis;
-}
-.quick-btn:hover{color:var(--teal);background:var(--border);}
+/* EMOJI PICKER */
+.wa-emoji-picker { position: absolute; bottom: 70px; left: 16px; background: var(--wa-panel); border-radius: 8px; padding: 12px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 1px solid var(--wa-border); z-index: 10; }
+.wa-emoji-btn { background: transparent; border: none; font-size: 24px; cursor: pointer; transition: transform .2s; }
+.wa-emoji-btn:hover { transform: scale(1.2); }
 
-.me-row{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--border);}
-.online-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0;}
+/* INPUT ZONE */
+.nx-input-zone { background: var(--wa-panel); padding: 10px 16px; display: flex; align-items: flex-end; gap: 12px; z-index: 1; min-height: 62px; flex-shrink: 0; }
+.wa-attach-btn { color: var(--wa-text-dim); font-size: 24px; padding: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; height: 42px; border: none; background: transparent; }
+.nx-input-box { flex: 1; background: var(--wa-input); border-radius: 8px; padding: 9px 12px; display: flex; align-items: center; min-height: 42px; }
+.nx-inp { width: 100%; background: transparent; border: none; color: var(--wa-text); font-size: 15px; outline: none; font-family: var(--font); }
+.nx-send { width: 42px; height: 42px; border-radius: 50%; background: var(--wa-green); border: none; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; transition: transform .2s; }
+.nx-send:hover { transform: scale(1.05); }
 
-/* ── MAIN ── */
-.main{display:flex;flex-direction:column;flex:1;min-width:0;overflow:hidden;position:relative;z-index:1;}
-
-/* ── TOPBAR ── */
-.topbar{
-  display:flex;align-items:center;gap:10px;padding:12px 20px;
-  background:var(--bg1);border-bottom:1px solid var(--border);flex-shrink:0;
-}
-.topbar-info{flex:1;min-width:0;}
-.topbar-name{font-weight:700;font-size:15px;letter-spacing:-0.01em;}
-.topbar-members{font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:1px;}
-.topbar-pills{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
-.pill{
-  display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:var(--r999);
-  font-family:var(--mono);font-size:10px;cursor:pointer;transition:all 0.12s;border:1px solid;white-space:nowrap;
-}
-.pill-teal{color:var(--teal);background:var(--teal-glow);border-color:rgba(45,212,191,0.25);}
-.pill-teal:hover{background:rgba(45,212,191,0.22);}
-.pill-rose{color:var(--rose);background:var(--rose-glow);border-color:rgba(248,113,113,0.25);}
-.pill-rose:hover{background:rgba(248,113,113,0.22);}
-.pill-violet{color:var(--violet);background:var(--violet-glow);border-color:rgba(167,139,250,0.25);}
-.pill-violet:hover{background:rgba(167,139,250,0.22);}
-
-.icon-btn{
-  width:32px;height:32px;border-radius:var(--r8);display:flex;align-items:center;justify-content:center;
-  background:transparent;border:1px solid var(--border2);color:var(--text3);
-  cursor:pointer;font-size:14px;transition:all 0.12s;flex-shrink:0;
-}
-.icon-btn:hover{color:var(--text1);border-color:var(--border3);background:var(--border);}
-.icon-btn.active{color:var(--cyan);border-color:rgba(34,211,238,0.35);background:rgba(34,211,238,0.08);}
-.menu-btn{background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:4px;transition:color 0.12s;flex-shrink:0;}
-.menu-btn:hover{color:var(--text1);}
-
-/* ── CONTEXT PANEL ── */
-.ctx-panel{
-  background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;
-  overflow:hidden;transition:max-height 0.3s cubic-bezier(0.4,0,0.2,1);
-}
-.ctx-tabs{display:flex;align-items:center;padding:10px 16px 0;gap:2px;}
-.ctx-tab{
-  display:flex;align-items:center;gap:5px;padding:7px 12px;
-  font-family:var(--mono);font-size:10px;font-weight:600;
-  background:transparent;border:none;border-bottom:2px solid transparent;
-  cursor:pointer;transition:all 0.12s;letter-spacing:0.02em;
-}
-.ctx-tab.t-teal{color:var(--text3);}
-.ctx-tab.t-teal.active{color:var(--teal);border-bottom-color:var(--teal);}
-.ctx-tab.t-rose{color:var(--text3);}
-.ctx-tab.t-rose.active{color:var(--rose);border-bottom-color:var(--rose);}
-.ctx-tab.t-violet{color:var(--text3);}
-.ctx-tab.t-violet.active{color:var(--violet);border-bottom-color:var(--violet);}
-.ctx-count{border-radius:var(--r999);padding:1px 5px;font-size:8px;background:var(--border2);}
-
-.ctx-cards{display:flex;gap:10px;padding:10px 16px 12px;overflow-x:auto;}
-.ctx-card{
-  flex-shrink:0;border-radius:var(--r12);border:1px solid var(--border2);
-  background:var(--bg3);padding:12px;cursor:pointer;transition:all 0.18s ease;
-  position:relative;overflow:hidden;
-}
-.ctx-card::before{
-  content:'';position:absolute;inset:0;opacity:0;transition:opacity 0.18s;
-  background:linear-gradient(135deg,rgba(255,255,255,0.03),transparent);
-}
-.ctx-card:hover::before{opacity:1;}
-.ctx-card:hover{transform:translateY(-2px);}
-.ctx-card-f{width:176px;}
-.ctx-card-e{width:210px;}
-.ctx-card-p{width:196px;}
-.ctx-card:hover.hover-teal{border-color:rgba(45,212,191,0.3);box-shadow:0 4px 20px var(--teal-glow);}
-.ctx-card:hover.hover-rose{border-color:rgba(248,113,113,0.3);box-shadow:0 4px 20px var(--rose-glow);}
-.ctx-card:hover.hover-violet{border-color:rgba(167,139,250,0.3);box-shadow:0 4px 20px var(--violet-glow);}
-.card-attached{border-color:rgba(34,211,238,0.4)!important;box-shadow:0 0 0 1px rgba(34,211,238,0.2)!important;}
-.card-attached-badge{
-  position:absolute;top:6px;right:6px;width:16px;height:16px;border-radius:50%;
-  background:var(--cyan);display:flex;align-items:center;justify-content:center;
-  font-size:8px;color:#000;font-weight:800;animation:popIn 0.2s ease;
-}
-
-/* ── MESSAGES ── */
-.msg-area{flex:1;overflow-y:auto;padding:12px 0;}
-.day-divider{display:flex;align-items:center;gap:12px;padding:4px 20px;margin-bottom:4px;}
-.day-line{flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--border3),transparent);opacity:0.5;}
-.day-label{font-family:var(--mono);font-size:9px;color:var(--text3);flex-shrink:0;letter-spacing:0.1em;}
-
-.msg-row{
-  display:flex;gap:12px;padding:5px 16px;border-radius:var(--r12);
-  transition:background 0.1s;position:relative;group:true;
-}
-.msg-row:hover{background:rgba(255,255,255,0.015);}
-.msg-row:hover .msg-actions{opacity:1;transform:translateY(0);}
-.msg-actions{
-  position:absolute;right:16px;top:4px;
-  display:flex;gap:3px;background:var(--bg3);
-  border:1px solid var(--border2);border-radius:var(--r8);
-  padding:3px;opacity:0;transform:translateY(-4px);
-  transition:all 0.15s;z-index:10;
-}
-.action-btn{
-  width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;
-  font-size:13px;background:transparent;border:none;cursor:pointer;color:var(--text2);transition:all 0.1s;
-}
-.action-btn:hover{background:var(--border2);color:var(--text1);}
-
-.msg-avatar{flex-shrink:0;margin-top:2px;}
-.msg-content{flex:1;min-width:0;}
-.msg-header{display:flex;align-items:baseline;gap:8px;margin-bottom:3px;}
-.msg-name{font-weight:700;font-size:13px;}
-.msg-role-badge{
-  font-family:var(--mono);font-size:8px;font-weight:600;padding:2px 6px;
-  border-radius:var(--r4);border:1px solid;letter-spacing:0.05em;
-}
-.msg-time{font-family:var(--mono);font-size:9px;color:var(--text3);}
-.msg-body{font-size:13.5px;line-height:1.65;color:rgba(241,245,249,0.82);}
-
-/* Inline tags */
-.tag-mention{
-  color:var(--cyan);background:rgba(34,211,238,0.1);border-radius:var(--r4);
-  padding:1px 5px;font-weight:700;cursor:pointer;transition:background 0.1s;display:inline;
-}
-.tag-mention:hover{background:rgba(34,211,238,0.2);}
-.tag-file{
-  display:inline-flex;align-items:center;gap:3px;color:var(--teal);
-  background:var(--teal-glow);border:1px solid rgba(45,212,191,0.2);
-  border-radius:var(--r4);padding:1px 6px;font-family:var(--mono);font-size:11px;cursor:pointer;
-  transition:background 0.1s;vertical-align:middle;
-}
-.tag-file:hover{background:rgba(45,212,191,0.2);}
-.tag-err{
-  display:inline-flex;align-items:center;gap:3px;color:var(--rose);
-  background:var(--rose-glow);border:1px solid rgba(248,113,113,0.2);
-  border-radius:var(--r4);padding:1px 6px;font-family:var(--mono);font-size:11px;cursor:pointer;
-  transition:background 0.1s;vertical-align:middle;
-}
-.tag-err:hover{background:rgba(248,113,113,0.2);}
-.tag-proj{
-  display:inline-flex;align-items:center;gap:3px;color:var(--violet);
-  background:var(--violet-glow);border:1px solid rgba(167,139,250,0.2);
-  border-radius:var(--r4);padding:1px 6px;font-family:var(--mono);font-size:11px;cursor:pointer;
-  transition:background 0.1s;vertical-align:middle;
-}
-.tag-proj:hover{background:rgba(167,139,250,0.2);}
-
-/* Code block */
-.code-block{margin-top:8px;border-radius:var(--r12);overflow:hidden;border:1px solid var(--border2);background:#030508;}
-.code-header{
-  display:flex;align-items:center;gap:8px;padding:8px 14px;
-  border-bottom:1px solid var(--border);background:rgba(255,255,255,0.02);
-}
-.code-dots{display:flex;gap:5px;}
-.code-dot{width:9px;height:9px;border-radius:50%;}
-.code-lang{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:0.08em;margin-left:4px;}
-.code-copy{
-  margin-left:auto;font-family:var(--mono);font-size:9px;
-  padding:3px 9px;border-radius:var(--r4);border:1px solid var(--border2);
-  background:transparent;cursor:pointer;transition:all 0.12s;color:var(--text3);
-}
-.code-copy:hover{color:var(--cyan);border-color:rgba(34,211,238,0.3);}
-.code-body{padding:12px 14px;font-family:var(--mono);font-size:11.5px;line-height:1.7;overflow-x:auto;color:rgba(241,245,249,0.7);}
-
-/* Reactions */
-.reactions{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
-.rxn-btn{
-  display:inline-flex;align-items:center;gap:4px;padding:3px 9px;
-  border-radius:var(--r999);font-size:12px;cursor:pointer;transition:all 0.13s;border:1px solid;
-}
-.rxn-btn.mine{color:var(--cyan);background:rgba(34,211,238,0.08);border-color:rgba(34,211,238,0.35);}
-.rxn-btn.other{color:var(--text2);background:rgba(255,255,255,0.03);border-color:var(--border2);}
-.rxn-btn.other:hover{color:var(--text1);border-color:var(--border3);}
-.rxn-add{
-  display:inline-flex;align-items:center;padding:3px 8px;border-radius:var(--r999);
-  font-size:12px;cursor:pointer;border:1px solid var(--border);background:transparent;
-  color:var(--text3);transition:all 0.12s;
-}
-.rxn-add:hover{color:var(--text1);border-color:var(--border3);}
-
-/* Thread bar */
-.thread-bar{
-  display:flex;align-items:center;gap:8px;padding:4px 8px;margin-top:6px;
-  border-radius:var(--r8);background:transparent;border:none;cursor:pointer;
-  transition:background 0.12s;width:fit-content;border:1px solid transparent;
-}
-.thread-bar:hover{background:rgba(34,211,238,0.05);border-color:rgba(34,211,238,0.15);}
-.thread-avatars{display:flex;}
-.thread-count{color:var(--cyan);font-size:12px;font-weight:700;}
-.thread-hint{color:var(--text3);font-family:var(--mono);font-size:10px;}
-
-/* ── INPUT ── */
-.input-zone{padding:8px 16px 14px;background:var(--bg0);flex-shrink:0;}
-.attached-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
-.attached-chip{
-  display:flex;align-items:center;gap:6px;padding:4px 10px;
-  border-radius:var(--r8);font-family:var(--mono);font-size:11px;
-  border:1px solid;transition:all 0.12s;animation:popIn 0.18s ease;
-}
-.chip-remove{
-  background:transparent;border:none;cursor:pointer;color:inherit;opacity:0.4;
-  padding:0;line-height:1;transition:opacity 0.12s;
-}
-.chip-remove:hover{opacity:1;}
-
-.input-box{
-  background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r16);
-  overflow:hidden;transition:all 0.2s;position:relative;
-}
-.input-box:focus-within{border-color:rgba(34,211,238,0.3);box-shadow:0 0 0 3px rgba(34,211,238,0.06);}
-.input-ta{
-  width:100%;background:transparent;padding:13px 18px 8px;
-  font-size:13.5px;color:var(--text1);font-family:var(--sans);
-  border:none;line-height:1.6;resize:none;
-}
-.input-ta::placeholder{color:var(--text3);}
-.input-ta:focus{outline:none;}
-.input-toolbar{display:flex;align-items:center;gap:4px;padding:0 12px 10px;}
-.tb-btn{
-  width:30px;height:30px;display:flex;align-items:center;justify-content:center;
-  border-radius:var(--r8);font-size:14px;color:var(--text3);background:transparent;border:none;
-  cursor:pointer;transition:all 0.12s;
-}
-.tb-btn:hover{color:var(--text1);background:var(--border);}
-.tb-sep{width:1px;height:18px;background:var(--border2);margin:0 3px;}
-.tb-fmt{
-  width:28px;height:28px;display:flex;align-items:center;justify-content:center;
-  border-radius:var(--r4);font-family:var(--mono);font-size:11px;color:var(--text3);
-  background:transparent;border:none;cursor:pointer;transition:all 0.12s;
-}
-.tb-fmt:hover{color:var(--text1);background:var(--border);}
-.send-btn{
-  margin-left:auto;display:flex;align-items:center;gap:5px;
-  padding:7px 18px;border-radius:var(--r12);font-family:var(--sans);
-  font-size:12px;font-weight:700;color:#000;border:none;cursor:pointer;
-  background:linear-gradient(135deg,var(--cyan),var(--teal));
-  box-shadow:0 0 18px rgba(34,211,238,0.35);transition:all 0.2s;
-}
-.send-btn:hover:not(:disabled){box-shadow:0 0 28px rgba(34,211,238,0.55);transform:translateY(-1px);}
-.send-btn:disabled{opacity:0.3;cursor:not-allowed;transform:none;}
-.send-hint{font-family:var(--mono);font-size:9px;color:var(--text3);}
-
-/* ── MENTION DROPDOWN ── */
-.mention-dd{
-  position:absolute;bottom:calc(100% + 6px);left:0;right:0;
-  background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r12);
-  overflow:hidden;box-shadow:0 -8px 32px rgba(0,0,0,0.6);z-index:100;
-  animation:popIn 0.15s ease;
-}
-.mention-header{padding:7px 12px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:8px;color:var(--text3);letter-spacing:0.2em;text-transform:uppercase;}
-.mention-row{
-  display:flex;align-items:center;gap:10px;padding:8px 12px;
-  cursor:pointer;transition:background 0.1s;
-}
-.mention-row.sel{background:rgba(34,211,238,0.06);}
-.mention-row:hover{background:var(--border);}
-.mention-kbd{margin-left:auto;font-family:var(--mono);font-size:8px;color:var(--text3);}
-
-/* ── THREAD PANEL ── */
-.thread-panel{
-  width:384px;min-width:384px;display:flex;flex-direction:column;
-  background:var(--bg1);border-left:1px solid var(--border);
-  animation:slideRight 0.25s ease;
-}
-.thread-header{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0;
-}
-.thread-title{font-weight:700;font-size:15px;letter-spacing:-0.01em;}
-.thread-sub{font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:2px;}
-.thread-close{
-  width:30px;height:30px;border-radius:var(--r8);display:flex;align-items:center;justify-content:center;
-  background:transparent;border:1px solid transparent;cursor:pointer;color:var(--text3);
-  font-size:16px;transition:all 0.12s;
-}
-.thread-close:hover{color:var(--rose);background:var(--rose-glow);border-color:rgba(248,113,113,0.3);}
-.thread-divider{margin:8px 14px;height:1px;background:linear-gradient(90deg,transparent,var(--border3),transparent);}
-.thread-input{padding:10px;border-top:1px solid var(--border);flex-shrink:0;}
-.thread-box{
-  background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r12);overflow:hidden;
-  transition:border-color 0.2s;
-}
-.thread-box:focus-within{border-color:rgba(34,211,238,0.25);}
-.thread-ta{
-  width:100%;background:transparent;padding:10px 14px 6px;
-  font-size:12.5px;color:var(--text1);font-family:var(--sans);
-  border:none;resize:none;line-height:1.5;
-}
-.thread-ta::placeholder{color:var(--text3);}
-.thread-ta:focus{outline:none;}
-.thread-foot{display:flex;align-items:center;padding:0 10px 8px;}
-
-/* ── STATUS BAR ── */
-.statusbar{
-  display:flex;align-items:center;gap:12px;padding:5px 16px;
-  background:var(--bg1);border-top:1px solid var(--border);flex-shrink:0;
-  font-family:var(--mono);font-size:9px;color:var(--text3);
-}
-.status-dot{width:5px;height:5px;border-radius:50%;}
-
-/* ── AVATAR ── */
-.av{
-  display:flex;align-items:center;justify-content:center;
-  font-family:var(--mono);font-weight:700;user-select:none;flex-shrink:0;letter-spacing:-0.5px;
-}
-
-/* Typing indicator */
-@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
-.typing-dot{width:4px;height:4px;border-radius:50%;background:var(--text3);display:inline-block;margin:0 1px;}
-.typing-dot:nth-child(1){animation:bounce 1.2s ease 0s infinite;}
-.typing-dot:nth-child(2){animation:bounce 1.2s ease 0.2s infinite;}
-.typing-dot:nth-child(3){animation:bounce 1.2s ease 0.4s infinite;}
-
-/* New msg badge */
-.new-badge{
-  position:absolute;bottom:80px;left:50%;transform:translateX(-50%);
-  background:var(--cyan);color:#000;font-family:var(--mono);font-size:10px;font-weight:700;
-  padding:5px 14px;border-radius:var(--r999);cursor:pointer;
-  box-shadow:0 4px 16px rgba(34,211,238,0.4);animation:fadeUp 0.2s ease;
-  z-index:20;border:none;
-}
+.nx-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--wa-text-dim); gap: 16px; z-index: 1; background: var(--wa-panel); }
+.nx-empty h1 { font-size: 32px; font-weight: 300; color: var(--wa-text); margin-top: 24px; }
+.nx-empty p { font-size: 14px; max-width: 440px; text-align: center; line-height: 1.6; }
 `;
 
-/* ─────────────────────────── DATA ─────────────────────────── */
-const USERS = [
-  { id:0, name:'Arjun Mehra',  initials:'AM', color:'#22d3ee', bg:'rgba(34,211,238,0.14)',  role:'Lead Dev'  },
-  { id:1, name:'Priya Nair',   initials:'PN', color:'#a78bfa', bg:'rgba(167,139,250,0.14)', role:'Backend'   },
-  { id:2, name:'Rohan Das',    initials:'RD', color:'#4ade80', bg:'rgba(74,222,128,0.14)',  role:'DevOps'    },
-  { id:3, name:'Sneha Kumar',  initials:'SK', color:'#fbbf24', bg:'rgba(251,191,36,0.14)',  role:'Frontend'  },
-  { id:4, name:'Vikram Iyer',  initials:'VI', color:'#f87171', bg:'rgba(248,113,113,0.14)', role:'Architect' },
-];
-const ME = USERS[0];
+// ═══════════════════════════════════════════════
+//  LOGIN PAGE
+// ═══════════════════════════════════════════════
+function AuthPage({ onAuth }) {
+  const [email, setEmail] = useState("");
+  const [pass, setPass] = useState("");
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [showPass, setShowPass] = useState(false);
 
-const FILES = [
-  { id:'f1', name:'engine.ts',          lang:'TypeScript', lines:847,  icon:'󰛦',  emoji:'📄' },
-  { id:'f2', name:'knowledge-graph.ts', lang:'TypeScript', lines:412,  icon:'󰎙',  emoji:'🕸️' },
-  { id:'f3', name:'session.model.ts',   lang:'TypeScript', lines:203,  icon:'󰋙',  emoji:'📋' },
-  { id:'f4', name:'ChatView.tsx',       lang:'React',      lines:318,  icon:'󰜈',  emoji:'⚛️' },
-];
-const ERRORS = [
-  { id:'e1', name:'TypeError: null dereference',  file:'engine.ts:234',   sev:'error'   },
-  { id:'e2', name:'useEffect missing dependency', file:'ChatView.tsx:89', sev:'warning' },
-  { id:'e3', name:'Unhandled Promise rejection',  file:'session.ts:67',   sev:'error'   },
-];
-const PROJECTS = [
-  { id:'p1', name:'CKC-OS Core',         status:'Active',    tasks:14, pct:68 },
-  { id:'p2', name:'Knowledge Engine v2', status:'In Review', tasks:7,  pct:45 },
-  { id:'p3', name:'DevOps Pipeline',     status:'Staging',   tasks:3,  pct:90 },
-];
-const CHANNELS = [
-  { id:'engine-dev',  label:'engine-dev',    icon:'#',  badge:3, section:'Channels' },
-  { id:'general',     label:'general',       icon:'#',  badge:0, section:'Channels' },
-  { id:'errors',      label:'errors & bugs', icon:'🐛', badge:5, section:'Channels' },
-  { id:'devops',      label:'devops',        icon:'⚙️', badge:0, section:'Channels' },
-  { id:'dm-priya',    label:'Priya Nair',    icon:null, badge:1, section:'Direct', user:USERS[1] },
-  { id:'dm-rohan',    label:'Rohan Das',     icon:null, badge:0, section:'Direct', user:USERS[2] },
-];
+  const submit = async () => {
+    if (!email || !pass) { setError("Please enter your email and password."); return; }
+    setLoading(true); setError("");
+    try {
+      let user = null;
 
-const INIT_MSGS = [
-  { id:'m1', uid:1, time:'9:42 AM', head:true,
-    segments:[{t:'text',v:'Hey '},{t:'mention',user:USERS[0]},{t:'text',v:' — pushed a fix for the '},{t:'err',ref:ERRORS[0]},{t:'text',v:' in '},{t:'file',ref:FILES[0]},{t:'text',v:'. Can you review before we merge to staging? I also hardened the fallback path.'}],
-    reactions:[{e:'👀',n:2,mine:false},{e:'✅',n:1,mine:true}], thread:['t1-0','t1-1','t1-2'] },
-  { id:'m2', uid:4, time:'9:50 AM', head:true,
-    segments:[{t:'text',v:'Root cause is in the graph builder — null check missing before the merge call:'}],
-    code:{lang:'typescript', body:`// CKC-OS · Knowledge Engine
-async function analyzeCode(session: Session) {
-  const graph = await buildKnowledgeGraph(session.code);
-  const state = detectCognitiveState(session.tokens);
-  // ❌ graph can be null when session.code is empty
-  return graph.merge(state.context);
-}`},
-    reactions:[{e:'🔥',n:3,mine:false},{e:'💡',n:2,mine:true}], thread:['t2-0'] },
-  { id:'m3', uid:2, time:'10:05 AM', head:true,
-    segments:[{t:'text',v:'Deploying the fix now. '},{t:'mention',user:USERS[0]},{t:'text',v:' & '},{t:'mention',user:USERS[1]},{t:'text',v:' — monitoring the '},{t:'proj',ref:PROJECTS[0]},{t:'text',v:' pipeline. Should go green in ~3 min ✅'}],
-    reactions:[{e:'🚀',n:5,mine:true}], thread:[] },
-  { id:'m4', uid:3, time:'10:14 AM', head:true,
-    segments:[{t:'text',v:'Updated UI bindings in '},{t:'file',ref:FILES[3]},{t:'text',v:' to handle null graphs gracefully. Also silenced the '},{t:'err',ref:ERRORS[1]},{t:'text',v:' — confirmed false positive.'}],
-    reactions:[], thread:['t4-0'] },
-];
-const INIT_THREADS = {
-  m1:[
-    { id:'t1-0', uid:0, time:'9:44 AM', head:true, segments:[{t:'text',v:'On it — checking the diff. We need a null guard before the merge call.'}], reactions:[] },
-    { id:'t1-1', uid:1, time:'9:47 AM', head:true, segments:[{t:'text',v:'Also handle empty `graph.nodes` — added that check too.'}], reactions:[{e:'👍',n:1,mine:false}] },
-    { id:'t1-2', uid:4, time:'9:50 AM', head:true, segments:[{t:'text',v:'LGTM 🎉 Ship it.'}], reactions:[{e:'🎉',n:3,mine:true}] },
-  ],
-  m2:[{ id:'t2-0', uid:1, time:'9:52 AM', head:true, segments:[{t:'text',v:'Optional chaining fixes this cleanly: `graph?.merge(state?.context)` — zero overhead.'}], reactions:[] }],
-  m4:[{ id:'t4-0', uid:2, time:'10:16 AM', head:true, segments:[{t:'text',v:'Nice catch on the warning! Confirmed fixed on staging ✅'}], reactions:[] }],
-};
+      if (isSignUp) {
+        const { data, error: signUpErr } = await supabase.auth.signUp({
+          email, password: pass,
+          options: { data: { username: email.split("@")[0] } }
+        });
 
-/* ─────────────────────────── UTILS ─────────────────────────── */
-function hl(src) {
-  return src.split('\n').map((line, i) => {
-    const t = line.trimStart();
-    let ls = {};
-    if (t.startsWith('//')) ls = { color:'#3d5166', fontStyle:'italic' };
-    else if (/^(async|function|const|let|var|return|await|export|import|type)\b/.test(t)) ls = { color:'#c792ea' };
-    return (
-      <div key={i} style={ls}>
-        {line.split(/([\w$]+(?=\s*\())/g).map((p, j) =>
-          /(analyzeCode|buildKnowledgeGraph|detectCognitiveState|merge)/.test(p)
-            ? <span key={j} style={{color:'#7fc1ff'}}>{p}</span>
-            : p.startsWith('"') || p.startsWith("'") || p.startsWith('`')
-              ? <span key={j} style={{color:'#b9e4a3'}}>{p}</span>
-              : <span key={j}>{p}</span>
-        )}
-      </div>
-    );
-  });
-}
+        // "Database error saving new user" means the trigger failed but the
+        // user MAY have been created — try signing them in to confirm.
+        if (signUpErr) {
+          const em = signUpErr.message?.toLowerCase() || "";
+          // Any of these errors mean the account likely exists — fall back to sign-in
+          const existsErr = em.includes("database error") || em.includes("rate limit") ||
+            em.includes("already registered") || em.includes("already been registered");
+          if (existsErr) {
+            const { data: siData, error: siErr } = await supabase.auth.signInWithPassword({ email, password: pass });
+            if (!siErr && siData?.user) {
+              user = siData.user;
+            } else {
+              setError("This email is already registered. Click \"Sign In\" below.");
+              setLoading(false);
+              setIsSignUp(false);
+              return;
+            }
+          } else {
+            throw signUpErr;
+          }
+        } else {
+          user = data?.user || null;
+          // If email confirmation required, Supabase returns user but no session
+          if (!user) {
+            setError("✅ Account created! Check your email to confirm, then Sign In.");
+            setLoading(false);
+            setIsSignUp(false);
+            return;
+          }
+        }
+      } else {
+        const { data, error: signInErr } = await supabase.auth.signInWithPassword({ email, password: pass });
+        if (signInErr) throw signInErr;
+        user = data.user;
+      }
 
-/* ─────────────────────────── COMPONENTS ─────────────────────────── */
-function Av({ user, size=32, r=8 }) {
+      if (user) {
+        // Ensure profile row exists (trigger may have failed)
+        const username = user.user_metadata?.username || user.email?.split("@")[0] || "anon";
+        const { error: profileErr } = await supabase.from("profiles").upsert({
+          id: user.id,
+          email: user.email,
+          username: username,
+        }, { onConflict: "id" });
+        if (profileErr) console.warn("Profile upsert warning:", profileErr.message);
+        onAuth(user);
+      }
+    } catch (e) {
+      const em = (e.message || "").toLowerCase();
+      if (em.includes("rate limit") || em.includes("already registered")) {
+        setError("This email is already registered. Click \"Sign In\" below.");
+        setIsSignUp(false);
+      } else {
+        setError(e.message || "Authentication failed. Please try again.");
+      }
+    }
+    setLoading(false);
+  };
+
   return (
-    <div className="av" style={{ width:size, height:size, borderRadius:r, fontSize:size*0.36,
-      background:user.bg, color:user.color }}>
-      {user.initials}
-    </div>
-  );
-}
-
-function Seg({ s }) {
-  if (s.t==='text')    return <span>{s.v}</span>;
-  if (s.t==='mention') return <span className="tag-mention">@{s.user.name}</span>;
-  if (s.t==='file')    return <span className="tag-file">{s.ref.emoji} {s.ref.name}</span>;
-  if (s.t==='err')     return <span className="tag-err">{s.ref.sev==='error'?'🔴':'🟡'} {s.ref.name}</span>;
-  if (s.t==='proj')    return <span className="tag-proj">⚡ {s.ref.name}</span>;
-  return null;
-}
-
-function CodeBlock({ code }) {
-  const [copied, setCopied] = useState(false);
-  const copy = () => { setCopied(true); setTimeout(()=>setCopied(false),2000); };
-  return (
-    <div className="code-block">
-      <div className="code-header">
-        <div className="code-dots">
-          <div className="code-dot" style={{background:'rgba(248,113,113,0.7)'}}/>
-          <div className="code-dot" style={{background:'rgba(251,191,36,0.7)'}}/>
-          <div className="code-dot" style={{background:'rgba(74,222,128,0.7)'}}/>
+    <div style={{width:'100%',height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',
+      background:'radial-gradient(ellipse at top,rgba(59,130,246,0.08) 0%,transparent 60%)'}}>
+      <div style={{background:'var(--glass)',padding:44,borderRadius:32,border:'1px solid var(--rim)',
+        width:420,boxShadow:'0 24px 80px rgba(0,0,0,0.5)',backdropFilter:'blur(20px)'}}>
+        <div style={{textAlign:'center',marginBottom:32}}>
+          <div style={{fontSize:44,marginBottom:10}}>🚀</div>
+          <h2 style={{fontSize:26,fontWeight:800,letterSpacing:'-0.5px'}}>
+            {isSignUp ? "Create Account" : "Welcome Back"}
+          </h2>
+          <p style={{fontSize:13,color:'var(--dim)',marginTop:6}}>
+            {isSignUp ? "Join the Nexus community" : "Sign in to Nexus Chat"}
+          </p>
         </div>
-        <span className="code-lang">{code.lang}</span>
-        <button className="code-copy" onClick={copy}>{copied?'✓ copied':'copy'}</button>
-      </div>
-      <pre className="code-body">{hl(code.body)}</pre>
-    </div>
-  );
-}
 
-function Reactions({ reactions, onReact }) {
-  if (!reactions?.length) return null;
-  return (
-    <div className="reactions">
-      {reactions.map((r,i)=>(
-        <button key={i} onClick={()=>onReact(r.e)}
-          className={`rxn-btn ${r.mine?'mine':'other'}`}>
-          {r.e}<span style={{fontFamily:'var(--mono)',fontSize:10}}>{r.n}</span>
-        </button>
-      ))}
-      <button className="rxn-add">＋</button>
-    </div>
-  );
-}
-
-function ThreadBar({ count, participantIds, onClick }) {
-  if (!count) return null;
-  const users = participantIds.slice(0,3).map(()=>USERS[Math.floor(Math.random()*USERS.length)]);
-  return (
-    <button className="thread-bar" onClick={onClick}>
-      <div className="thread-avatars">
-        {users.map((u,i)=>(
-          <div key={i} style={{ width:18, height:18, borderRadius:4, fontSize:7, background:u.bg, color:u.color,
-            marginLeft:i?-5:0, border:'1.5px solid var(--bg1)', display:'flex', alignItems:'center',
-            justifyContent:'center', fontWeight:700, fontFamily:'var(--mono)', flexShrink:0, zIndex:3-i }}>
-            {u.initials}
-          </div>
-        ))}
-      </div>
-      <span className="thread-count">{count} {count===1?'reply':'replies'}</span>
-      <span className="thread-hint">View thread →</span>
-    </button>
-  );
-}
-
-function MsgRow({ msg, onThread, onReact, isThread=false }) {
-  const user = USERS[msg.uid];
-  return (
-    <div className="msg-row anim-fadeUp">
-      <div className="msg-avatar">
-        {msg.head ? <Av user={user}/> : <div style={{width:32,height:32}}/>}
-      </div>
-      <div className="msg-content">
-        {msg.head && (
-          <div className="msg-header">
-            <span className="msg-name" style={{color:user.color}}>{user.name}</span>
-            <span className="msg-role-badge" style={{color:user.color, background:`${user.color}12`, borderColor:`${user.color}28`}}>{user.role}</span>
-            <span className="msg-time">{msg.time}</span>
+        {error && (
+          <div style={{color: error.startsWith('✅') ? '#4ade80' : '#ef4444',
+            fontSize:13,marginBottom:16,textAlign:'center',padding:'10px 14px',
+            background: error.startsWith('✅') ? 'rgba(74,222,128,0.08)' : 'rgba(239,68,68,0.08)',
+            borderRadius:10,border:`1px solid ${error.startsWith('✅') ? 'rgba(74,222,128,0.2)' : 'rgba(239,68,68,0.2)'}`}}>
+            {error}
           </div>
         )}
-        <div className="msg-body">{msg.segments.map((s,i)=><Seg key={i} s={s}/>)}</div>
-        {msg.code && <CodeBlock code={msg.code}/>}
-        <Reactions reactions={msg.reactions} onReact={e=>onReact(msg.id,e)}/>
-        {!isThread && msg.thread?.length>0 && (
-          <ThreadBar count={msg.thread.length} participantIds={msg.thread} onClick={()=>onThread(msg)}/>
-        )}
-      </div>
-      <div className="msg-actions">
-        {[['😊','React'],['💬','Thread'],['✏️','Edit'],['⋯','More']].map(([ic,label],i)=>(
-          <button key={i} title={label} className="action-btn"
-            onClick={i===1?()=>onThread(msg):undefined}>{ic}</button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
-function MentionDD({ query, selected, onSelect }) {
-  const list = USERS.filter(u=>u.name.toLowerCase().includes(query.toLowerCase())).slice(0,5);
-  if (!list.length) return null;
-  return (
-    <div className="mention-dd">
-      <div className="mention-header">Mention a teammate</div>
-      {list.map((u,i)=>(
-        <div key={u.id} onClick={()=>onSelect(u)}
-          className={`mention-row${i===selected?' sel':''}`}>
-          <Av user={u} size={28} r={6}/>
-          <div>
-            <div style={{fontSize:12,fontWeight:600,color:u.color}}>{u.name}</div>
-            <div style={{fontFamily:'var(--mono)',fontSize:9,color:'var(--text3)'}}>{u.role}</div>
-          </div>
-          {i===selected && <span className="mention-kbd">↵ select</span>}
-        </div>
-      ))}
-    </div>
-  );
-}
+        <input
+          className="nx-inp"
+          style={{width:'100%',background:'rgba(255,255,255,0.04)',padding:'14px 16px',
+            borderRadius:14,marginBottom:12,border:'1px solid var(--rim)',fontSize:15}}
+          placeholder="Email address"
+          type="email"
+          value={email}
+          onChange={e=>setEmail(e.target.value)}
+          onKeyDown={e=>e.key==='Enter'&&submit()}
+        />
 
-function CtxCard({ item, kind, isAttached, onAttach }) {
-  const hoverClass = kind==='file'?'hover-teal':kind==='error'?'hover-rose':'hover-violet';
-  const sizeClass = kind==='file'?'ctx-card-f':kind==='error'?'ctx-card-e':'ctx-card-p';
-  return (
-    <div className={`ctx-card ${sizeClass} ${hoverClass} ${isAttached?'card-attached':''}`}
-      onClick={()=>onAttach({kind, ref:item})}>
-      {isAttached && <div className="card-attached-badge">✓</div>}
-      {kind==='file' && <>
-        <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:7}}>
-          <span style={{fontSize:15}}>{item.emoji}</span>
-          <span style={{fontFamily:'var(--mono)',fontSize:11,fontWeight:600,color:'var(--teal)',
-            overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.name}</span>
-        </div>
-        <div style={{fontFamily:'var(--mono)',fontSize:9,color:'var(--text3)'}}>{item.lang} · {item.lines} lines</div>
-        <div style={{marginTop:6,fontSize:9,color:'var(--text3)'}}>Click to attach ↗</div>
-      </>}
-      {kind==='error' && <>
-        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:7}}>
-          <span>{item.sev==='error'?'🔴':'🟡'}</span>
-          <span style={{fontFamily:'var(--mono)',fontSize:8,fontWeight:700,padding:'2px 5px',borderRadius:3,
-            textTransform:'uppercase',letterSpacing:'0.07em',
-            background:item.sev==='error'?'rgba(248,113,113,0.12)':'rgba(251,191,36,0.12)',
-            color:item.sev==='error'?'var(--rose)':'var(--amber)'}}>{item.sev}</span>
-        </div>
-        <div style={{fontFamily:'var(--mono)',fontSize:10,color:'var(--text1)',marginBottom:4,lineHeight:1.4}}>{item.name}</div>
-        <div style={{fontFamily:'var(--mono)',fontSize:9,color:'var(--text3)'}}>{item.file}</div>
-      </>}
-      {kind==='proj' && <>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
-          <span style={{fontWeight:700,fontSize:11,color:'var(--text1)'}}>{item.name}</span>
-          <span style={{fontFamily:'var(--mono)',fontSize:8,padding:'2px 6px',borderRadius:3,
-            background:'var(--violet-glow)',color:'var(--violet)',border:'1px solid rgba(167,139,250,0.25)'}}>{item.status}</span>
-        </div>
-        <div style={{height:3,borderRadius:999,background:'var(--border2)',marginBottom:7}}>
-          <div style={{height:3,borderRadius:999,width:`${item.pct}%`,transition:'width 0.6s ease',
-            background:'linear-gradient(90deg,var(--cyan),var(--teal))'}}/>
-        </div>
-        <div style={{display:'flex',justifyContent:'space-between',fontFamily:'var(--mono)',fontSize:9,color:'var(--text3)'}}>
-          <span>{item.tasks} tasks</span><span>{item.pct}% done</span>
-        </div>
-      </>}
-    </div>
-  );
-}
-
-function CtxPanel({ onAttach, attached }) {
-  const [tab, setTab] = useState('files');
-  const attachedIds = new Set(attached.map(a=>a.ref.id));
-  const tabs = [
-    {id:'files',   label:'Files',    count:FILES.length,    cls:'t-teal'},
-    {id:'errors',  label:'Errors',   count:ERRORS.length,   cls:'t-rose'},
-    {id:'projects',label:'Projects', count:PROJECTS.length, cls:'t-violet'},
-  ];
-  return (
-    <div className="ctx-panel">
-      <div className="ctx-tabs">
-        {tabs.map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)}
-            className={`ctx-tab ${t.cls}${tab===t.id?' active':''}`}>
-            {t.label}
-            <span className="ctx-count">{t.count}</span>
+        <div style={{position:'relative',marginBottom:20}}>
+          <input
+            className="nx-inp"
+            type={showPass ? "text" : "password"}
+            style={{width:'100%',background:'rgba(255,255,255,0.04)',padding:'14px 44px 14px 16px',
+              borderRadius:14,border:'1px solid var(--rim)',fontSize:15}}
+            placeholder="Password"
+            value={pass}
+            onChange={e=>setPass(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&submit()}
+          />
+          <button
+            onClick={()=>setShowPass(!showPass)}
+            style={{position:'absolute',right:14,top:'50%',transform:'translateY(-50%)',
+              background:'none',border:'none',cursor:'pointer',color:'var(--dim)',fontSize:18,padding:0}}>
+            {showPass ? '🙈' : '👁'}
           </button>
-        ))}
-        <div style={{marginLeft:'auto',fontFamily:'var(--mono)',fontSize:9,color:'var(--text3)',alignSelf:'center',paddingBottom:2}}>
-          Click a card to attach it to your message
         </div>
-      </div>
-      <div className="ctx-cards">
-        {tab==='files'    && FILES.map(f=><CtxCard key={f.id} item={f} kind="file" isAttached={attachedIds.has(f.id)} onAttach={onAttach}/>)}
-        {tab==='errors'   && ERRORS.map(e=><CtxCard key={e.id} item={e} kind="error" isAttached={attachedIds.has(e.id)} onAttach={onAttach}/>)}
-        {tab==='projects' && PROJECTS.map(p=><CtxCard key={p.id} item={p} kind="proj" isAttached={attachedIds.has(p.id)} onAttach={onAttach}/>)}
-      </div>
-    </div>
-  );
-}
 
-function ThreadPanel({ msg, threads, onClose, onSend, onReact }) {
-  const [val, setVal] = useState('');
-  const endRef = useRef(null);
-  const replies = threads[msg.id] || [];
-  useEffect(()=>{ endRef.current?.scrollIntoView({behavior:'smooth'}); }, [replies.length]);
-  const send = () => { if(!val.trim()) return; onSend(msg.id,val.trim()); setVal(''); };
-  return (
-    <div className="thread-panel">
-      <div className="thread-header">
-        <div>
-          <div className="thread-title">Thread</div>
-          <div className="thread-sub">{replies.length+1} messages · #{CHANNELS[0].label}</div>
-        </div>
-        <button className="thread-close" onClick={onClose}>✕</button>
-      </div>
-      <div style={{flex:1,overflowY:'auto',padding:'8px 0'}}>
-        <MsgRow msg={msg} onThread={()=>{}} onReact={onReact} isThread/>
-        <div className="thread-divider"/>
-        {replies.length===0 && (
-          <div style={{padding:'20px 24px',textAlign:'center',color:'var(--text3)',fontFamily:'var(--mono)',fontSize:10}}>
-            No replies yet — be the first to reply
-          </div>
-        )}
-        {replies.map(r=><MsgRow key={r.id} msg={r} onThread={()=>{}} onReact={onReact} isThread/>)}
-        <div ref={endRef}/>
-      </div>
-      <div className="thread-input">
-        <div className="thread-box">
-          <textarea className="thread-ta" rows={2} value={val}
-            onChange={e=>setVal(e.target.value)}
-            onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}}
-            placeholder="Reply in thread…"/>
-          <div className="thread-foot">
-            <span style={{fontFamily:'var(--mono)',fontSize:9,color:'var(--text3)'}}>shift+enter for newline</span>
-            <button onClick={send} disabled={!val.trim()} className="send-btn" style={{marginLeft:'auto',padding:'6px 14px',fontSize:11}}>
-              Reply ↵
-            </button>
-          </div>
+        <button
+          style={{width:'100%',borderRadius:14,height:52,fontWeight:700,fontSize:16,border:'none',
+            background: loading ? 'rgba(59,130,246,0.4)' : 'linear-gradient(135deg,#3b82f6,#6366f1)',
+            color:'#fff',cursor:loading?'default':'pointer',transition:'all .2s',
+            boxShadow: loading ? 'none' : '0 4px 20px rgba(59,130,246,0.4)'}}
+          onClick={submit}
+          disabled={loading}>
+          {loading ? (
+            <span style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+              <span style={{width:18,height:18,border:'2px solid rgba(255,255,255,0.3)',
+                borderTop:'2px solid #fff',borderRadius:'50%',
+                display:'inline-block',animation:'sp 0.8s linear infinite'}}/>
+              {isSignUp ? "Creating account…" : "Signing in…"}
+            </span>
+          ) : (isSignUp ? "Create Account" : "Sign In")}
+        </button>
+
+        <div style={{textAlign:'center',marginTop:20,fontSize:13,color:'var(--dim)',cursor:'pointer'}}
+          onClick={()=>{setIsSignUp(!isSignUp);setError("");}}>
+          {isSignUp
+            ? <span>Already have an account? <span style={{color:'var(--accent)',fontWeight:600}}>Sign In</span></span>
+            : <span>No account yet? <span style={{color:'var(--accent)',fontWeight:600}}>Sign Up</span></span>}
         </div>
       </div>
     </div>
   );
 }
 
-/* ─────────────────────────── APP ─────────────────────────── */
-export default function App() {
-  const [activeCh, setActiveCh] = useState('engine-dev');
-  const [msgs, setMsgs] = useState(INIT_MSGS);
-  const [threads, setThreads] = useState(INIT_THREADS);
-  const [activeThread, setActiveThread] = useState(null);
-  const [ctxOpen, setCtxOpen] = useState(true);
-  const [sideOpen, setSideOpen] = useState(true);
-  const [input, setInput] = useState('');
-  const [attached, setAttached] = useState([]);
-  const [mention, setMention] = useState(null); // {query, start}
-  const [mentionSel, setMentionSel] = useState(0);
-  const [typing, setTyping] = useState(false);
-  const [showNewBadge, setShowNewBadge] = useState(false);
-
-  const textRef = useRef(null);
+// ═══════════════════════════════════════════════
+//  CHAT APP (Supabase Realtime)
+// ═══════════════════════════════════════════════
+function ChatApp({ authUser, onSignOut }) {
+  const [channels, setChannels] = useState([]);
+  const [activeChId, setActiveChId] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [profiles, setProfiles] = useState({});
+  const [input, setInput] = useState("");
+  const [onlineUsers, setOnlineUsers] = useState([]);
+  const [connected, setConnected] = useState(false);
+  const [sendError, setSendError] = useState("");
+  const [showEmoji, setShowEmoji] = useState(false);
   const endRef = useRef(null);
-  const msgAreaRef = useRef(null);
+  const channelRef = useRef(null);
+  const fileInputRef = useRef(null);
 
-  useEffect(()=>{
-    const el = msgAreaRef.current;
-    if(!el) return;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    if(atBottom) endRef.current?.scrollIntoView({behavior:'smooth'});
-    else setShowNewBadge(true);
-  },[msgs.length]);
-
-  // Simulate typing after send
-  const triggerTyping = () => {
-    setTyping(true);
-    setTimeout(()=>setTyping(false), 2200);
+  const EMOJIS = ["😀","😂","🥰","😎","🤔","😢","😡","👍","🙏","🔥","❤️","🎉","✨","🚀","👀","💯","🤷‍♂️","🤦‍♂️","🙌","💡"];
+  
+  const addEmoji = (emoji) => {
+    setInput(prev => prev + emoji);
+    setShowEmoji(false);
   };
 
-  const handleInput = e => {
-    const v = e.target.value;
-    setInput(v);
-    const cur = e.target.selectionStart;
-    const before = v.slice(0, cur);
-    const at = before.lastIndexOf('@');
-    if(at!==-1 && (at===0||/\s/.test(before[at-1]))) {
-      const q = before.slice(at+1);
-      if(!/\s/.test(q)){ setMention({query:q,start:at}); setMentionSel(0); return; }
-    }
-    setMention(null);
+  const handleAttachment = () => {
+    // We just trigger a visual alert for now
+    alert("Attachment uploads require Supabase Storage configuration which is not currently set up.");
   };
 
-  const pickMention = user => {
-    if(!mention) return;
-    const before = input.slice(0,mention.start);
-    const after  = input.slice(mention.start+1+mention.query.length);
-    setInput(before+'@'+user.name+' '+after);
-    setMention(null);
-    textRef.current?.focus();
-  };
+  const currentUser = useMemo(() => ({
+    id: authUser.id,
+    email: authUser.email || "",
+    username: authUser.user_metadata?.username || authUser.email?.split("@")[0] || "anon",
+  }), [authUser]);
 
-  const handleKeyDown = e => {
-    const list = USERS.filter(u=>u.name.toLowerCase().includes((mention?.query||'').toLowerCase()));
-    if(mention && list.length) {
-      if(e.key==='ArrowDown'){e.preventDefault();setMentionSel(s=>(s+1)%list.length);return;}
-      if(e.key==='ArrowUp'){e.preventDefault();setMentionSel(s=>(s-1+list.length)%list.length);return;}
-      if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();pickMention(list[mentionSel]);return;}
-      if(e.key==='Escape'){setMention(null);return;}
-    }
-    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}
-  };
+  const activeChannel = channels.find(c => c.id === activeChId);
 
-  const parseInput = text => {
-    const segs=[];let i=0,buf='';
-    while(i<text.length){
-      if(text[i]==='@'){
-        const rest=text.slice(i+1);
-        const found=USERS.find(u=>rest.toLowerCase().startsWith(u.name.toLowerCase()));
-        if(found){
-          if(buf){segs.push({t:'text',v:buf});buf='';}
-          segs.push({t:'mention',user:found});
-          i+=1+found.name.length;
-          if(text[i]===' ')i++;
-          continue;
+  // ── Ensure profile exists (handles users created before the trigger) ──
+  useEffect(() => {
+    (async () => {
+      const { data: existing, error: fetchErr } = await supabase
+        .from("profiles").select("id").eq("id", currentUser.id).maybeSingle();
+      
+      if (!existing) {
+        // Append random string to username to avoid unique constraint violations
+        const safeUsername = `${currentUser.username}_${Math.floor(Math.random() * 10000)}`;
+        const { error } = await supabase.from("profiles").upsert({
+          id: currentUser.id,
+          email: currentUser.email,
+          username: safeUsername,
+        }, { onConflict: "id" });
+        
+        if (error) {
+          console.error("Profile create error:", error.message);
+          setSendError(`Profile missing and auto-create failed: ${error.message}`);
+        } else {
+          console.log("Profile auto-created for", safeUsername);
         }
       }
-      buf+=text[i++];
+    })();
+  }, [currentUser]);
+
+  // ── Load channels ──
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase.from("channels").select("*").order("created_at");
+      if (error) console.error("Channels load error:", error.message);
+      if (data?.length) {
+        setChannels(data);
+        setActiveChId(data[0].id);
+      }
+    })();
+  }, []);
+
+  // ── Load messages for active channel ──
+  useEffect(() => {
+    if (!activeChId) return;
+    (async () => {
+      const { data } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("channel_id", activeChId)
+        .order("created_at", { ascending: true })
+        .limit(200);
+      setMessages(data || []);
+    })();
+  }, [activeChId]);
+
+  // ── Load profiles cache ──
+  const loadProfile = useCallback(async (userId) => {
+    if (profiles[userId]) return;
+    const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
+    if (data) setProfiles(prev => ({ ...prev, [userId]: data }));
+  }, [profiles]);
+
+  useEffect(() => {
+    messages.forEach(m => loadProfile(m.user_id));
+  }, [messages, loadProfile]);
+
+  // ── Supabase Realtime subscription ──
+  useEffect(() => {
+    if (!activeChId) return;
+
+    // Unsubscribe previous channel
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
     }
-    if(buf) segs.push({t:'text',v:buf});
-    attached.forEach(a=>{
-      segs.push({t:'text',v:' '});
-      if(a.kind==='file')  segs.push({t:'file',ref:a.ref});
-      if(a.kind==='error') segs.push({t:'err',ref:a.ref});
-      if(a.kind==='proj')  segs.push({t:'proj',ref:a.ref});
+
+    const ch = supabase.channel(`room:${activeChId}`, {
+      config: { presence: { key: currentUser.id } },
     });
-    return segs;
-  };
 
-  const sendMsg = () => {
-    if(!input.trim()&&!attached.length) return;
-    const m = {
-      id:`m${Date.now()}`, uid:0,
-      time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),
-      head:true, segments:parseInput(input), reactions:[], thread:[],
+    // Listen for new messages via Postgres Changes
+    ch.on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `channel_id=eq.${activeChId}` },
+      (payload) => {
+        setMessages(prev => {
+          // Already have the real message
+          if (prev.some(m => m.id === payload.new.id)) return prev;
+          // Replace matching optimistic message (same user + content) with the real one
+          const optIdx = prev.findIndex(
+            m => m.id?.startsWith("opt-") &&
+              m.user_id === payload.new.user_id &&
+              m.content === payload.new.content
+          );
+          if (optIdx !== -1) {
+            const updated = [...prev];
+            updated[optIdx] = payload.new;
+            return updated;
+          }
+          return [...prev, payload.new];
+        });
+        loadProfile(payload.new.user_id);
+      }
+    );
+
+    // Listen for deletes
+    ch.on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" },
+      (payload) => {
+        setMessages(prev => prev.filter(m => m.id !== payload.old.id));
+      }
+    );
+
+    // Presence
+    ch.on("presence", { event: "sync" }, () => {
+      const state = ch.presenceState();
+      setOnlineUsers(Object.keys(state));
+    });
+
+    ch.subscribe(async (status) => {
+      if (status === "SUBSCRIBED") {
+        setConnected(true);
+        await ch.track({ user_id: currentUser.id, username: currentUser.username, online_at: new Date().toISOString() });
+      }
+    });
+
+    channelRef.current = ch;
+
+    return () => {
+      supabase.removeChannel(ch);
     };
-    setMsgs(p=>[...p,m]);
-    setInput(''); setAttached([]); setMention(null);
-    triggerTyping();
-  };
+  }, [activeChId, currentUser]);
 
-  const sendReply = (msgId, text) => {
-    const r = {
-      id:`tr${Date.now()}`, uid:0,
-      time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),
-      head:true, segments:[{t:'text',v:text}], reactions:[],
-    };
-    setThreads(p=>({...p,[msgId]:[...(p[msgId]||[]),r]}));
-    setMsgs(p=>p.map(m=>m.id===msgId?{...m,thread:[...m.thread,r.id]}:m));
-  };
+  // Auto-scroll
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  const handleReact = (msgId, emoji) => {
-    setMsgs(p=>p.map(m=>{
-      if(m.id!==msgId) return m;
-      const reactions=m.reactions.map(r=>
-        r.e!==emoji?r:r.mine?{...r,n:r.n-1,mine:false}:{...r,n:r.n+1,mine:true}
-      );
-      return {...m,reactions};
-    }));
-  };
+  // ── Send message ──
+  const send = useCallback(async () => {
+    const text = input.trim();
+    if (!text || !activeChId) return;
+    setSendError("");
+    setInput("");
 
-  const handleAttach = ctx => {
-    setAttached(p=>p.find(a=>a.ref.id===ctx.ref.id)?p.filter(a=>a.ref.id!==ctx.ref.id):[...p,ctx]);
-  };
+    // Optimistic: show message immediately with a temp id
+    // The realtime handler will replace it with the real DB row
+    const optimisticId = `opt-${Date.now()}`;
+    setMessages(prev => [...prev, {
+      id: optimisticId,
+      channel_id: activeChId,
+      user_id: currentUser.id,
+      content: text,
+      created_at: new Date().toISOString(),
+    }]);
 
-  const curCh = CHANNELS.find(c=>c.id===activeCh);
-  const sections = ['Channels','Direct'];
+    const { error } = await supabase.from("messages").insert({
+      channel_id: activeChId,
+      user_id: currentUser.id,
+      content: text,
+    });
+    if (error) {
+      console.error("Send error:", error.message, error);
+      setSendError(error.message);
+      // Remove the optimistic message if insert failed
+      setMessages(prev => prev.filter(m => m.id !== optimisticId));
+    }
+    // On success: the realtime INSERT event will replace the optimistic row automatically
+  }, [input, activeChId, currentUser.id]);
+
+  const getProfile = (userId) => profiles[userId] || { username: "...", email: "" };
 
   return (
-    <>
-      <style>{G}</style>
-      <div className="app">
-
-        {/* ── SIDEBAR ── */}
-        <div className={`sidebar${sideOpen?'':' collapsed'}`}>
-          <div className="sidebar-logo">
-            <div className="logo-icon">⚡</div>
-            <span className="logo-text">CKC-OS</span>
-            <div className="live-badge">
-              <div className="blink" style={{width:5,height:5,borderRadius:'50%',background:'var(--cyan)',flexShrink:0}}/>
-              LIVE
-            </div>
+    <div className="nx-wrap">
+      {/* SIDEBAR */}
+      <div className="nx-side">
+        <div className="nx-side-hd">
+          <div className="wa-user-profile" onClick={onSignOut} title="Click to Sign Out">
+            <div className="nx-logo">{initials(currentUser.username)}</div>
+            <span style={{fontWeight:600, fontSize:15}}>{currentUser.username}</span>
           </div>
-
-          <div style={{flex:1,overflowY:'auto'}}>
-            {sections.map(sec=>(
-              <div key={sec} className="sidebar-section">
-                <div className="section-label">{sec}</div>
-                {CHANNELS.filter(c=>c.section===sec).map(ch=>(
-                  <button key={ch.id} onClick={()=>setActiveCh(ch.id)}
-                    className={`ch-btn${activeCh===ch.id?' active':''}`}>
-                    {ch.user ? <Av user={ch.user} size={16} r={4}/> : <span style={{width:14,textAlign:'center',fontSize:12}}>{ch.icon}</span>}
-                    <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ch.label}</span>
-                    {ch.badge>0 && <span className={`ch-badge ${ch.id==='errors'?'red':'cyan'}`}>{ch.badge}</span>}
-                  </button>
-                ))}
-              </div>
-            ))}
+          <div className="wa-icons">
+            <div className="wa-icon" title="Status">↻</div>
+            <div className="wa-icon" title="New Chat">💬</div>
+            <div className="wa-icon" title="Menu">⋮</div>
           </div>
-
-          <div className="sidebar-bottom">
-            <div className="quick-label">Quick Attach</div>
-            {FILES.slice(0,2).map(f=>(
-              <button key={f.id} className="quick-btn" onClick={()=>handleAttach({kind:'file',ref:f})}>
-                {f.emoji} {f.name}
-              </button>
-            ))}
-            {ERRORS.slice(0,1).map(e=>(
-              <button key={e.id} className="quick-btn" onClick={()=>handleAttach({kind:'error',ref:e})}
-                style={{color:attached.find(a=>a.ref.id===e.id)?'var(--rose)':'var(--text3)'}}>
-                🔴 {e.name.slice(0,28)}…
-              </button>
-            ))}
-          </div>
-
-          <div className="me-row">
-            <Av user={ME}/>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:12,fontWeight:600}}>{ME.name}</div>
-              <div style={{display:'flex',alignItems:'center',gap:4,fontFamily:'var(--mono)',fontSize:9,color:'var(--green)',marginTop:1}}>
-                <div className="online-dot"/>Online
-              </div>
-            </div>
-            <button className="icon-btn" style={{width:26,height:26,fontSize:13}}>⚙️</button>
+        </div>
+        
+        <div className="wa-search-bar">
+          <div className="wa-search-inner">
+            <span style={{color:'var(--wa-text-dim)', fontSize: 14}}>🔍</span>
+            <input placeholder="Search or start new chat" />
           </div>
         </div>
 
-        {/* ── MAIN ── */}
-        <div className="main">
+        <div className="nx-chlist">
+          {channels.map(ch => (
+            <button key={ch.id} className={`nx-ch${activeChId===ch.id?' on':''}`} onClick={()=>setActiveChId(ch.id)}>
+              <div className="nx-ch-av">#</div>
+              <div className="nx-ch-inner">
+                <div className="nx-ch-title">
+                  <span>{ch.name}</span>
+                  <span className="nx-ch-time">12:00 PM</span>
+                </div>
+                <div className="nx-ch-desc">{ch.description || "Tap to view channel"}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
 
-          {/* TOPBAR */}
-          <div className="topbar">
-            <button className="menu-btn" onClick={()=>setSideOpen(s=>!s)}>☰</button>
-            <span style={{fontFamily:'var(--mono)',fontSize:14,color:'var(--cyan)',flexShrink:0}}>#</span>
-            <div className="topbar-info">
-              <div className="topbar-name">{curCh?.label||'engine-dev'}</div>
-              <div className="topbar-members">{USERS.slice(0,4).map(u=>u.name).join(' · ')}</div>
-            </div>
-            <div className="topbar-pills">
-              {FILES.slice(0,2).map(f=>(
-                <button key={f.id} className="pill pill-teal" onClick={()=>handleAttach({kind:'file',ref:f})}>
-                  {f.emoji} {f.name}
-                </button>
-              ))}
-              <button className="pill pill-rose" onClick={()=>setCtxOpen(o=>!o)}>
-                🔴 {ERRORS.length} Errors
-              </button>
-              <button className="pill pill-violet" onClick={()=>setCtxOpen(o=>!o)}>
-                ⚡ {PROJECTS.length} Projects
-              </button>
-              <button className={`icon-btn${ctxOpen?' active':''}`} onClick={()=>setCtxOpen(o=>!o)} title="Toggle context panel">
-                {ctxOpen?'▲':'▼'}
-              </button>
-            </div>
-          </div>
-
-          {/* CONTEXT PANEL */}
-          {ctxOpen && <CtxPanel onAttach={handleAttach} attached={attached}/>}
-
-          {/* MESSAGES */}
-          <div className="msg-area" ref={msgAreaRef}>
-            <div className="day-divider">
-              <div className="day-line"/>
-              <span className="day-label">TODAY · {new Date().toLocaleDateString([],{weekday:'long',month:'short',day:'numeric'})}</span>
-              <div className="day-line"/>
-            </div>
-            {msgs.map(m=>(
-              <MsgRow key={m.id} msg={m} onThread={setActiveThread} onReact={handleReact}/>
-            ))}
-
-            {/* Typing indicator */}
-            {typing && (
-              <div className="msg-row anim-fadeUp" style={{opacity:0.7}}>
-                <Av user={USERS[1]} size={32} r={8}/>
-                <div style={{display:'flex',alignItems:'center',gap:3,paddingTop:8}}>
-                  <span className="typing-dot"/><span className="typing-dot"/><span className="typing-dot"/>
-                  <span style={{fontFamily:'var(--mono)',fontSize:9,color:'var(--text3)',marginLeft:6}}>Priya is typing…</span>
+      {/* MAIN */}
+      <div className="nx-main">
+        {activeChId ? (
+          <>
+            <div className="nx-top">
+              <div className="wa-chat-header-info">
+                <div className="wa-chat-avatar">#</div>
+                <div style={{display:'flex', flexDirection:'column'}}>
+                  <h3 style={{fontSize:16,fontWeight:600}}>{activeChannel?.name || "..."}</h3>
+                  <span style={{fontSize:13,color:'var(--wa-text-dim)'}}>
+                    {connected ? `${onlineUsers.length} online` : 'Connecting...'}
+                  </span>
                 </div>
               </div>
-            )}
-            <div ref={endRef}/>
-          </div>
-
-          {/* New message badge */}
-          {showNewBadge && (
-            <button className="new-badge" onClick={()=>{
-              endRef.current?.scrollIntoView({behavior:'smooth'});
-              setShowNewBadge(false);
-            }}>↓ New message</button>
-          )}
-
-          {/* INPUT ZONE */}
-          <div className="input-zone">
-            {attached.length>0 && (
-              <div className="attached-row">
-                {attached.map((a,i)=>(
-                  <div key={i} className="attached-chip" style={{
-                    color:a.kind==='file'?'var(--teal)':a.kind==='error'?'var(--rose)':'var(--violet)',
-                    background:a.kind==='file'?'var(--teal-glow)':a.kind==='error'?'var(--rose-glow)':'var(--violet-glow)',
-                    borderColor:a.kind==='file'?'rgba(45,212,191,0.3)':a.kind==='error'?'rgba(248,113,113,0.3)':'rgba(167,139,250,0.3)',
-                  }}>
-                    <span style={{fontSize:11}}>{a.kind==='file'?a.ref.emoji:a.kind==='error'?'🔴':'⚡'}</span>
-                    <span style={{fontFamily:'var(--mono)',fontSize:10}}>{a.ref.name}</span>
-                    <button className="chip-remove" onClick={()=>setAttached(p=>p.filter((_,j)=>j!==i))}>✕</button>
-                  </div>
-                ))}
+              <div className="wa-icons">
+                <div className="wa-icon" title="Search">🔍</div>
+                <div className="wa-icon" title="Menu">⋮</div>
               </div>
-            )}
+            </div>
 
-            <div style={{position:'relative'}}>
-              {mention && (
-                <MentionDD query={mention.query} selected={mentionSel} onSelect={pickMention}/>
+            <div className="nx-msgs">
+              {messages.length === 0 && (
+                <div style={{textAlign:'center', padding:'8px 12px', color:'var(--wa-text-dim)', fontSize:'12.5px', background:'rgba(32,44,51,0.8)', borderRadius:'8px', alignSelf:'center', marginTop:'20px'}}>
+                  No messages yet. Send a message to start the conversation!
+                </div>
               )}
-              <div className="input-box">
-                <textarea className="input-ta" ref={textRef} rows={2}
-                  value={input} onChange={handleInput} onKeyDown={handleKeyDown}
-                  placeholder={`Message #${curCh?.label||'engine-dev'} — type @ to mention someone`}/>
-                <div className="input-toolbar">
-                  {[
-                    {ic:'📎', tip:'Attach file',    fn:()=>handleAttach({kind:'file',ref:FILES[0]})},
-                    {ic:'🐛', tip:'Attach error',   fn:()=>handleAttach({kind:'error',ref:ERRORS[0]})},
-                    {ic:'⚡', tip:'Attach project', fn:()=>handleAttach({kind:'proj',ref:PROJECTS[0]})},
-                  ].map((b,i)=>(
-                    <button key={i} className="tb-btn" title={b.tip} onClick={b.fn}>{b.ic}</button>
-                  ))}
-                  <div className="tb-sep"/>
-                  {['B','`','~~'].map((f,i)=><button key={i} className="tb-fmt">{f}</button>)}
-                  <span className="send-hint" style={{marginLeft:'auto',marginRight:8}}>shift+enter for newline</span>
-                  <button onClick={sendMsg} disabled={!input.trim()&&!attached.length} className="send-btn">
-                    Send <span style={{fontFamily:'var(--mono)',fontSize:9,opacity:0.6}}>↵</span>
-                  </button>
-                </div>
+              {messages.map((m, i) => {
+                const isMine = m.user_id === currentUser.id;
+                const prof = getProfile(m.user_id);
+                const [col, _bg] = getColor(m.user_id);
+                const time = m.created_at ? new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "";
+                
+                // Only show tail for first message in a group by same user
+                const showTail = i === 0 || messages[i-1].user_id !== m.user_id;
+
+                return (
+                  <div key={m.id} className={`nx-row${isMine?' mine':''}`}>
+                    <div className={`nx-bub ${isMine?'out':'in'}`}>
+                      {showTail && (
+                        <svg className="wa-tail" viewBox="0 0 8 13" preserveAspectRatio="none">
+                          <path d={isMine ? "M0,0 L8,0 L8,13 Z" : "M8,0 L0,0 L0,13 Z"} fill="currentColor" />
+                        </svg>
+                      )}
+                      
+                      {!isMine && showTail && (
+                        <div className="wa-sender" style={{color:col}}>{prof.username}</div>
+                      )}
+                      
+                      <div className="wa-msg-content">
+                        {m.content}
+                        <span className="wa-msg-spacer"></span>
+                      </div>
+                      
+                      <div className="wa-timestamp">
+                        {time}
+                        {isMine && <span style={{color: '#53bdeb', marginLeft: '2px', fontSize: 13}}>✓✓</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={endRef} />
+            </div>
+
+            {sendError && (
+              <div style={{padding:'8px 30px',background:'rgba(239,68,68,0.1)',color:'#ef4444',fontSize:12,borderTop:'1px solid rgba(239,68,68,0.2)', zIndex:2}}>
+                ⚠ Send failed: {sendError}
               </div>
+            )}
+            
+            <div className="nx-input-zone">
+              {showEmoji && (
+                <div className="wa-emoji-picker">
+                  {EMOJIS.map((em, idx) => (
+                    <button key={idx} className="wa-emoji-btn" onClick={() => addEmoji(em)}>{em}</button>
+                  ))}
+                </div>
+              )}
+              
+              <button className="wa-attach-btn" title="Emojis" onClick={() => setShowEmoji(!showEmoji)}>😊</button>
+              <button className="wa-attach-btn" title="Attach" onClick={handleAttachment}>📎</button>
+              
+              <div className="nx-input-box">
+                <input className="nx-inp" placeholder="Type a message" value={input}
+                  onChange={e=>setInput(e.target.value)}
+                  onKeyDown={e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}} />
+              </div>
+              
+              {input.trim() ? (
+                <button className="nx-send" onClick={send}>➤</button>
+              ) : (
+                <button className="wa-attach-btn" style={{fontSize:20}}>🎤</button>
+              )}
             </div>
+          </>
+        ) : (
+          <div className="nx-empty">
+            <svg width="200" height="200" viewBox="0 0 200 200" opacity="0.3">
+              <circle cx="100" cy="100" r="90" fill="none" stroke="currentColor" strokeWidth="4"/>
+              <path d="M100,50 L100,100 L140,140" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round"/>
+            </svg>
+            <h1>Nexus for Web</h1>
+            <p>Send and receive messages without keeping your phone online.<br/>Use Nexus on up to 4 linked devices and 1 phone at the same time.</p>
           </div>
-
-          {/* STATUS BAR */}
-          <div className="statusbar">
-            <div className="status-dot" style={{background:'var(--green)'}}/>
-            <span>{USERS.length} online</span>
-            <span style={{color:'var(--border3)'}}>·</span>
-            <span>{msgs.length} messages</span>
-            <span style={{color:'var(--border3)'}}>·</span>
-            <span>engine-dev · CKC-OS</span>
-            <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6}}>
-              {attached.length>0 && <span style={{color:'var(--cyan)'}}>{attached.length} item{attached.length>1?'s':''} attached</span>}
-              <span style={{color:'var(--border3)'}}>·</span>
-              <span>v2.4.1</span>
-            </div>
-          </div>
-        </div>
-
-        {/* THREAD PANEL */}
-        {activeThread && (
-          <ThreadPanel
-            msg={activeThread} threads={threads}
-            onClose={()=>setActiveThread(null)}
-            onSend={sendThreadReply} onReact={handleReact}/>
         )}
       </div>
-    </>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════
+//  ROOT
+// ═══════════════════════════════════════════════
+export default function App() {
+  const [user, setUser] = useState(undefined);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({data:{session}}) => setUser(session?.user || null));
+    const {data:{subscription}} = supabase.auth.onAuthStateChange((_e, s) => setUser(s?.user || null));
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (user === undefined) return <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#05070a'}}><div className="loader"/></div>;
+
+  return (
+    <div style={{height:'100vh'}}>
+      <style>{CSS}</style>
+      {!user ? <AuthPage onAuth={setUser} /> : <ChatApp authUser={user} onSignOut={()=>supabase.auth.signOut()} />}
+    </div>
   );
 }
