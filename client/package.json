@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "start": "node server.js",
+    "ws": "node wsServer.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.104.1",
+    "flavor-forge": "file:..",
+    "react-router-dom": "^7.14.2"
+  }
+}
