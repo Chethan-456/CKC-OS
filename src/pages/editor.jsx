@@ -1393,11 +1393,13 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 
 /* 1. Large Tablets & Small Laptops (1024px and down) */
 @media screen and (max-width: 1024px) {
-  .sb { width: 60px !important; transition: width 0.3s; }
-  .sb span:not(.new-tab-dot):not(.new-tab-dot + span) { display: none; }
+  .sidebar { width: 60px !important; min-width: 60px !important; transition: width 0.3s; }
+  .sidebar span:not(.new-tab-dot):not(.new-tab-dot + span) { display: none; }
   .ft { padding: 8px !important; justify-content: center; }
   .ft span:last-child { display: none; }
   .presence-info, .sec-hdr span:first-child, .divider, .dbg-badge span:not(.dbg-cnt) { display: none; }
+  .right-panel { width: 60px !important; min-width: 60px !important; }
+  .right-panel > *:not(.ot-hdr) { display: none; }
 }
 
 /* 2. Tablets (768px and down) */
@@ -1416,8 +1418,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 
 /* 3. Mobile Devices (600px and down - iPhone / Android) */
 @media screen and (max-width: 600px) {
-  .sb, .out-panel, .presence-card, .sec-hdr, .logs-foot, .dbg-badge { display: none !important; }
-  .topbar { justify-content: space-between; }
+  .sidebar, .right-panel, .out-panel, .presence-card, .sec-hdr, .logs-foot, .dbg-badge { display: none !important; }
+  .topbar { justify-content: space-between; padding: 0 8px; }
   .tb-logo .gem { width: 20px; height: 20px; font-size: 10px; }
   .lp { padding: 4px 8px !important; }
   .lp span:last-child { display: none; }
@@ -1430,10 +1432,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
   .terminal-submit { padding: 14px; font-size: 13px; }
   .footer-content { gap: 12px; font-size: 9px; }
   
-  /* Make editor full screen */
   .presence-panel-collapsed { display: none; }
   
-  /* Debugging Room Modal Responsiveness */
   .dbg-room { width: 95vw !important; height: 85vh !important; flex-direction: column !important; }
   .dbg-errors-panel { width: 100% !important; height: 180px !important; border-right: none !important; border-bottom: 1px solid rgba(255,255,255,.05); }
 }
@@ -2933,7 +2933,7 @@ function Shell({ user, onLogout }) {
         </div>
 
         {/* ── RIGHT PANEL ── */}
-        <div style={{ width: 210, background: "var(--bg2)", borderLeft: "1px solid var(--bdr)", display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0 }}>
+        <div className="right-panel" style={{ width: 210, background: "var(--bg2)", borderLeft: "1px solid var(--bdr)", display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0 }}>
           <div style={{ display: "flex", borderBottom: "1px solid var(--bdr)", flexShrink: 0, background: "var(--bg3)" }}>
             {[["crdt", "OT/CRDT"], ["ws", "WS Log"]].map(([id, lb]) => (
               <div key={id} className={`rp-tab${rpTab === id ? " on" : ""}`} onClick={() => setRpTab(id)} style={{ flex: 1, textAlign: "center" }}>{lb}</div>
