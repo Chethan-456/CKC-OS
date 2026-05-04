@@ -17,10 +17,17 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const apiKey = (process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY || "").trim();
+  // Smart Detection: Look for explicit key names or any key starting with 'gsk_'
+  let apiKey = (process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY || "").trim();
   
   if (!apiKey) {
-    return res.status(500).json({ error: "GROQ_API_KEY not set on server. Please configure it in your Vercel Environment Variables." });
+    // If not found, check if the key itself was accidentally used as a variable name (common mistake)
+    const sneakyKey = Object.keys(process.env).find(k => k.startsWith("gsk_"));
+    if (sneakyKey) apiKey = sneakyKey;
+  }
+  
+  if (!apiKey) {
+    return res.status(500).json({ error: "GROQ_API_KEY not set on server. Please check your Vercel Environment Variables." });
   }
 
   const { messages } = req.body;
