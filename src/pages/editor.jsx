@@ -2076,8 +2076,6 @@ function AccessTerminal() {
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   };
 
-  const isConfigured = !!import.meta.env.VITE_SUPABASE_URL;
-
   return (
     <div className="access-terminal">
       <div className="terminal-bg">
