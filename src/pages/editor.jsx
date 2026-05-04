@@ -1966,6 +1966,20 @@ function AccessTerminal() {
   const [colorIdx, setColorIdx] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [autoBypassCounter, setAutoBypassCounter] = useState(3);
+
+  const isConfigured = !!import.meta.env.VITE_SUPABASE_URL;
+
+  useEffect(() => {
+    if (!isConfigured && autoBypassCounter > 0) {
+      const timer = setTimeout(() => setAutoBypassCounter(c => c - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+    if (!isConfigured && autoBypassCounter === 0) {
+      loginGuest();
+      navigate("/editor");
+    }
+  }, [isConfigured, autoBypassCounter, loginGuest, navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -2020,14 +2034,14 @@ function AccessTerminal() {
         </div>
 
         {!isConfigured && (
-          <div className="terminal-alert warning" style={{ marginBottom: 20, border: "1px solid rgba(79,193,255,0.4)", background: "rgba(79,193,255,0.08)" }}>
-            <span className="alert-icon" style={{ color: "#4FC1FF" }}>ℹ</span>
-            <div className="alert-text" style={{ color: "#fff" }}>
-              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>CKC-OS Demo Mode</div>
-              <div style={{ fontSize: 10, opacity: 0.8 }}>Database is offline. You can proceed to the editor in Local Mode to test features.</div>
+          <div className="terminal-alert warning" style={{ marginBottom: 20 }}>
+            <span className="alert-icon">⚠</span>
+            <div className="alert-text">
+              <div style={{ fontWeight: 700 }}>Supabase not configured.</div>
+              <div style={{ fontSize: 10, opacity: 0.8, marginTop: 4 }}>Auto-rectifying to Local Mode in {autoBypassCounter}s...</div>
             </div>
-            <button className="local-bypass-btn" onClick={() => { loginGuest(); navigate("/editor"); }} style={{ background: "#4FC1FF", color: "#000", marginTop: 8 }}>
-              🚀 PROCEED AS GUEST (LOCAL MODE)
+            <button className="local-bypass-btn" onClick={() => { loginGuest(); navigate("/editor"); }}>
+              Enter Local Mode Now
             </button>
           </div>
         )}
@@ -2041,16 +2055,7 @@ function AccessTerminal() {
         {error && (
           <div className={`terminal-alert ${error.includes("Activation") ? "info" : "error"}`}>
             <span className="alert-icon">{error.includes("Activation") ? "✉" : "⚠"}</span>
-            <span className="alert-text">
-              {error}
-              {error.includes("not configured") && (
-                <div style={{ marginTop: 8 }}>
-                  <button onClick={() => { loginGuest(); navigate("/editor"); }} style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 6, padding: "4px 10px", fontSize: 10, color: "#fff", cursor: "pointer" }}>
-                    Force Local Mode Bypass
-                  </button>
-                </div>
-              )}
-            </span>
+            <span className="alert-text">{error}</span>
           </div>
         )}
 

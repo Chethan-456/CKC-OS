@@ -18,13 +18,13 @@ function nowTs() {
   });
 }
 
-// ── AI Chat via Serverless Proxy (Secure & No Key Required on Client) ──
-async function askGroq(messages, lang, userCode) {
-  const systemPrompt = `You are an expert debugging assistant helping developers fix code issues.
-Language: ${LANGS[lang]?.n || lang}
-${userCode ? "\nUser's code context:\n```" + lang + "\n" + userCode + "\n```" : ""}
+// ── AI Chat via Groq API (called directly from frontend) ──
+async function askGroq(messages, lang, userCode, groqApiKey) {
+  if (!groqApiKey || !groqApiKey.trim()) {
+    throw new Error("Groq API key is missing. Please enter your key above.");
+  }
 
-Provide clear, concise debugging help. Use code blocks when showing code examples.`;
+  const systemPrompt = "You are an expert debugging assistant helping developers fix code issues.\nLanguage: " + (LANGS[lang]?.n || lang) + "\n" + (userCode ? "\nUser's code context:\n```" + lang + "\n" + userCode + "\n```" : "") + "\n\nProvide clear, concise debugging help. Use code blocks when showing code examples.";
 
   const groqMessages = messages
     .filter((m) => m.role === "user" || (m.role === "assistant" && !m.id?.startsWith("init-")))
@@ -33,25 +33,31 @@ Provide clear, concise debugging help. Use code blocks when showing code example
       content: m.text,
     }));
 
-  const response = await fetch("/api/chat", {
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + groqApiKey.trim(),
+    },
     body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
       messages: [
         { role: "system", content: systemPrompt },
         ...groqMessages,
       ],
-      model: "llama-3.3-70b-versatile",
+      max_tokens: 1024,
+      temperature: 0.6,
     }),
   });
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `Proxy Error: ${response.status}`);
+    const msg = err?.error?.message || "HTTP " + response.status;
+    throw new Error(msg);
   }
 
   const data = await response.json();
-  return data.choices?.[0]?.message?.content || "No response from AI.";
+  return data.choices?.[0]?.message?.content || "No response from Groq.";
 }
 
 const CSS = `
@@ -229,6 +235,7 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts", isFullP
   const [aiInput, setAiInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [userCode, setUserCode] = useState("");
+  const [groqApiKey, setGroqApiKey] = useState(import.meta.env.VITE_GROQ_API_KEY || "");
 
   const aiEndRef       = useRef(null);
   const styleInjected  = useRef(false);
@@ -252,7 +259,7 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts", isFullP
     setAiMessages([{
       id: "init-welcome",
       role: "assistant",
-      text: "Ready to help debug!\n\nPaste your code context below if needed, then ask me anything about your issues.",
+      text: "Ready to help debug!\n\nEnter your Groq API key above, paste your code context below if needed, then ask me anything about your issues.",
       t: nowTs(),
     }]);
   }, [lang, isOpen]);
@@ -272,7 +279,7 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts", isFullP
     setAiLoading(true);
 
     try {
-      const aiReply = await askGroq(newHistory, lang, userCode);
+      const aiReply = await askGroq(newHistory, lang, userCode, groqApiKey);
       setAiMessages((prev) => [
         ...prev,
         { id: Math.random().toString(36).slice(2), role: "assistant", text: aiReply, t: nowTs() },
@@ -316,6 +323,18 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts", isFullP
             <div className="dbgm-ai-model-tag">llama-3.3-70b</div>
           </div>
 
+          <div className="dbgm-apikey-strip">
+            <span className="dbgm-apikey-label">🔑 Key:</span>
+            <input
+              className="dbgm-apikey-input"
+              type="password"
+              value={groqApiKey}
+              onChange={(e) => setGroqApiKey(e.target.value)}
+              placeholder="gsk_xxxxxxxxxxxxxxxxxxxx"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
 
           <div className="dbgm-ai-messages">
             {aiMessages.map((msg) => (
