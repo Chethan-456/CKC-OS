@@ -2214,14 +2214,23 @@ function Shell({ user, onLogout }) {
           color: u.color,
           line: u.line || 1,
           col: u.col || 1,
+          tabId: u.tabId,
           online: true
         })));
       })
       .on("broadcast", { event: "op" }, ({ payload }) => {
         if (payload.uid !== me.id) {
-          setRemOps([payload.op]);
+          // Only apply operation if it's for the current active tab
+          if (payload.tabId === activeTab) {
+            setRemOps([payload.op]);
+          } else {
+            // Buffer it or update the tab's code property in state
+            setTabs(prev => prev.map(t => 
+              t.id === payload.tabId ? { ...t, code: (t.code || "") + (payload.op.chars || "") } : t
+            ));
+          }
           setOpCnt(c => c + 1);
-          setCrdt(p => [{ ...payload.op, from: payload.name, t: nowTs() }, ...p].slice(0, 40));
+          setCrdt(p => [{ ...payload.op, from: payload.name, t: nowTs(), tabName: payload.tabName }, ...p].slice(0, 40));
         }
       })
       .on("broadcast", { event: "cursor" }, ({ payload }) => {
@@ -2232,6 +2241,16 @@ function Shell({ user, onLogout }) {
           });
         }
       })
+      .on("broadcast", { event: "tabSync" }, ({ payload }) => {
+        if (payload.uid !== me.id) {
+          setTabs(prev => {
+            const exists = prev.find(t => t.id === payload.tab.id);
+            if (exists) return prev;
+            return [...prev, payload.tab];
+          });
+          toast(`User ${payload.name} opened ${payload.tab.name}`);
+        }
+      })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           await channel.track({
@@ -2240,6 +2259,7 @@ function Shell({ user, onLogout }) {
             color: me.cursorColor,
             line: cursor.line,
             col: cursor.col,
+            tabId: activeTab,
             online: true
           });
         }
@@ -2297,7 +2317,14 @@ function Shell({ user, onLogout }) {
     channelRef.current.send({
       type: "broadcast",
       event: "op",
-      payload: { uid: me.id, name: me.name, lang, op }
+      payload: { 
+        uid: me.id, 
+        name: me.name, 
+        lang, 
+        op, 
+        tabId: activeTab,
+        tabName: tabs.find(t => t.id === activeTab)?.name || "scratch"
+      }
     });
     setOpCnt(c => c + 1);
     setCrdt(p => [{ ...op, from: "me", t: nowTs() }, ...p].slice(0, 40));
@@ -2311,7 +2338,7 @@ function Shell({ user, onLogout }) {
     channelRef.current.send({
       type: "broadcast",
       event: "cursor",
-      payload: { id: me.id, name: me.name, color: me.cursorColor, line, col, lang }
+      payload: { id: me.id, name: me.name, color: me.cursorColor, line, col, lang, tabId: activeTab }
     });
 
     // Update line lock in DB
@@ -2362,9 +2389,18 @@ function Shell({ user, onLogout }) {
 
   const createNewEditor = useCallback(() => {
     const id = "new-" + Date.now(); const ext = LANGS[newEdLang]?.ext?.split(".")[1] || newEdLang;
-    setTabs(p => [...p, { id, name: `scratch.${ext}`, lang: newEdLang, dirty: false, isNew: true, code: "" }]);
-    setActiveTab(id); switchLang(newEdLang); toast(`New ${LANGS[newEdLang]?.n} editor opened`);
-  }, [newEdLang, switchLang, toast]);
+    const newTab = { id, name: `scratch.${ext}`, lang: newEdLang, dirty: false, isNew: true, code: "" };
+    setTabs(p => [...p, newTab]);
+    setActiveTab(id); switchLang(newEdLang); 
+    toast(`New ${LANGS[newEdLang]?.n} editor opened`);
+    
+    // Broadcast new tab to others
+    channelRef.current.send({
+      type: "broadcast",
+      event: "tabSync",
+      payload: { uid: me.id, name: me.name, tab: newTab }
+    });
+  }, [newEdLang, switchLang, toast, me.id, me.name]);
 
   const CMDS = [
     { ic: "▶", lb: "Run Code", kb: "Ctrl+Enter", fn: handleRun },
@@ -2398,7 +2434,7 @@ function Shell({ user, onLogout }) {
     e.stopPropagation(); setTabs(p => { const nx = p.filter(t => t.id !== id); if (activeTab === id && nx.length) setActiveTab(nx[nx.length - 1].id); return nx; });
   };
 
-  const activeCursors = cursors.filter(c => c.lang === lang);
+  const activeCursors = cursors.filter(c => c.lang === lang && c.tabId === activeTab);
   const curEng = getEng(lang); const curTab = tabs.find(t => t.id === activeTab);
   const errCount = (liveValidation?.errors?.length || 0);
   const warnCount = (liveValidation?.warnings?.length || 0);
