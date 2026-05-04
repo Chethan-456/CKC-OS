@@ -13,23 +13,14 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Debugging: Let's see every single environment variable name Vercel has
-  const envKeys = Object.keys(process.env);
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
   const apiKey = (process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY || "").trim();
   
   if (!apiKey) {
-    return res.status(500).json({ 
-      error: "GROQ_API_KEY not set on server.",
-      debug: {
-        message: "This is a list of ALL environment variable names found on the server. Look for GROQ_API_KEY or VITE_GROQ_API_KEY here.",
-        allFoundKeys: envKeys,
-        vercelEnv: process.env.VERCEL_ENV || "unknown"
-      }
-    });
-  }
-
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(500).json({ error: "GROQ_API_KEY not set on server. Please configure it in your Vercel Environment Variables." });
   }
 
   const { messages } = req.body;
