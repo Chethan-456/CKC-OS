@@ -848,7 +848,7 @@ export default function Index() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const toLaunch      = () => navigate(user ? "/editor" : "/editor-login");
+  const toLaunch      = () => navigate("/editor");
 
   const toChat        = () => {
     navigate("/devchat");
