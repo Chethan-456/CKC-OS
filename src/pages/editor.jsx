@@ -1966,7 +1966,6 @@ function AccessTerminal() {
   const [colorIdx, setColorIdx] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
