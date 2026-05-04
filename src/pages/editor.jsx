@@ -1043,38 +1043,45 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 .tool-btn.logs{background:rgba(79,193,255,.07);border-color:rgba(79,193,255,.18);color:#4FC1FFaa;}
 .tool-btn.logs:hover{background:rgba(79,193,255,.18);color:#4FC1FF;}
 
-.access-terminal{height:100vh;display:flex;align-items:center;justify-content:center;background:#05070a;color:#fff;overflow:hidden;position:relative;}
-.terminal-bg{position:absolute;inset:0;z-index:0;}
-.grid-overlay{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);background-size:40px 40px;}
-.nebula{position:absolute;width:400px;height:400px;filter:blur(120px);opacity:.2;border-radius:50%;}
-.nebula.blue{background:#4FC1FF;top:-100px;left:-100px;}
-.nebula.pink{background:#FF6B9D;bottom:-100px;right:-100px;}
-.terminal-container{position:relative;z-index:1;width:400px;background:rgba(10,12,18,.8);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:24px;backdrop-filter:blur(10px);}
-.terminal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;}
-.terminal-brand{display:flex;align-items:center;gap:12px;}
-.brand-icon{font-size:24px;}
-.brand-text h1{font-size:16px;letter-spacing:2px;color:#fff;}
-.brand-text span{font-size:9px;color:#6a7a8a;font-family:var(--mono);}
-.terminal-status{font-size:9px;color:#4EC9B0;display:flex;align-items:center;gap:6px;font-family:var(--mono);}
-.pulse-dot{width:6px;height:6px;border-radius:50%;background:#4EC9B0;box-shadow:0 0 6px #4EC9B0;animation:pulse 1.5s infinite;}
-.terminal-nav{display:flex;position:relative;margin-bottom:24px;border-bottom:1px solid rgba(255,255,255,.1);}
-.nav-item{flex:1;padding:8px 0;background:none;border:none;color:#6a7a8a;font-size:10px;font-weight:700;letter-spacing:1px;cursor:pointer;}
+.access-terminal{height:100vh;display:flex;align-items:center;justify-content:center;background:#05070a;color:#fff;overflow:hidden;position:relative;font-family:'Inter',sans-serif;}
+.terminal-bg{position:absolute;inset:0;z-index:0;background:url('/login_bg.png') center/cover no-repeat;}
+.terminal-bg::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at center, transparent 0%, rgba(5,7,10,.85) 100%), linear-gradient(to bottom, rgba(5,7,10,.4), rgba(5,7,10,.9));}
+.grid-overlay{position:absolute;inset:0;background-image:linear-gradient(rgba(79,193,255,.05) 1px, transparent 1px),linear-gradient(90deg, rgba(79,193,255,.05) 1px, transparent 1px);background-size:60px 60px;opacity:.4;}
+.nebula{position:absolute;width:600px;height:600px;filter:blur(140px);opacity:.15;border-radius:50%;}
+.nebula.blue{background:#4FC1FF;top:-200px;left:-200px;animation:float 20s infinite alternate;}
+.nebula.pink{background:#FF6B9D;bottom:-200px;right:-200px;animation:float 25s infinite alternate-reverse;}
+@keyframes float{0%{transform:translate(0,0)}100%{transform:translate(100px,50px)}}
+
+.terminal-container{position:relative;z-index:1;width:440px;background:rgba(15,18,25,.65);border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:40px;backdrop-filter:blur(30px);box-shadow:0 24px 80px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.05);}
+.terminal-header{text-align:center;margin-bottom:32px;}
+.terminal-brand{display:flex;flex-direction:column;align-items:center;gap:12px;margin-bottom:16px;}
+.brand-icon{font-size:40px;filter:drop-shadow(0 0 15px rgba(79,193,255,.5));}
+.brand-text h1{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;letter-spacing:-1px;background:linear-gradient(to right, #fff, #4FC1FF);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.brand-text span{font-size:10px;color:rgba(255,255,255,.4);letter-spacing:3px;font-weight:600;text-transform:uppercase;}
+.terminal-status{font-size:10px;color:#4EC9B0;display:inline-flex;align-items:center;gap:8px;padding:4px 12px;background:rgba(78,201,176,.1);border-radius:100px;border:1px solid rgba(78,201,176,.2);font-weight:700;margin-top:12px;}
+.pulse-dot{width:6px;height:6px;border-radius:50%;background:#4EC9B0;box-shadow:0 0 8px #4EC9B0;animation:pulse 2s infinite;}
+
+.terminal-nav{display:flex;background:rgba(255,255,255,.03);border-radius:12px;padding:4px;margin-bottom:28px;border:1px solid rgba(255,255,255,.05);}
+.nav-item{flex:1;padding:10px;border:none;background:none;color:rgba(255,255,255,.4);font-size:11px;font-weight:700;cursor:pointer;transition:all .3s;border-radius:8px;z-index:1;position:relative;}
 .nav-item.active{color:#fff;}
-.nav-indicator{position:absolute;bottom:-1px;left:0;width:50%;height:1px;background:#fff;transition:transform .3s;}
-.terminal-input-group{margin-bottom:16px;}
-.terminal-input-group label{display:block;font-size:9px;color:#6a7a8a;margin-bottom:6px;font-family:var(--mono);}
+.nav-indicator{position:absolute;height:calc(100% - 8px);width:calc(50% - 4px);background:rgba(255,255,255,.08);border-radius:8px;transition:all .4s cubic-bezier(.34,1.56,.64,1);box-shadow:0 4px 12px rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.1);}
+
+.terminal-input-group{margin-bottom:20px;}
+.terminal-input-group label{display:block;font-size:10px;color:rgba(255,255,255,.5);margin-bottom:8px;font-weight:600;letter-spacing:.5px;}
 .input-wrapper{position:relative;}
-.input-wrapper input{width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);padding:10px;border-radius:4px;color:#fff;font-family:var(--mono);font-size:13px;outline:none;}
-.input-focus-border{position:absolute;inset:-1px;border:1px solid #4FC1FF;opacity:0;transition:opacity .3s;pointer-events:none;border-radius:5px;}
-.input-wrapper input:focus + .input-focus-border{opacity:1;}
-.terminal-submit{width:100%;padding:12px;background:#fff;border:none;border-radius:4px;color:#000;font-weight:800;font-size:12px;cursor:pointer;position:relative;overflow:hidden;}
-.color-grid{display:flex;gap:8px;}
-.color-slot{width:32px;height:32px;border-radius:4px;background:var(--hue-bg);cursor:pointer;position:relative;display:flex;align-items:center;justify-content:center;}
-.color-core{width:12px;height:12px;background:var(--hue);border-radius:2px;}
-.color-ring{position:absolute;inset:-2px;border:1px solid var(--hue);border-radius:6px;}
-.terminal-footer{margin-top:24px;color:#4a5568;font-size:9px;font-family:var(--mono);}
-.footer-line{height:1px;background:rgba(255,255,255,.05);margin-bottom:12px;}
-.footer-content{display:flex;justify-content:space-between;}
+.input-wrapper input{width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);padding:14px 16px;border-radius:12px;color:#fff;font-size:14px;outline:none;transition:all .3s;}
+.input-wrapper input:focus{background:rgba(255,255,255,.07);border-color:rgba(79,193,255,.5);box-shadow:0 0 20px rgba(79,193,255,.1);}
+.terminal-submit{width:100%;padding:16px;background:linear-gradient(135deg, #fff, #e0e0e0);border:none;border-radius:12px;color:#000;font-weight:800;font-size:14px;cursor:pointer;transition:all .3s;margin-top:8px;box-shadow:0 10px 25px rgba(0,0,0,.2);}
+.terminal-submit:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 15px 35px rgba(255,255,255,.15);background:#fff;}
+.terminal-submit:disabled{opacity:.5;cursor:not-allowed;}
+
+.terminal-footer{margin-top:32px;text-align:center;}
+.footer-line{height:1px;background:linear-gradient(to right, transparent, rgba(255,255,255,.1), transparent);margin-bottom:16px;}
+.footer-content{display:flex;justify-content:center;gap:20px;font-size:9px;color:rgba(255,255,255,.3);font-weight:600;letter-spacing:1px;}
+.terminal-alert{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;margin-bottom:20px;font-size:12px;animation:shake 0.5s cubic-bezier(.36,.07,.19,.97) both;}
+.terminal-alert.error{background:rgba(255,107,157,.1);border:1px solid rgba(255,107,157,.2);color:#FF6B9D;}
+.terminal-alert.info{background:rgba(79,193,255,.1);border:1px solid rgba(79,193,255,.2);color:#4FC1FF;}
+@keyframes shake{10%,90%{transform:translate3d(-1px,0,0)}20%,80%{transform:translate3d(2px,0,0)}30%,50%,70%{transform:translate3d(-4px,0,0)}40%,60%{transform:translate3d(4px,0,0)}}
 `;
 
 // ═══════════ CODEMIRROR ═══════════
@@ -1363,7 +1370,7 @@ function DebuggingRoom({ errors, warnings, lang, me, onLocalOp, onClose }) {
       const fix = data.choices[0].message.content;
       sendMessage(`✅ AI Suggestion:\n${fix}`);
     } catch (err) {
-      sendMessage(`❌ AI Rectification failed: ${err.message}`);
+      sendMessage(`❌ AI Rectification failed: ${err.message}. Please verify your API configuration in settings.`);
     }
   };
 
@@ -1684,29 +1691,77 @@ function AccessTerminal() {
     <div className="access-terminal">
       <div className="terminal-bg"><div className="grid-overlay" /><div className="nebula blue" /><div className="nebula pink" /></div>
       <div className="terminal-container fi-pop">
-        <div className="terminal-glass">
-          <div className="terminal-header">
-            <div className="terminal-brand"><div className="brand-icon">⚡</div><div className="brand-text"><h1>CKC-OS</h1><span>COLLABORATIVE TERMINAL v4.2</span></div></div>
-            <div className="terminal-status"><span className="pulse-dot" />SYSTEM READY</div>
+        <div className="terminal-header">
+          <div className="terminal-brand">
+            <div className="brand-icon">⚡</div>
+            <div className="brand-text"><h1>CKC-OS</h1><span>THE COLLABORATIVE OPERATING SYSTEM</span></div>
           </div>
-          <div className="terminal-nav">
-            <button className={`nav-item ${activeTab === "login" ? "active" : ""}`} onClick={() => setActiveTab("login")}>ACCESS WORKSPACE</button>
-            <button className={`nav-item ${activeTab === "register" ? "active" : ""}`} onClick={() => setActiveTab("register")}>INITIALIZE IDENTITY</button>
-            <div className="nav-indicator" style={{ transform: `translateX(${activeTab === "login" ? "0" : "100"}%)` }} />
+          <div className="terminal-status"><span className="pulse-dot" /> SYSTEM_ACTIVE_v4.2</div>
+        </div>
+
+        <div className="terminal-nav">
+          <div className="nav-indicator" style={{ left: activeTab === "login" ? "4px" : "calc(50% + 2px)" }} />
+          <button className={`nav-item ${activeTab === "login" ? "active" : ""}`} onClick={() => setActiveTab("login")}>ACCESS SPACE</button>
+          <button className={`nav-item ${activeTab === "register" ? "active" : ""}`} onClick={() => setActiveTab("register")}>NEW IDENTITY</button>
+        </div>
+
+        {error && (
+          <div className={`terminal-alert ${error.includes("Activation") ? "info" : "error"}`}>
+            <span className="alert-icon">{error.includes("Activation") ? "✉" : "⚠"}</span>
+            <span className="alert-text">{error}</span>
           </div>
-          {error && <div className={`terminal-alert ${error.includes("Activation") ? "info" : "error"}`}><span className="alert-icon">{error.includes("Activation") ? "✉" : "⚠"}</span><span className="alert-text">{error}</span></div>}
-          <form className="terminal-form" onSubmit={activeTab === "login" ? handleLogin : handleRegister}>
-            {activeTab === "register" && (
-              <div className="terminal-input-group"><label>DISPLAY_NAME</label><div className="input-wrapper"><input value={name} onChange={e => setName(e.target.value)} placeholder="ENTER_ID..." required /><div className="input-focus-border" /></div></div>
-            )}
-            <div className="terminal-input-group"><label>NETWORK_EMAIL</label><div className="input-wrapper"><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="USER@DOMAIN.COM" required /><div className="input-focus-border" /></div></div>
-            <div className="terminal-input-group"><label>SECRET_ACCESS_KEY</label><div className="input-wrapper"><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required /><div className="input-focus-border" /></div></div>
-            {activeTab === "register" && (
-              <div className="terminal-input-group"><label>WORKSPACE_HUE</label><div className="color-grid">{PALETTE.map((p, i) => (<div key={i} className={`color-slot ${colorIdx === i ? "selected" : ""}`} style={{ "--hue": p.hex, "--hue-glow": p.glow, "--hue-bg": p.bg }} onClick={() => setColorIdx(i)}><div className="color-core" />{colorIdx === i && <div className="color-ring" />}</div>))}</div></div>
-            )}
-            <button className="terminal-submit" disabled={loading}><div className="submit-content">{loading ? <span className="loader" /> : <><span>{activeTab === "login" ? "ESTABLISH_CONNECTION" : "CREATE_NODE_IDENTITY"}</span><span className="submit-arrow">→</span></>}</div><div className="submit-glimmer" /></button>
-          </form>
-          <div className="terminal-footer"><div className="footer-line" /><div className="footer-content"><span>ENCRYPTION: AES-256</span><span>PROTOCOL: SUPABASE_REALTIME</span></div></div>
+        )}
+
+        <form className="terminal-form" onSubmit={activeTab === "login" ? handleLogin : handleRegister}>
+          {activeTab === "register" && (
+            <div className="terminal-input-group">
+              <label>INITIAL_ID</label>
+              <div className="input-wrapper">
+                <input value={name} onChange={e => setName(e.target.value)} placeholder="Enter name..." required />
+              </div>
+            </div>
+          )}
+          <div className="terminal-input-group">
+            <label>UPLINK_EMAIL</label>
+            <div className="input-wrapper">
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="user@ckc-os.io" required />
+            </div>
+          </div>
+          <div className="terminal-input-group">
+            <label>ACCESS_KEY</label>
+            <div className="input-wrapper">
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required />
+            </div>
+          </div>
+          
+          {activeTab === "register" && (
+            <div className="terminal-input-group">
+              <label>WORKSPACE_HUE</label>
+              <div className="color-grid">
+                {PALETTE.map((p, i) => (
+                  <div key={i} className={`color-slot ${colorIdx === i ? "selected" : ""}`} 
+                       style={{ "--hue": p.hex, "--hue-bg": p.bg }} 
+                       onClick={() => setColorIdx(i)}>
+                    <div className="color-core" />
+                    {colorIdx === i && <div className="color-ring" />}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <button className="terminal-submit" disabled={loading}>
+            {loading ? <span className="loader" /> : (activeTab === "login" ? "ESTABLISH CONNECTION →" : "INITIALIZE NODE →")}
+          </button>
+        </form>
+
+        <div className="terminal-footer">
+          <div className="footer-line" />
+          <div className="footer-content">
+            <span>SECURE_SESSION</span>
+            <span>v4.2.1-STABLE</span>
+            <span>SUPABASE_AUTH</span>
+          </div>
         </div>
       </div>
     </div>

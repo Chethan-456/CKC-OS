@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
-const API_SERVER_URL = import.meta.env.VITE_API_SERVER_URL || "http://localhost:5000";
+const API_SERVER_URL = import.meta.env.VITE_API_SERVER_URL || "";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const SKILL_LEVELS = { beginner: "beginner", intermediate: "intermediate", advanced: "advanced" };
@@ -685,8 +685,7 @@ export default function AIBot() {
       }
     } catch (err) {
       setMessages(prev => [...prev, {
-        id: Date.now() + 1, role: "assistant", isError: true, time: new Date(),
-        content: `⚠️ **Connection Error**\n\n\`${err.message}\`\n\nMake sure your server is running:\n\`\`\`bash\nnode server.js\n\`\`\``,
+        content: `⚠️ **Connection Error**\n\n\`${err.message}\`\n\nThe AI service is temporarily unreachable. Please check your internet connection or verify the server configuration in your deployment settings.`,
       }]);
     } finally {
       setLoading(false);
