@@ -172,7 +172,13 @@ function validateCode(lang, code) {
       const ch = code[i], prev = code[i - 1];
       if (ch === "\n") { inLineComment = false; continue; }
       if (inLineComment) continue;
-      if (!inStr && ch === "/" && code[i + 1] === "/") { inLineComment = true; continue; }
+      
+      // Handle language-specific line comments
+      if (!inStr) {
+        if (ch === "/" && code[i + 1] === "/") { inLineComment = true; i++; continue; }
+        if (lang === "py" && ch === "#") { inLineComment = true; continue; }
+      }
+      
       if (!inStr && (ch === '"' || ch === "'" || ch === "`")) { inStr = true; strChar = ch; continue; }
       if (inStr && ch === strChar && prev !== "\\") { inStr = false; continue; }
       if (inStr) continue;
@@ -1043,45 +1049,324 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 .tool-btn.logs{background:rgba(79,193,255,.07);border-color:rgba(79,193,255,.18);color:#4FC1FFaa;}
 .tool-btn.logs:hover{background:rgba(79,193,255,.18);color:#4FC1FF;}
 
-.access-terminal{height:100vh;display:flex;align-items:center;justify-content:center;background:#05070a;color:#fff;overflow:hidden;position:relative;font-family:'Inter',sans-serif;}
-.terminal-bg{position:absolute;inset:0;z-index:0;background:url('/login_bg.png') center/cover no-repeat;}
-.terminal-bg::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at center, transparent 0%, rgba(5,7,10,.85) 100%), linear-gradient(to bottom, rgba(5,7,10,.4), rgba(5,7,10,.9));}
-.grid-overlay{position:absolute;inset:0;background-image:linear-gradient(rgba(79,193,255,.05) 1px, transparent 1px),linear-gradient(90deg, rgba(79,193,255,.05) 1px, transparent 1px);background-size:60px 60px;opacity:.4;}
-.nebula{position:absolute;width:600px;height:600px;filter:blur(140px);opacity:.15;border-radius:50%;}
-.nebula.blue{background:#4FC1FF;top:-200px;left:-200px;animation:float 20s infinite alternate;}
-.nebula.pink{background:#FF6B9D;bottom:-200px;right:-200px;animation:float 25s infinite alternate-reverse;}
-@keyframes float{0%{transform:translate(0,0)}100%{transform:translate(100px,50px)}}
+/* ── ACCESS TERMINAL (PREMIUM) ── */
+.access-terminal {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #05070a;
+  color: #fff;
+  overflow: hidden;
+  position: relative;
+  font-family: 'Inter', sans-serif;
+}
 
-.terminal-container{position:relative;z-index:1;width:440px;background:rgba(15,18,25,.65);border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:40px;backdrop-filter:blur(30px);box-shadow:0 24px 80px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.05);}
-.terminal-header{text-align:center;margin-bottom:32px;}
-.terminal-brand{display:flex;flex-direction:column;align-items:center;gap:12px;margin-bottom:16px;}
-.brand-icon{font-size:40px;filter:drop-shadow(0 0 15px rgba(79,193,255,.5));}
-.brand-text h1{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;letter-spacing:-1px;background:linear-gradient(to right, #fff, #4FC1FF);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
-.brand-text span{font-size:10px;color:rgba(255,255,255,.4);letter-spacing:3px;font-weight:600;text-transform:uppercase;}
-.terminal-status{font-size:10px;color:#4EC9B0;display:inline-flex;align-items:center;gap:8px;padding:4px 12px;background:rgba(78,201,176,.1);border-radius:100px;border:1px solid rgba(78,201,176,.2);font-weight:700;margin-top:12px;}
-.pulse-dot{width:6px;height:6px;border-radius:50%;background:#4EC9B0;box-shadow:0 0 8px #4EC9B0;animation:pulse 2s infinite;}
+.terminal-bg {
+  display: none;
+}
 
-.terminal-nav{display:flex;background:rgba(255,255,255,.03);border-radius:12px;padding:4px;margin-bottom:28px;border:1px solid rgba(255,255,255,.05);}
-.nav-item{flex:1;padding:10px;border:none;background:none;color:rgba(255,255,255,.4);font-size:11px;font-weight:700;cursor:pointer;transition:all .3s;border-radius:8px;z-index:1;position:relative;}
-.nav-item.active{color:#fff;}
-.nav-indicator{position:absolute;height:calc(100% - 8px);width:calc(50% - 4px);background:rgba(255,255,255,.08);border-radius:8px;transition:all .4s cubic-bezier(.34,1.56,.64,1);box-shadow:0 4px 12px rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.1);}
+.grid-overlay {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(79,193,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(79,193,255,0.04) 1px, transparent 1px);
+  background-size: 50px 50px;
+  opacity: 0.5;
+  mask-image: radial-gradient(circle at center, black, transparent 80%);
+}
 
-.terminal-input-group{margin-bottom:20px;}
-.terminal-input-group label{display:block;font-size:10px;color:rgba(255,255,255,.5);margin-bottom:8px;font-weight:600;letter-spacing:.5px;}
-.input-wrapper{position:relative;}
-.input-wrapper input{width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);padding:14px 16px;border-radius:12px;color:#fff;font-size:14px;outline:none;transition:all .3s;}
-.input-wrapper input:focus{background:rgba(255,255,255,.07);border-color:rgba(79,193,255,.5);box-shadow:0 0 20px rgba(79,193,255,.1);}
-.terminal-submit{width:100%;padding:16px;background:linear-gradient(135deg, #fff, #e0e0e0);border:none;border-radius:12px;color:#000;font-weight:800;font-size:14px;cursor:pointer;transition:all .3s;margin-top:8px;box-shadow:0 10px 25px rgba(0,0,0,.2);}
-.terminal-submit:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 15px 35px rgba(255,255,255,.15);background:#fff;}
-.terminal-submit:disabled{opacity:.5;cursor:not-allowed;}
+.nebula {
+  position: absolute;
+  width: 800px;
+  height: 800px;
+  filter: blur(150px);
+  opacity: 0.15;
+  border-radius: 50%;
+  pointer-events: none;
+}
 
-.terminal-footer{margin-top:32px;text-align:center;}
-.footer-line{height:1px;background:linear-gradient(to right, transparent, rgba(255,255,255,.1), transparent);margin-bottom:16px;}
-.footer-content{display:flex;justify-content:center;gap:20px;font-size:9px;color:rgba(255,255,255,.3);font-weight:600;letter-spacing:1px;}
-.terminal-alert{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;margin-bottom:20px;font-size:12px;animation:shake 0.5s cubic-bezier(.36,.07,.19,.97) both;}
-.terminal-alert.error{background:rgba(255,107,157,.1);border:1px solid rgba(255,107,157,.2);color:#FF6B9D;}
-.terminal-alert.info{background:rgba(79,193,255,.1);border:1px solid rgba(79,193,255,.2);color:#4FC1FF;}
-@keyframes shake{10%,90%{transform:translate3d(-1px,0,0)}20%,80%{transform:translate3d(2px,0,0)}30%,50%,70%{transform:translate3d(-4px,0,0)}40%,60%{transform:translate3d(4px,0,0)}}
+.nebula.blue {
+  background: radial-gradient(circle, #4FC1FF, transparent 70%);
+  top: -300px;
+  left: -200px;
+  animation: float-nebula 25s infinite alternate;
+}
+
+.nebula.pink {
+  background: radial-gradient(circle, #FF6B9D, transparent 70%);
+  bottom: -300px;
+  right: -200px;
+  animation: float-nebula 30s infinite alternate-reverse;
+}
+
+@keyframes float-nebula {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(150px, 100px) scale(1.1); }
+}
+
+.terminal-container {
+  position: relative;
+  z-index: 10;
+  width: 400px;
+  background: rgba(15, 18, 25, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 28px;
+  padding: 32px;
+  backdrop-filter: blur(40px) saturate(180%);
+  box-shadow: 
+    0 40px 100px rgba(0, 0, 0, 0.9),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.terminal-container:hover {
+  transform: translateY(-5px);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.terminal-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.terminal-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.brand-icon {
+  font-size: 48px;
+  filter: drop-shadow(0 0 20px rgba(79, 193, 255, 0.6));
+  animation: icon-glow 3s infinite alternate;
+}
+
+@keyframes icon-glow {
+  from { filter: drop-shadow(0 0 10px rgba(79, 193, 255, 0.4)); }
+  to { filter: drop-shadow(0 0 25px rgba(79, 193, 255, 0.8)); transform: scale(1.05); }
+}
+
+.brand-text h1 {
+  font-family: 'Syne', sans-serif;
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -2px;
+  background: linear-gradient(135deg, #fff 30%, #4FC1FF);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin: 0;
+}
+
+.brand-text span {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: block;
+  margin-top: 4px;
+}
+
+.terminal-status {
+  font-size: 10px;
+  color: #4EC9B0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px;
+  background: rgba(78, 201, 176, 0.08);
+  border-radius: 100px;
+  border: 1px solid rgba(78, 201, 176, 0.2);
+  font-weight: 700;
+  margin-top: 16px;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4EC9B0;
+  box-shadow: 0 0 12px #4EC9B0;
+  animation: pulse-ring 2s infinite;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(78, 201, 176, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(78, 201, 176, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(78, 201, 176, 0); }
+}
+
+.terminal-nav {
+  display: flex;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 16px;
+  padding: 5px;
+  margin-bottom: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  position: relative;
+}
+
+.nav-item {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s;
+  border-radius: 12px;
+  z-index: 2;
+  position: relative;
+}
+
+.nav-item.active {
+  color: #fff;
+}
+
+.nav-indicator {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  height: calc(100% - 10px);
+  width: calc(50% - 5px);
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.terminal-input-group {
+  margin-bottom: 16px;
+}
+
+.terminal-input-group label {
+  display: block;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 6px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.input-wrapper {
+  position: relative;
+}
+
+.input-wrapper input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 12px 18px;
+  border-radius: 14px;
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.3s;
+}
+
+.input-wrapper input:focus {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(79, 193, 255, 0.6);
+  box-shadow: 0 0 25px rgba(79, 193, 255, 0.15);
+  transform: scale(1.02);
+}
+
+.terminal-submit {
+  width: 100%;
+  padding: 16px;
+  background: linear-gradient(135deg, #fff, #e0e0e0);
+  border: none;
+  border-radius: 14px;
+  color: #000;
+  font-weight: 900;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-top: 8px;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.terminal-submit:hover:not(:disabled) {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 20px 45px rgba(255, 255, 255, 0.2);
+  background: #fff;
+}
+
+.terminal-submit:active:not(:disabled) {
+  transform: translateY(-1px) scale(0.98);
+}
+
+.terminal-submit:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+
+.terminal-footer {
+  margin-top: 24px;
+  text-align: center;
+}
+
+.footer-line {
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.1), transparent);
+  margin-bottom: 14px;
+}
+
+.footer-content {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.25);
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.terminal-alert {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 16px;
+  margin-bottom: 24px;
+  font-size: 13px;
+  line-height: 1.4;
+  backdrop-filter: blur(10px);
+}
+
+.terminal-alert.error {
+  background: rgba(255, 107, 157, 0.15);
+  border: 1px solid rgba(255, 107, 157, 0.3);
+  color: #FFB3CD;
+}
+
+.terminal-alert.warning {
+  background: rgba(220, 220, 170, 0.15);
+  border: 1px solid rgba(220, 220, 170, 0.3);
+  color: #F0F0C0;
+}
+
+.terminal-alert.info {
+  background: rgba(79, 193, 255, 0.15);
+  border: 1px solid rgba(79, 193, 255, 0.3);
+  color: #A5E0FF;
+}
+
+.fi-pop { animation: fi-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+@keyframes fi-pop { from { opacity: 0; transform: scale(0.9) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 `;
 
 // ═══════════ CODEMIRROR ═══════════
@@ -1673,8 +1958,8 @@ function AccessTerminal() {
 
   const handleRegister = async (e) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
+    if (!name || !email || !password) return;
+    setLoading(true); setError(null);
     try {
       const chosen = PALETTE[colorIdx];
       const { data, error: signUpError } = await supabase.auth.signUp({
@@ -1687,20 +1972,42 @@ function AccessTerminal() {
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   };
 
+  const isConfigured = !!import.meta.env.VITE_SUPABASE_URL;
+
   return (
     <div className="access-terminal">
-      <div className="terminal-bg"><div className="grid-overlay" /><div className="nebula blue" /><div className="nebula pink" /></div>
+      <div className="terminal-bg">
+        <div className="grid-overlay" />
+        <div className="nebula blue" />
+        <div className="nebula pink" />
+      </div>
+      
       <div className="terminal-container fi-pop">
         <div className="terminal-header">
           <div className="terminal-brand">
             <div className="brand-icon">⚡</div>
-            <div className="brand-text"><h1>CKC-OS</h1><span>THE COLLABORATIVE OPERATING SYSTEM</span></div>
+            <div className="brand-text">
+              <h1>CKC-OS</h1>
+              <span>THE COLLABORATIVE OPERATING SYSTEM</span>
+            </div>
           </div>
-          <div className="terminal-status"><span className="pulse-dot" /> SYSTEM_ACTIVE_v4.2</div>
+          <div className="terminal-status">
+            <span className="pulse-dot" /> 
+            {isConfigured ? "SYSTEM_ACTIVE_v4.2" : "CONFIG_REQUIRED"}
+          </div>
         </div>
 
+        {!isConfigured && (
+          <div className="terminal-alert warning" style={{ marginBottom: 24 }}>
+            <span className="alert-icon">⚠</span>
+            <span className="alert-text">
+              <strong>Supabase not configured.</strong> Please add your VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to Vercel Environment Variables.
+            </span>
+          </div>
+        )}
+
         <div className="terminal-nav">
-          <div className="nav-indicator" style={{ left: activeTab === "login" ? "4px" : "calc(50% + 2px)" }} />
+          <div className="nav-indicator" style={{ transform: `translateX(${activeTab === "login" ? "0" : "100%"})` }} />
           <button className={`nav-item ${activeTab === "login" ? "active" : ""}`} onClick={() => setActiveTab("login")}>ACCESS SPACE</button>
           <button className={`nav-item ${activeTab === "register" ? "active" : ""}`} onClick={() => setActiveTab("register")}>NEW IDENTITY</button>
         </div>
@@ -1770,9 +2077,27 @@ function AccessTerminal() {
 
 // ═══════════ MAIN APP ═══════════
 export default function EditorPage() {
-  const { user, logout } = useAuth();
-  if (!user) return <AccessTerminal />;
-  return <Shell user={user} onLogout={logout} />;
+  const { user, loading: authLoading, logout } = useAuth();
+
+  if (authLoading) return (
+    <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#05070a" }}>
+      <div className="spin" style={{ width: 40, height: 40, border: "3px solid rgba(79,193,255,.1)", borderTopColor: "#4FC1FF", borderRadius: "50%" }} />
+    </div>
+  );
+  
+  if (!user) return (
+    <>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <AccessTerminal />
+    </>
+  );
+
+  return (
+    <>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <Shell user={user} onLogout={logout} />
+    </>
+  );
 }
 
 // ═══════════ SHELL ═══════════
@@ -2067,6 +2392,13 @@ function Shell({ user, onLogout }) {
   };
 
   const SB = ({ children, c, onClick }) => <span className="st" style={{ color: c || "#4a5568" }} onClick={onClick}>{children}</span>;
+
+  if (!user) return (
+    <>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <AccessTerminal />
+    </>
+  );
 
   return (
     <>
