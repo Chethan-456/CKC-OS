@@ -1354,6 +1354,27 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
   background: rgba(220, 220, 170, 0.15);
   border: 1px solid rgba(220, 220, 170, 0.3);
   color: #F0F0C0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.local-bypass-btn {
+  width: 100%;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.local-bypass-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 .terminal-alert.info {
@@ -1936,6 +1957,8 @@ function LiveServerLogs({ onClose }) {
 }
 
 function AccessTerminal() {
+  const { login, loginGuest } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -1998,11 +2021,15 @@ function AccessTerminal() {
         </div>
 
         {!isConfigured && (
-          <div className="terminal-alert warning" style={{ marginBottom: 24 }}>
+          <div className="terminal-alert warning" style={{ marginBottom: 20 }}>
             <span className="alert-icon">⚠</span>
-            <span className="alert-text">
-              <strong>Supabase not configured.</strong> Please add your VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to Vercel Environment Variables.
-            </span>
+            <div className="alert-text">
+              <div style={{ fontWeight: 700 }}>Supabase not configured.</div>
+              <div style={{ fontSize: 10, opacity: 0.8, marginTop: 4 }}>Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to Vercel.</div>
+            </div>
+            <button className="local-bypass-btn" onClick={() => { loginGuest(); navigate("/editor"); }}>
+              Enter Local Mode
+            </button>
           </div>
         )}
 

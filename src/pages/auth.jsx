@@ -493,6 +493,22 @@ export function AuthProvider({ children }) {
     setUserState(null);
   }, []);
 
+  const loginGuest = useCallback(() => {
+    const userData = {
+      id: "guest_" + Math.random().toString(36).substring(7),
+      email: "guest@ckc-os.io",
+      name: "Guest Developer",
+      cursorColor: "#00d4ff",
+      bg: "rgba(0,212,255,0.15)",
+      inits: "GD",
+      sid: "local_" + Math.random().toString(36).substring(7),
+      loginTime: Date.now(),
+      isGuest: true,
+    };
+    setUserState(userData);
+    saveSession(userData);
+  }, []);
+
   const updateUser = useCallback((patch) => {
     setUserState(prev => prev ? { ...prev, ...patch } : prev);
   }, []);
@@ -513,7 +529,7 @@ export function AuthProvider({ children }) {
     savePrefs(DEFAULT_PREFS);
   }, []);
 
-  const value = { user, prefs, stats, login, logout, updateUser, updatePref, updateStats, resetPrefs };
+  const value = { user, prefs, stats, login, logout, loginGuest, updateUser, updatePref, updateStats, resetPrefs };
 
   return (
     <AuthContext.Provider value={value}>
