@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ═══════════════════════════════════════════════════════════════════
  *  NEXUS CHAT — Supabase Realtime Edition
  *  Uses: channels, messages, profiles, reactions tables
@@ -290,7 +290,7 @@ function ChatApp({ authUser, onSignOut }) {
   const [showEmoji, setShowEmoji] = useState(false);
   const endRef = useRef(null);
   const channelRef = useRef(null);
-  const fileInputRef = useRef(null);
+
 
   const EMOJIS = ["😀","😂","🥰","😎","🤔","😢","😡","👍","🙏","🔥","❤️","🎉","✨","🚀","👀","💯","🤷‍♂️","🤦‍♂️","🙌","💡"];
   
@@ -315,7 +315,7 @@ function ChatApp({ authUser, onSignOut }) {
   // ── Ensure profile exists (handles users created before the trigger) ──
   useEffect(() => {
     (async () => {
-      const { data: existing, error: fetchErr } = await supabase
+      const { data: existing } = await supabase
         .from("profiles").select("id").eq("id", currentUser.id).maybeSingle();
       
       if (!existing) {
@@ -435,7 +435,7 @@ function ChatApp({ authUser, onSignOut }) {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [activeChId, currentUser]);
+  }, [activeChId, currentUser, loadProfile]);
 
   // Auto-scroll
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -626,7 +626,7 @@ function ChatApp({ authUser, onSignOut }) {
 // ═══════════════════════════════════════════════
 //  ROOT
 // ═══════════════════════════════════════════════
-export default function App() {
+export default function DevChat() {
   const [user, setUser] = useState(undefined);
 
   useEffect(() => {

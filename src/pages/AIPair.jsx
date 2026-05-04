@@ -413,7 +413,6 @@ export default function AIPairProgrammer() {
   const [inputCode, setInputCode] = useState("// Start typing your code...\nuseState");
   const [copiedKey, setCopiedKey] = useState(null);
   const [activeSuggestion, setActiveSuggestion] = useState(null);
-  const [streamedText, setStreamedText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const streamRef = useRef(null);
 

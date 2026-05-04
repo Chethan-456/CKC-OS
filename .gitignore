@@ -38,3 +38,4 @@ dist/
 .env.example
 server/.env.example
 .env.example
+.env.example

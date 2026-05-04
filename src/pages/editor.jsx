@@ -1,11 +1,22 @@
-import { useState, useRef, useCallback, useEffect, forwardRef } from "react";
+import React, { useState, useEffect, useRef, useCallback, forwardRef, memo } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "../lib/supabase.js";
+import { useAuth } from "./auth.jsx";
 
-// ═══════════ AUTH STORE ═══════════
+// ═══════════ AUTH STORE (LEGACY) ═══════════
 export const authStore = {
   get: () => { try { return JSON.parse(sessionStorage.getItem("ckc_s") || "null"); } catch { return null; } },
   set: (v) => sessionStorage.setItem("ckc_s", JSON.stringify(v)),
   clear: () => sessionStorage.removeItem("ckc_s"),
 };
+
+// ═══════════ HELPERS ═══════════
+export function initials(n) {
+  return (n || "?").split(" ").map(w => w[0] || "").join("").toUpperCase().slice(0, 2) || "?";
+}
+function nowTs() {
+  return new Date().toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
 
 // ═══════════ CONSTANTS ═══════════
 export const PALETTE = [
@@ -139,8 +150,6 @@ WHERE s.ops_count > 0 ORDER BY s.ops_count DESC LIMIT 20;`,
 };
 
 // ═══════════ HELPERS ═══════════
-export function initials(n) { return n.split(" ").map(w => w[0] || "").join("").toUpperCase().slice(0, 2) || "?"; }
-function nowTs() { return new Date().toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
 export function genSid() {
   const c = "abcdefghjkmnpqrstuvwxyz0123456789";
   const s = () => Array.from({ length: 4 }, () => c[Math.floor(Math.random() * c.length)]).join("");
@@ -270,8 +279,8 @@ function validateCode(lang, code) {
     lines.forEach((l, i) => {
       const t = l.trim();
       if (!t || t.startsWith("//") || t.startsWith("*") || t.startsWith("@") ||
-          t.endsWith("{") || t.endsWith("}") || t.endsWith(",") || t.endsWith(";") ||
-          /^(public|private|protected|class|import|package|if|else|for|while|do|try|catch|finally|switch|case|default|return\s*$)/.test(t)) {
+        t.endsWith("{") || t.endsWith("}") || t.endsWith(",") || t.endsWith(";") ||
+        /^(public|private|protected|class|import|package|if|else|for|while|do|try|catch|finally|switch|case|default|return\s*$)/.test(t)) {
         return;
       }
       if (/^(return\s+.+|[a-zA-Z_$][\w$.]*\s*(=|\(|\.)[^{]*)$/.test(t) && !t.endsWith(";")) {
@@ -453,12 +462,12 @@ function validateCode(lang, code) {
     warnings,
     output: errors.length > 0
       ? [`❌ [${LANGS[lang].n}] Compilation failed with ${errors.length} error(s)${warnings.length ? ` and ${warnings.length} warning(s)` : ""}:`,
-          "",
-          ...errors.map(e => `  ✖ ${e}`),
-          ...(warnings.length ? ["", ...warnings.map(w => `  ⚠ ${w}`)] : []),
-          "",
-          "Fix the error(s) above and run again."
-        ].join("\n")
+        "",
+      ...errors.map(e => `  ✖ ${e}`),
+      ...(warnings.length ? ["", ...warnings.map(w => `  ⚠ ${w}`)] : []),
+        "",
+        "Fix the error(s) above and run again."
+      ].join("\n")
       : warnings.length > 0
         ? [`⚠ [${LANGS[lang].n}] ${warnings.length} warning(s):`, ...warnings.map(w => `  ⚠ ${w}`)].join("\n")
         : null
@@ -686,43 +695,32 @@ class OTEngine {
   reset(t) { this.text = t; this.version = 0; this.history = []; }
 }
 
-// ═══════════ MOCK WEBSOCKET SERVER ═══════════
-class MockWS {
-  constructor() { this.clients = new Map(); this.engines = new Map(); this.log = []; this.onLog = null; }
+class WSManager {
+  constructor() { this.engines = new Map(); }
   eng(lang) { if (!this.engines.has(lang)) this.engines.set(lang, new OTEngine(STARTERS[lang] || "")); return this.engines.get(lang); }
-  connect(id, name, color, onMsg) {
-    this.clients.set(id, { name, color, send: onMsg });
-    this._bcast({ type: "presence", id, name, color, online: true }, id);
-    this._log("←", `join:${name}`);
-    return () => { this.clients.delete(id); this._bcast({ type: "presence", id, online: false }, id); };
+  send(uid, msg) { console.log(`[WS] Send to ${uid}:`, msg); }
+  apply(lk, op) {
+    const e = this.eng(lk);
+    if (!e) return null;
+    try {
+      const x = OTEngine.apply(e.text, e.history, op, e.version);
+      e.text = x.text; e.version = x.version; e.history = x.history;
+      return x.op;
+    } catch (err) { console.error("OT Apply Error:", err); return null; }
   }
-  send(cid, msg) {
-    const m = typeof msg === "string" ? JSON.parse(msg) : msg;
-    if (m.type === "op") { const e = this.eng(m.lang); const r = e.apply({ ...m.op, uid: cid }); if (r) { this._bcast({ type: "op", lang: m.lang, op: r, ver: e.version }, cid); this._log("←", `op:${r.type}@${r.pos}`); } }
-    else if (m.type === "cursor") { this._bcast({ type: "cursor", id: cid, ...m }, cid); }
-    else if (m.type === "sync") { const e = this.eng(m.lang); this.clients.get(cid)?.send({ type: "sync", lang: m.lang, text: e.text, ver: e.version }); }
-  }
-  _bcast(msg, ex) { this.clients.forEach((c, id) => { if (id !== ex) c.send(msg); }); }
-  _log(dir, msg) { this.log.unshift({ dir, msg, t: nowTs() }); if (this.log.length > 80) this.log.pop(); this.onLog?.([...this.log]); }
+  _log() {}
 }
-const WS = new MockWS();
+const WS = new WSManager();
+
+const BOTS = [
+  { name: "Aria K.", color: "#FF6B9D", bg: "rgba(255,107,157,0.15)", inits: "AK" },
+  { name: "Dev M.", color: "#4FC1FF", bg: "rgba(79,193,255,0.15)", inits: "DM" },
+  { name: "Sam T.", color: "#4EC9B0", bg: "rgba(78,201,176,0.15)", inits: "ST" },
+];
+
 
 // ═══════════ BOTS ═══════════
-export const BOTS = [
-  { name: "Aria K.", inits: "AK", color: "#FF6B9D", bg: "rgba(255,107,157,.18)" },
-  { name: "Dev M.", inits: "DM", color: "#4EC9B0", bg: "rgba(78,201,176,.18)" },
-  { name: "Sam T.", inits: "ST", color: "#DCDCAA", bg: "rgba(220,220,170,.18)" },
-];
-const SNIPS = {
-  ts: ["  // adaptive\n", "  return null;\n", "  await this.emit("],
-  js: ["  // todo\n", "  return;\n", "  console.log("],
-  py: ["    pass\n", "    return None\n", "    print(f\""],
-  java: [";\n", "    return null;\n", "    System.out.println("],
-  cpp: [";\n", "    return 0;", "    std::cout << "],
-  rs: ["\n    Ok(())", "    None\n", "    let mut "],
-  go: ["\n\treturn\n", "\tfmt.Println("],
-  sql: ["\nWHERE ", "AND ", "ORDER BY "],
-};
+
 
 // ═══════════════════════════════════════════════════════
 // ══════ 5.2 REAL-TIME DEBUGGING ROOM ENGINE ════════════
@@ -768,20 +766,20 @@ const LOG_LEVELS = ["INFO", "WARN", "ERROR", "DEBUG", "SUCCESS"];
 const LOG_SERVICES = ["api-gateway", "db-pool", "auth-svc", "cache", "ws-server", "scheduler"];
 
 const LOG_TEMPLATES = [
-  { level: "INFO",    svc: "api-gateway",  msg: "GET /api/status 200 12ms" },
-  { level: "INFO",    svc: "ws-server",    msg: "Client connected [id: {id}]" },
-  { level: "INFO",    svc: "db-pool",      msg: "Query executed in {n}ms — rows: {r}" },
-  { level: "SUCCESS", svc: "auth-svc",     msg: "Token validated for user:{id}" },
-  { level: "INFO",    svc: "cache",        msg: "HIT ratio: {n}% — evictions: {r}" },
-  { level: "DEBUG",   svc: "scheduler",    msg: "Job run:{id} queued (next: {n}s)" },
-  { level: "WARN",    svc: "api-gateway",  msg: "Rate limit approaching — {n} req/s" },
-  { level: "WARN",    svc: "db-pool",      msg: "Slow query detected: {n}ms" },
-  { level: "ERROR",   svc: "api-gateway",  msg: "POST /api/ingest 500 — timeout after {n}ms" },
-  { level: "ERROR",   svc: "auth-svc",     msg: "Invalid token — revoked session:{id}" },
-  { level: "ERROR",   svc: "db-pool",      msg: "Connection pool exhausted — {n} waiting" },
-  { level: "INFO",    svc: "ws-server",    msg: "OT op broadcast — ver:{n} clients:{r}" },
-  { level: "SUCCESS", svc: "cache",        msg: "Cache warmed — {n} keys loaded" },
-  { level: "DEBUG",   svc: "scheduler",    msg: "Health check OK — uptime {n}s" },
+  { level: "INFO", svc: "api-gateway", msg: "GET /api/status 200 12ms" },
+  { level: "INFO", svc: "ws-server", msg: "Client connected [id: {id}]" },
+  { level: "INFO", svc: "db-pool", msg: "Query executed in {n}ms — rows: {r}" },
+  { level: "SUCCESS", svc: "auth-svc", msg: "Token validated for user:{id}" },
+  { level: "INFO", svc: "cache", msg: "HIT ratio: {n}% — evictions: {r}" },
+  { level: "DEBUG", svc: "scheduler", msg: "Job run:{id} queued (next: {n}s)" },
+  { level: "WARN", svc: "api-gateway", msg: "Rate limit approaching — {n} req/s" },
+  { level: "WARN", svc: "db-pool", msg: "Slow query detected: {n}ms" },
+  { level: "ERROR", svc: "api-gateway", msg: "POST /api/ingest 500 — timeout after {n}ms" },
+  { level: "ERROR", svc: "auth-svc", msg: "Invalid token — revoked session:{id}" },
+  { level: "ERROR", svc: "db-pool", msg: "Connection pool exhausted — {n} waiting" },
+  { level: "INFO", svc: "ws-server", msg: "OT op broadcast — ver:{n} clients:{r}" },
+  { level: "SUCCESS", svc: "cache", msg: "Cache warmed — {n} keys loaded" },
+  { level: "DEBUG", svc: "scheduler", msg: "Health check OK — uptime {n}s" },
 ];
 
 function genLogEntry() {
@@ -1044,12 +1042,43 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 .tool-btn.dbg:hover{background:rgba(255,107,157,.18);color:#FF6B9D;}
 .tool-btn.logs{background:rgba(79,193,255,.07);border-color:rgba(79,193,255,.18);color:#4FC1FFaa;}
 .tool-btn.logs:hover{background:rgba(79,193,255,.18);color:#4FC1FF;}
+
+.access-terminal{height:100vh;display:flex;align-items:center;justify-content:center;background:#05070a;color:#fff;overflow:hidden;position:relative;}
+.terminal-bg{position:absolute;inset:0;z-index:0;}
+.grid-overlay{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);background-size:40px 40px;}
+.nebula{position:absolute;width:400px;height:400px;filter:blur(120px);opacity:.2;border-radius:50%;}
+.nebula.blue{background:#4FC1FF;top:-100px;left:-100px;}
+.nebula.pink{background:#FF6B9D;bottom:-100px;right:-100px;}
+.terminal-container{position:relative;z-index:1;width:400px;background:rgba(10,12,18,.8);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:24px;backdrop-filter:blur(10px);}
+.terminal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;}
+.terminal-brand{display:flex;align-items:center;gap:12px;}
+.brand-icon{font-size:24px;}
+.brand-text h1{font-size:16px;letter-spacing:2px;color:#fff;}
+.brand-text span{font-size:9px;color:#6a7a8a;font-family:var(--mono);}
+.terminal-status{font-size:9px;color:#4EC9B0;display:flex;align-items:center;gap:6px;font-family:var(--mono);}
+.pulse-dot{width:6px;height:6px;border-radius:50%;background:#4EC9B0;box-shadow:0 0 6px #4EC9B0;animation:pulse 1.5s infinite;}
+.terminal-nav{display:flex;position:relative;margin-bottom:24px;border-bottom:1px solid rgba(255,255,255,.1);}
+.nav-item{flex:1;padding:8px 0;background:none;border:none;color:#6a7a8a;font-size:10px;font-weight:700;letter-spacing:1px;cursor:pointer;}
+.nav-item.active{color:#fff;}
+.nav-indicator{position:absolute;bottom:-1px;left:0;width:50%;height:1px;background:#fff;transition:transform .3s;}
+.terminal-input-group{margin-bottom:16px;}
+.terminal-input-group label{display:block;font-size:9px;color:#6a7a8a;margin-bottom:6px;font-family:var(--mono);}
+.input-wrapper{position:relative;}
+.input-wrapper input{width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);padding:10px;border-radius:4px;color:#fff;font-family:var(--mono);font-size:13px;outline:none;}
+.input-focus-border{position:absolute;inset:-1px;border:1px solid #4FC1FF;opacity:0;transition:opacity .3s;pointer-events:none;border-radius:5px;}
+.input-wrapper input:focus + .input-focus-border{opacity:1;}
+.terminal-submit{width:100%;padding:12px;background:#fff;border:none;border-radius:4px;color:#000;font-weight:800;font-size:12px;cursor:pointer;position:relative;overflow:hidden;}
+.color-grid{display:flex;gap:8px;}
+.color-slot{width:32px;height:32px;border-radius:4px;background:var(--hue-bg);cursor:pointer;position:relative;display:flex;align-items:center;justify-content:center;}
+.color-core{width:12px;height:12px;background:var(--hue);border-radius:2px;}
+.color-ring{position:absolute;inset:-2px;border:1px solid var(--hue);border-radius:6px;}
+.terminal-footer{margin-top:24px;color:#4a5568;font-size:9px;font-family:var(--mono);}
+.footer-line{height:1px;background:rgba(255,255,255,.05);margin-bottom:12px;}
+.footer-content{display:flex;justify-content:space-between;}
 `;
 
 // ═══════════ CODEMIRROR ═══════════
-const CMEditor = forwardRef(function CMEditor(
-  { lang, initText, onLocalOp, onCursorMove, fileKey, remoteOps, cursors, readOnly = false }, ref
-) {
+const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, remoteOps, cursors, lineLocks, myId, fileKey, readOnly = false }, ref) => {
   const domRef = useRef(null), viewRef = useRef(null), modsRef = useRef(null);
   const inited = useRef(false), suppress = useRef(false), prevDoc = useRef(initText || "");
   useEffect(() => {
@@ -1138,7 +1167,18 @@ const CMEditor = forwardRef(function CMEditor(
   }, [lang, fileKey]);
   return (
     <div style={{ position: "relative", height: "100%", width: "100%", overflow: "hidden" }}>
-      {cursors?.map(cur => {
+      {/* Line Locks */}
+      {Object.values(lineLocks || {}).filter(lock => lock.user_id !== myId).map(lock => (
+        <div key={`lock-${lock.line_number}`} style={{ pointerEvents: "none", position: "absolute", inset: 0, overflow: "hidden", zIndex: 10 }}>
+          <div style={{ position: "absolute", top: (lock.line_number - 1) * 21, left: 0, right: 0, height: 21, background: lock.color + "15", borderLeft: `4px solid ${lock.color}`, pointerEvents: "none" }}>
+            <div style={{ position: "absolute", right: 10, top: 2, display: "flex", alignItems: "center", gap: 5, background: lock.color, color: "#fff", padding: "1px 6px", borderRadius: 4, fontSize: 9, fontWeight: 700 }}>
+              🔒 {lock.user_name}
+            </div>
+          </div>
+        </div>
+      ))}
+
+      {cursors?.filter(c => c.id !== myId).map(cur => {
         const top = (cur.line - 1) * 21, left = 48 + (cur.col - 1) * 8.1;
         return (
           <div key={cur.id} style={{ pointerEvents: "none", position: "absolute", inset: 0, overflow: "hidden", zIndex: 15 }}>
@@ -1224,7 +1264,7 @@ function TypingIndicator({ color }) {
 // ══════════════════════════════════════════════════════════
 // ═════════ 5.2 DEBUGGING ROOM COMPONENT ══════════════════
 // ══════════════════════════════════════════════════════════
-function DebuggingRoom({ errors, warnings, lang, me, onClose }) {
+function DebuggingRoom({ errors, warnings, lang, me, onLocalOp, onClose }) {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [messages, setMessages] = useState([]);
   const [inputVal, setInputVal] = useState("");
@@ -1276,33 +1316,55 @@ function DebuggingRoom({ errors, warnings, lang, me, onClose }) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const sendMessage = () => {
-    const txt = inputVal.trim();
+  const channelRef = useRef(null);
+
+  useEffect(() => {
+    const channel = supabase.channel(`debug:${lang}`);
+    channelRef.current = channel;
+
+    channel
+      .on("broadcast", { event: "msg" }, ({ payload }) => {
+        setMessages(prev => [...prev, payload]);
+      })
+      .subscribe();
+
+    return () => channel.unsubscribe();
+  }, [lang]);
+
+  const sendMessage = (txt = inputVal.trim()) => {
     if (!txt) return;
-    setMessages(prev => [...prev, {
+    const msg = {
       id: Math.random().toString(36).slice(2),
-      from: me.name, color: me.color, bg: me.bg, inits: me.inits,
+      from: me.name, color: me.cursorColor, bg: me.bg, inits: initials(me.name),
       text: txt, t: nowTs(), isMe: true,
-    }]);
+    };
+    setMessages(prev => [...prev, msg]);
+    channelRef.current.send({ type: "broadcast", event: "msg", payload: { ...msg, isMe: false } });
     setInputVal("");
-    // Bot response after 900ms
-    setTimeout(() => {
-      const bot = BOTS[Math.floor(Math.random() * BOTS.length)];
-      const replies = [
-        "Good point! Let me look at that section more carefully.",
-        `Try wrapping that in a try-catch block first.`,
-        `In ${LANGS[lang]?.n || lang}, this pattern often causes issues with scope resolution.`,
-        "Run a minimal reproduction — isolate just the broken part!",
-        "Check if your dependencies are up to date. Version mismatches cause this.",
-        "Did you try commenting it out and adding it back line by line?",
-      ];
-      setMessages(prev => [...prev, {
-        id: Math.random().toString(36).slice(2),
-        from: bot.name, color: bot.color, bg: bot.bg, inits: bot.inits,
-        text: replies[Math.floor(Math.random() * replies.length)],
-        t: nowTs(), isBot: true,
-      }]);
-    }, 900 + Math.random() * 600);
+  };
+
+  const handleAiRectify = async () => {
+    const issue = allIssues[selectedIdx];
+    if (!issue) return;
+    sendMessage(`🤖 Requesting AI rectification for: ${issue.text}`);
+    
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            { role: "system", content: "You are a senior software engineer. Fix the provided code based on the error. Return ONLY the fixed code block." },
+            { role: "user", content: `Language: ${lang}\nError: ${issue.text}\nCode:\n${activeEditorRef.current?._getText() || ""}` }
+          ]
+        })
+      });
+      const data = await res.json();
+      const fix = data.choices[0].message.content;
+      sendMessage(`✅ AI Suggestion:\n${fix}`);
+    } catch (err) {
+      sendMessage(`❌ AI Rectification failed: ${err.message}`);
+    }
   };
 
   const totalIssues = allIssues.length;
@@ -1365,10 +1427,18 @@ function DebuggingRoom({ errors, warnings, lang, me, onClose }) {
                         <span style={{ color: msg.isMe ? "#a8d8ff" : msg.isBot ? "#ffb3c6" : "#e0e0e0" }}>{msg.text}</span>
                         {msg.isBot && (
                           <div>
-                            <button className="dbg-fix-btn" onClick={() => {}}>
+                            <button className="dbg-fix-btn" onClick={() => { }}>
                               ✓ Mark as helpful
                             </button>
                           </div>
+                        )}
+                        {msg.text.startsWith("✅ AI Suggestion:") && (
+                          <button className="dbg-fix-btn" onClick={() => {
+                            const code = msg.text.split("```")[1]?.split("```")[0] || msg.text.replace("✅ AI Suggestion:", "").trim();
+                            onLocalOp({ type: "insert", pos: 0, chars: code }); // Simple replace for now
+                          }}>
+                            ⚡ Apply Fix to Editor
+                          </button>
                         )}
                       </div>
                       <div className="dbg-msg-time" style={{ textAlign: msg.isMe ? "right" : "left" }}>{msg.t}</div>
@@ -1393,6 +1463,10 @@ function DebuggingRoom({ errors, warnings, lang, me, onClose }) {
 
         {/* Footer stats */}
         <div className="dbg-room-foot">
+          <div style={{ flex: 1 }} />
+          <button className="dbg-send-btn" onClick={handleAiRectify} style={{ background: "rgba(79,193,255,.15)", borderColor: "rgba(79,193,255,.35)", color: "#4FC1FF" }}>
+            🤖 AI Rectify
+          </button>
           <div className="dbg-stat">Errors: <span style={{ color: "#FF6B9D" }}>{errors.length}</span></div>
           <div className="dbg-stat">Warnings: <span style={{ color: "#DCDCAA" }}>{warnings.length}</span></div>
           <div className="dbg-stat">Lang: <span>{LANGS[lang]?.n || lang}</span></div>
@@ -1569,60 +1643,70 @@ function LiveServerLogs({ onClose }) {
   );
 }
 
-// ═══════════ LOGIN PAGE ═══════════
-function LoginPage({ onLogin }) {
+function AccessTerminal() {
+  const [activeTab, setActiveTab] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [colorIdx, setColorIdx] = useState(0);
-  const [sid] = useState(() => genSid());
-  const chosen = PALETTE[colorIdx];
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const navigate = useNavigate();
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      navigate("/editor");
+    } catch (err) { setError(err.message); } finally { setLoading(false); }
+  };
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const chosen = PALETTE[colorIdx];
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email, password,
+        options: { data: { full_name: name || email.split("@")[0], cursor_color: chosen.hex } },
+      });
+      if (signUpError) throw signUpError;
+      if (data?.user && !data.session) { setError("Activation required. Check your inbox."); }
+      else { navigate("/editor"); }
+    } catch (err) { setError(err.message); } finally { setLoading(false); }
+  };
+
   return (
-    <div style={{ minHeight: "100vh", background: "#0a0c10", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter,sans-serif" }}>
-      <style>{CSS}</style>
-      <div style={{ width: 420, background: "#151820", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 36, boxShadow: "0 32px 80px rgba(0,0,0,.8)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
-          <div className="gem" style={{ width: 36, height: 36, borderRadius: 10, fontSize: 18 }}>⚡</div>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", letterSpacing: "-.02em" }}>CKC-OS</div>
-            <div style={{ fontSize: 11, color: "#4a5568", fontFamily: "var(--mono)" }}>Live Collaborative Editor</div>
+    <div className="access-terminal">
+      <div className="terminal-bg"><div className="grid-overlay" /><div className="nebula blue" /><div className="nebula pink" /></div>
+      <div className="terminal-container fi-pop">
+        <div className="terminal-glass">
+          <div className="terminal-header">
+            <div className="terminal-brand"><div className="brand-icon">⚡</div><div className="brand-text"><h1>CKC-OS</h1><span>COLLABORATIVE TERMINAL v4.2</span></div></div>
+            <div className="terminal-status"><span className="pulse-dot" />SYSTEM READY</div>
           </div>
-        </div>
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 11, color: "#4a5568", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".1em", fontWeight: 700 }}>Your Name</div>
-          <input value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === "Enter" && name.trim() && onLogin({ name: name.trim(), color: chosen.hex, bg: chosen.bg, inits: initials(name.trim()) }, sid)}
-            placeholder="Enter your name…" style={{ width: "100%", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, padding: "10px 14px", color: "#fff", fontSize: 14, fontFamily: "Inter,sans-serif", outline: "none", transition: "border-color .15s" }}
-            onFocus={e => e.target.style.borderColor = chosen.hex} onBlur={e => e.target.style.borderColor = "rgba(255,255,255,.1)"} autoFocus />
-        </div>
-        <div style={{ marginBottom: 28 }}>
-          <div style={{ fontSize: 11, color: "#4a5568", marginBottom: 10, textTransform: "uppercase", letterSpacing: ".1em", fontWeight: 700 }}>Cursor Color</div>
-          <div style={{ display: "flex", gap: 8 }}>
-            {PALETTE.map((p, i) => (
-              <div key={i} onClick={() => setColorIdx(i)} style={{ width: 28, height: 28, borderRadius: 8, background: p.bg, border: `2px solid ${i === colorIdx ? p.hex : "transparent"}`, cursor: "pointer", transition: "all .15s", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <div style={{ width: 12, height: 12, borderRadius: 4, background: p.hex }} />
-                {i === colorIdx && <div style={{ position: "absolute", inset: -4, borderRadius: 10, border: `1.5px solid ${p.hex}44` }} />}
-              </div>
-            ))}
+          <div className="terminal-nav">
+            <button className={`nav-item ${activeTab === "login" ? "active" : ""}`} onClick={() => setActiveTab("login")}>ACCESS WORKSPACE</button>
+            <button className={`nav-item ${activeTab === "register" ? "active" : ""}`} onClick={() => setActiveTab("register")}>INITIALIZE IDENTITY</button>
+            <div className="nav-indicator" style={{ transform: `translateX(${activeTab === "login" ? "0" : "100"}%)` }} />
           </div>
-        </div>
-        <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", borderRadius: 8, padding: "10px 14px", marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 9, background: chosen.bg, border: `2px solid ${chosen.hex}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: chosen.hex, fontFamily: "var(--mono)" }}>
-            {name ? initials(name) : "?"}
-          </div>
-          <div>
-            <div style={{ fontSize: 13, color: "#e0e0e0", fontWeight: 600 }}>{name || "Your name here"}</div>
-            <div style={{ fontSize: 10, color: "#4a5568", fontFamily: "var(--mono)" }}>Session: {sid}</div>
-          </div>
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5 }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#4EC9B0", boxShadow: "0 0 6px #4EC9B0" }} />
-            <span style={{ fontSize: 10, color: "#4EC9B0", fontWeight: 600 }}>LIVE</span>
-          </div>
-        </div>
-        <button onClick={() => { if (!name.trim()) return; onLogin({ name: name.trim(), color: chosen.hex, bg: chosen.bg, inits: initials(name.trim()) }, sid); }}
-          disabled={!name.trim()}
-          style={{ width: "100%", padding: "12px", borderRadius: 8, background: name.trim() ? `linear-gradient(135deg, ${chosen.hex}33, ${chosen.hex}22)` : "rgba(255,255,255,.04)", border: `1px solid ${name.trim() ? chosen.hex + "66" : "rgba(255,255,255,.08)"}`, color: name.trim() ? chosen.hex : "#4a5568", fontSize: 13, fontWeight: 700, cursor: name.trim() ? "pointer" : "not-allowed", fontFamily: "Inter,sans-serif", transition: "all .2s", letterSpacing: ".03em" }}>
-          Join Session →
-        </button>
-        <div style={{ marginTop: 16, padding: "10px 14px", background: "rgba(79,193,255,.06)", border: "1px solid rgba(79,193,255,.12)", borderRadius: 8, fontSize: 11, color: "#4FC1FF88", lineHeight: 1.7 }}>
-          ⚡ Powered by Operational Transformation (OT) · Real-time CRDT sync · WebSocket presence
+          {error && <div className={`terminal-alert ${error.includes("Activation") ? "info" : "error"}`}><span className="alert-icon">{error.includes("Activation") ? "✉" : "⚠"}</span><span className="alert-text">{error}</span></div>}
+          <form className="terminal-form" onSubmit={activeTab === "login" ? handleLogin : handleRegister}>
+            {activeTab === "register" && (
+              <div className="terminal-input-group"><label>DISPLAY_NAME</label><div className="input-wrapper"><input value={name} onChange={e => setName(e.target.value)} placeholder="ENTER_ID..." required /><div className="input-focus-border" /></div></div>
+            )}
+            <div className="terminal-input-group"><label>NETWORK_EMAIL</label><div className="input-wrapper"><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="USER@DOMAIN.COM" required /><div className="input-focus-border" /></div></div>
+            <div className="terminal-input-group"><label>SECRET_ACCESS_KEY</label><div className="input-wrapper"><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required /><div className="input-focus-border" /></div></div>
+            {activeTab === "register" && (
+              <div className="terminal-input-group"><label>WORKSPACE_HUE</label><div className="color-grid">{PALETTE.map((p, i) => (<div key={i} className={`color-slot ${colorIdx === i ? "selected" : ""}`} style={{ "--hue": p.hex, "--hue-glow": p.glow, "--hue-bg": p.bg }} onClick={() => setColorIdx(i)}><div className="color-core" />{colorIdx === i && <div className="color-ring" />}</div>))}</div></div>
+            )}
+            <button className="terminal-submit" disabled={loading}><div className="submit-content">{loading ? <span className="loader" /> : <><span>{activeTab === "login" ? "ESTABLISH_CONNECTION" : "CREATE_NODE_IDENTITY"}</span><span className="submit-arrow">→</span></>}</div><div className="submit-glimmer" /></button>
+          </form>
+          <div className="terminal-footer"><div className="footer-line" /><div className="footer-content"><span>ENCRYPTION: AES-256</span><span>PROTOCOL: SUPABASE_REALTIME</span></div></div>
         </div>
       </div>
     </div>
@@ -1630,18 +1714,27 @@ function LoginPage({ onLogin }) {
 }
 
 // ═══════════ MAIN APP ═══════════
-export default function App() {
-  const [session, setSession] = useState(() => authStore.get());
-  if (!session) return <LoginPage onLogin={(me, sid) => { const s = { me, sid, lang: "ts" }; authStore.set(s); setSession(s); }} />;
-  return <Shell session={session} onLogout={() => { authStore.clear(); setSession(null); }} />;
+export default function EditorPage() {
+  const { user, logout } = useAuth();
+  if (!user) return <AccessTerminal />;
+  return <Shell user={user} onLogout={logout} />;
 }
 
 // ═══════════ SHELL ═══════════
-function Shell({ session, onLogout }) {
-  const { me, sid, lang: initLang = "ts" } = session;
-  const myId = useRef("me-" + Math.random().toString(36).slice(2));
-  const getEng = useCallback(lk => WS.eng(lk), []);
-  const [remOps, setRemOps] = useState([]); const remBuf = useRef([]);
+function Shell({ user, onLogout }) {
+  const me = {
+    name: user?.name || "Developer",
+    color: user?.cursorColor || "#4FC1FF",
+    cursorColor: user?.cursorColor || "#4FC1FF",
+    bg: user?.bg || "rgba(79,193,255,0.15)",
+    inits: user?.inits || "D",
+    id: user?.id || "anon",
+    email: user?.email || "",
+  };
+  const sid = user?.sid || "default-session";
+  const initLang = "ts";
+  const myId = useRef(user.id);
+  const [remOps, setRemOps] = useState([]);
   const [cursors, setCursors] = useState([]);
   const [crdt, setCrdt] = useState([]);
   const [wsLog, setWsLog] = useState([]);
@@ -1668,71 +1761,102 @@ function Shell({ session, onLogout }) {
   const [cmdSel, setCmdSel] = useState(0);
   const [notif, setNotif] = useState(null);
   const [newEdLang, setNewEdLang] = useState("ts");
-  const [botTyping, setBotTyping] = useState({});
-  const [connectedCount, setConnectedCount] = useState(1 + BOTS.length);
+  const [connectedCount, setConnectedCount] = useState(1);
   const [liveValidation, setLiveValidation] = useState(null);
+  const [lineLocks, setLineLocks] = useState({});
+  const channelRef = useRef(null);
   const liveValTimer = useRef(null);
   const activeEditorRef = useRef(null);
   const notifTmr = useRef(null);
 
-  // ── NEW: Debug Room + Server Logs state ──
   const [showDebugRoom, setShowDebugRoom] = useState(false);
   const [showServerLogs, setShowServerLogs] = useState(false);
+  const remBuf = useRef([]);
+  const botRefs = useRef(BOTS);
+  const getEng = useCallback((lk) => WS.eng(lk), []);
+
 
   const toast = useCallback((msg, ms = 2500) => { clearTimeout(notifTmr.current); setNotif(msg); notifTmr.current = setTimeout(() => setNotif(null), ms); }, []);
-  const botRefs = useRef(BOTS.map((b, i) => ({ id: "bot-" + i, ...b, line: 1, col: 1, typing: false })));
 
+  // Supabase Realtime Sync
   useEffect(() => {
-    if (lang === "py" && !pyReady && !pyLoading) {
-      setPyLoading(true); loadPy().then(() => { setPyReady(true); setPyLoading(false); }).catch(() => setPyLoading(false));
-    }
-  }, [lang, pyReady, pyLoading]);
+    const channel = supabase.channel(`room:${lang}`);
+    channelRef.current = channel;
 
-  useEffect(() => {
-    WS.onLog = logs => setWsLog([...logs]);
-    const disc = WS.connect(myId.current, me.name, me.color, msg => {
-      if (msg.type === "op" && msg.lang === lang) {
-        remBuf.current.push(msg.op); setRemOps([...remBuf.current]); remBuf.current = []; setOpCnt(c => c + 1);
-        setCrdt(p => [{ ...msg.op, from: "remote", t: nowTs() }, ...p].slice(0, 40));
-      }
-      if (msg.type === "cursor") {
-        setCursors(prev => {
-          const rest = prev.filter(c => c.id !== msg.id); if (!msg.online) return rest;
-          const b = botRefs.current.find(x => x.id === msg.id);
-          return [...rest, { id: msg.id, name: msg.name || b?.name, color: msg.color || b?.color, line: msg.line || 1, col: msg.col || 1, lang: msg.lang }];
-        });
-      }
-      if (msg.type === "presence") { setConnectedCount(c => msg.online ? c + 1 : Math.max(1, c - 1)); }
-    });
-    botRefs.current.forEach(b => { WS.connect(b.id, b.name, b.color, msg => { if (msg.type === "op") getEng(msg.lang).apply(msg.op); }); });
-    WS.send(myId.current, { type: "sync", lang });
-    return () => { disc(); botRefs.current.forEach(b => WS.clients.delete(b.id)); };
-  }, []);
-
-  useEffect(() => {
-    const iv = setInterval(() => {
-      botRefs.current.forEach(bot => {
-        if (Math.random() > .6) return;
-        const eng = getEng(lang); const lines = eng.text.split("\n");
-        const nl = Math.max(1, Math.min(Math.floor(Math.random() * lines.length) + 1, lines.length));
-        const nc = Math.max(1, Math.floor(Math.random() * Math.max(1, (lines[nl - 1] || "").length)) + 1);
-        bot.line = nl; bot.col = nc; bot.typing = true;
-        setBotTyping(p => ({ ...p, [bot.id]: true }));
-        if (Math.random() > .4) {
-          const snips = SNIPS[lang] || SNIPS.ts; const snip = snips[Math.floor(Math.random() * snips.length)];
-          const off = lines.slice(0, nl - 1).reduce((s, l) => s + l.length + 1, 0);
-          const pos = off + Math.min(nc - 1, (lines[nl - 1] || "").length);
-          WS.send(bot.id, { type: "op", lang, op: { type: "insert", pos, chars: snip, uid: bot.id, baseVer: eng.version } });
-          setCrdt(p => [{ type: "insert", pos, chars: snip.slice(0, 12), from: bot.name, t: nowTs() }, ...p].slice(0, 40));
-        } else {
-          setCrdt(p => [{ type: "retain", pos: nc * 10, from: bot.name, t: nowTs() }, ...p].slice(0, 40));
+    channel
+      .on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState();
+        const users = Object.values(state).flat();
+        setConnectedCount(users.length);
+        setCursors(users.map(u => ({
+          id: u.user_id,
+          name: u.name,
+          color: u.color,
+          line: u.line || 1,
+          col: u.col || 1,
+          online: true
+        })));
+      })
+      .on("broadcast", { event: "op" }, ({ payload }) => {
+        if (payload.uid !== me.id) {
+          setRemOps([payload.op]);
+          setOpCnt(c => c + 1);
+          setCrdt(p => [{ ...payload.op, from: payload.name, t: nowTs() }, ...p].slice(0, 40));
         }
-        WS.send(bot.id, { type: "cursor", name: bot.name, color: bot.color, line: nl, col: nc, lang });
-        setOpCnt(c => c + 1);
-        setTimeout(() => { bot.typing = false; setBotTyping(p => ({ ...p, [bot.id]: false })); }, 1200);
+      })
+      .on("broadcast", { event: "cursor" }, ({ payload }) => {
+        if (payload.id !== me.id) {
+          setCursors(prev => {
+            const rest = prev.filter(c => c.id !== payload.id);
+            return [...rest, { ...payload, online: true }];
+          });
+        }
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await channel.track({
+            user_id: me.id,
+            name: me.name,
+            color: me.cursorColor,
+            line: cursor.line,
+            col: cursor.col,
+            online: true
+          });
+        }
       });
-    }, 2000);
-    return () => clearInterval(iv);
+
+    // Line locks listener
+    const lockSub = supabase
+      .channel("line_locks")
+      .on("postgres_changes", { event: "*", schema: "public", table: "line_locks" }, payload => {
+        if (payload.eventType === "DELETE") {
+          setLineLocks(prev => {
+            const next = { ...prev };
+            delete next[payload.old.line_number];
+            return next;
+          });
+        } else {
+          setLineLocks(prev => ({
+            ...prev,
+            [payload.new.line_number]: payload.new
+          }));
+        }
+      })
+      .subscribe();
+
+    // Initial locks load
+    supabase.from("line_locks").select("*").then(({ data }) => {
+      if (data) {
+        const locks = {};
+        data.forEach(l => locks[l.line_number] = l);
+        setLineLocks(locks);
+      }
+    });
+
+    return () => {
+      channel.unsubscribe();
+      lockSub.unsubscribe();
+    };
   }, [lang]);
 
   const triggerLiveValidation = useCallback((code, lk) => {
@@ -1745,18 +1869,46 @@ function Shell({ session, onLogout }) {
   }, []);
 
   const handleLocalOp = useCallback(op => {
-    const eng = getEng(lang); const r = eng.apply({ ...op, uid: myId.current, baseVer: eng.version - 1 });
-    if (r) {
-      WS.send(myId.current, { type: "op", lang, op: r });
-      setOpCnt(c => c + 1);
-      setTabs(p => p.map(t => t.id === activeTab ? { ...t, dirty: true } : t));
-      const code = activeEditorRef.current?._getText?.() || eng.text;
-      triggerLiveValidation(code, lang);
+    if (lineLocks[cursor.line] && lineLocks[cursor.line].user_id !== me.id) {
+      toast("Line locked by " + lineLocks[cursor.line].user_name);
+      return;
     }
-  }, [lang, activeTab, triggerLiveValidation]);
+    // Operation logic (OT/CRDT)
+    channelRef.current.send({
+      type: "broadcast",
+      event: "op",
+      payload: { uid: me.id, name: me.name, lang, op }
+    });
+    setOpCnt(c => c + 1);
+    setCrdt(p => [{ ...op, from: "me", t: nowTs() }, ...p].slice(0, 40));
+    triggerLiveValidation(activeEditorRef.current?._getText?.() || "", lang);
+  }, [lang, me, cursor, lineLocks, toast, triggerLiveValidation]);
 
-  const handleCursorMove = useCallback((line, col) => {
-    setCursor({ line, col }); WS.send(myId.current, { type: "cursor", name: me.name, color: me.color, line, col, lang });
+  const handleCursorMove = useCallback(async (line, col) => {
+    setCursor({ line, col });
+    
+    // Broadcast cursor
+    channelRef.current.send({
+      type: "broadcast",
+      event: "cursor",
+      payload: { id: me.id, name: me.name, color: me.cursorColor, line, col, lang }
+    });
+
+    // Update line lock in DB
+    try {
+      // Remove old locks for this user
+      await supabase.from("line_locks").delete().eq("user_id", me.id);
+      // Add new lock
+      await supabase.from("line_locks").insert({
+        document_id: lang, // Using lang as doc ID for simplicity
+        line_number: line,
+        user_id: me.id,
+        user_name: me.name,
+        color: me.cursorColor
+      });
+    } catch (err) {
+      console.error("Lock error:", err);
+    }
   }, [lang, me]);
 
   const switchLang = useCallback(lk => {
@@ -1873,6 +2025,7 @@ function Shell({ session, onLogout }) {
           warnings={liveValidation?.warnings || []}
           lang={lang}
           me={me}
+          onLocalOp={handleLocalOp}
           onClose={() => setShowDebugRoom(false)}
         />
       )}
@@ -1895,14 +2048,16 @@ function Shell({ session, onLogout }) {
 
         {/* Language switcher */}
         <div style={{ display: "flex", gap: 2, overflow: "hidden", flex: 1, minWidth: 0 }}>
-          {LK.map(lk => { const l = LANGS[lk], on = lang === lk; return (
-            <div key={lk} className={`lp${on ? " on" : ""}`}
-              style={{ color: on ? l.c : "#6a7585", background: on ? l.bg : "transparent", borderColor: on ? "rgba(255,255,255,.1)" : "transparent" }}
-              onClick={() => switchLang(lk)}>
-              <span style={{ fontFamily: "var(--mono)", fontSize: 10, fontWeight: 700 }}>{l.ic}</span>
-              <span style={{ fontSize: 11 }}>{l.n}</span>
-            </div>
-          ); })}
+          {LK.map(lk => {
+            const l = LANGS[lk], on = lang === lk; return (
+              <div key={lk} className={`lp${on ? " on" : ""}`}
+                style={{ color: on ? l.c : "#6a7585", background: on ? l.bg : "transparent", borderColor: on ? "rgba(255,255,255,.1)" : "transparent" }}
+                onClick={() => switchLang(lk)}>
+                <span style={{ fontFamily: "var(--mono)", fontSize: 10, fontWeight: 700 }}>{l.ic}</span>
+                <span style={{ fontSize: 11 }}>{l.n}</span>
+              </div>
+            );
+          })}
         </div>
 
         {lang === "py" && (pyLoading
@@ -1932,16 +2087,12 @@ function Shell({ session, onLogout }) {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
-          {botRefs.current.map((b, i) => (
-            <div key={i} className="av" style={{ background: b.bg, color: b.color, border: `2px solid ${b.color}44` }} title={b.name}>
-              {b.inits}
-              <div className="online-dot" style={{ background: botTyping[b.id] ? b.color : "#4EC9B0" }} />
+          {cursors.map((b, i) => (
+            <div key={i} className={`av${b.id === me.id ? " me" : ""}`} style={{ background: b.bg || "rgba(255,255,255,.05)", color: b.color, border: `2px solid ${b.color}44` }} title={b.name}>
+              {initials(b.name)}
+              <div className="online-dot" style={{ background: "#4EC9B0" }} />
             </div>
           ))}
-          <div className="av me" style={{ background: me.bg || "rgba(79,193,255,.18)", color: me.color || "#4FC1FF" }} title={`${me.name} (you)`}>
-            {me.inits}
-            <div className="online-dot" style={{ background: "#4EC9B0" }} />
-          </div>
         </div>
 
         <button className={`run-btn${running ? " running" : ""}`} onClick={handleRun} disabled={running} style={{ flexShrink: 0 }}>
@@ -1999,21 +2150,20 @@ function Shell({ session, onLogout }) {
             </div>
           </div>
 
-          {botRefs.current.map((b, i) => {
-            const cur = cursors.find(c => c.id === b.id);
-            const isTyping = botTyping[b.id];
+          {cursors.filter(c => c.id !== me.id).map((b, i) => {
+            const isTyping = false; // Add typing logic if needed
             return (
               <div key={i} className="presence-card">
-                <div className="presence-av" style={{ background: b.bg, color: b.color, borderColor: b.color + "66" }}>
-                  {b.inits}
-                  <div className="pdot" style={{ background: isTyping ? b.color : "#4a5568" }} />
+                <div className="presence-av" style={{ background: b.bg || "rgba(255,255,255,.05)", color: b.color, borderColor: b.color + "66" }}>
+                  {initials(b.name)}
+                  <div className="pdot" style={{ background: isTyping ? b.color : "#4EC9B0" }} />
                 </div>
                 <div className="presence-info">
                   <div className="presence-name" style={{ color: "#c0c8d8" }}>{b.name}</div>
-                  <div className="presence-pos" style={{ color: isTyping ? b.color : "#4a5568" }}>
+                  <div className="presence-pos" style={{ color: b.color }}>
                     {isTyping
                       ? <><TypingIndicator color={b.color} /><span style={{ marginLeft: 4 }}>typing…</span></>
-                      : `Ln ${cur?.line || b.line} · Col ${cur?.col || b.col}`}
+                      : `Ln ${b.line} · Col ${b.col}`}
                   </div>
                 </div>
               </div>
@@ -2084,15 +2234,17 @@ function Shell({ session, onLogout }) {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
           {/* Tab bar */}
           <div style={{ display: "flex", background: "var(--bg3)", height: 36, flexShrink: 0, overflowX: "auto", overflowY: "hidden", alignItems: "flex-end", borderBottom: "1px solid var(--bdr)" }}>
-            {tabs.map(t => { const tl = LANGS[t.lang] || LANGS.ts; return (
-              <div key={t.id} className={`tab ${activeTab === t.id ? "on" : "off"}`} onClick={() => { setActiveTab(t.id); if (LANGS[t.lang]) switchLang(t.lang); }}>
-                {t.isNew && <span className="new-tab-dot" style={{ marginRight: 4 }} />}
-                <span style={{ fontSize: 9, color: tl.c, fontWeight: 700, flexShrink: 0 }}>{tl.ic}</span>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>{t.name}</span>
-                {t.dirty && <span style={{ fontSize: 12, color: "#4a5568", lineHeight: 1, flexShrink: 0 }}>●</span>}
-                <span className="tx" onClick={e => closeTab(t.id, e)}>✕</span>
-              </div>
-            ); })}
+            {tabs.map(t => {
+              const tl = LANGS[t.lang] || LANGS.ts; return (
+                <div key={t.id} className={`tab ${activeTab === t.id ? "on" : "off"}`} onClick={() => { setActiveTab(t.id); if (LANGS[t.lang]) switchLang(t.lang); }}>
+                  {t.isNew && <span className="new-tab-dot" style={{ marginRight: 4 }} />}
+                  <span style={{ fontSize: 9, color: tl.c, fontWeight: 700, flexShrink: 0 }}>{tl.ic}</span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>{t.name}</span>
+                  {t.dirty && <span style={{ fontSize: 12, color: "#4a5568", lineHeight: 1, flexShrink: 0 }}>●</span>}
+                  <span className="tx" onClick={e => closeTab(t.id, e)}>✕</span>
+                </div>
+              );
+            })}
             <div style={{ flex: 1 }} />
             <div style={{ padding: "0 12px", fontSize: 10, color: "#4a5568", fontFamily: "var(--mono)", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
               <span>CodeMirror 6</span><span style={{ color: LANGS[lang]?.c || "#4FC1FF", fontWeight: 700 }}>{LANGS[lang]?.n}</span>
@@ -2123,9 +2275,10 @@ function Shell({ session, onLogout }) {
             <div style={{ flex: 1, overflow: "hidden" }}>
               {activeTab ? (
                 <CMEditor key={activeTab + lang} ref={activeEditorRef} lang={lang}
-                  initText={curTab?.isNew ? (curTab.code || "") : curEng.text} fileKey={activeTab}
+                  initText={curTab?.isNew ? (curTab.code || "") : ""} fileKey={activeTab}
                   onLocalOp={handleLocalOp} onCursorMove={handleCursorMove}
-                  remoteOps={curTab?.isNew ? [] : remOps} cursors={curTab?.isNew ? [] : activeCursors} readOnly={false} />
+                  remoteOps={curTab?.isNew ? [] : remOps} cursors={curTab?.isNew ? [] : cursors} 
+                  lineLocks={lineLocks} myId={me.id} readOnly={false} />
               ) : (
                 <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: "#4a5568" }}>
                   <div style={{ fontSize: 48, opacity: .1 }}>⚡</div>
@@ -2161,9 +2314,9 @@ function Shell({ session, onLogout }) {
                 <div style={{ flex: 1, overflowY: "auto", padding: "10px 14px", background: "#0a0c10", minHeight: 0, borderTop: outIsErr ? "1px solid rgba(255,107,157,.18)" : "none" }}>
                   {running
                     ? <div style={{ color: "#4FC1FF", fontFamily: "var(--mono)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
-                        <span className="spin" style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #4FC1FF", borderTopColor: "transparent" }} />
-                        Validating &amp; running {LANGS[curTab?.lang || lang]?.n || "code"}…
-                      </div>
+                      <span className="spin" style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #4FC1FF", borderTopColor: "transparent" }} />
+                      Validating &amp; running {LANGS[curTab?.lang || lang]?.n || "code"}…
+                    </div>
                     : renderOutput(output)}
                 </div>
               )}

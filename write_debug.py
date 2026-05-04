@@ -1,4 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import codecs
+
+js_content = """import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 const LANGS = {
@@ -24,7 +26,7 @@ async function askGroq(messages, lang, userCode, groqApiKey) {
     throw new Error("Groq API key is missing. Please enter your key above.");
   }
 
-  const systemPrompt = "You are an expert debugging assistant helping developers fix code issues.\nLanguage: " + (LANGS[lang]?.n || lang) + "\n" + (userCode ? "\nUser's code context:\n```" + lang + "\n" + userCode + "\n```" : "") + "\n\nProvide clear, concise debugging help. Use code blocks when showing code examples.";
+  const systemPrompt = "You are an expert debugging assistant helping developers fix code issues.\\nLanguage: " + (LANGS[lang]?.n || lang) + "\\n" + (userCode ? "\\nUser's code context:\\n```" + lang + "\\n" + userCode + "\\n```" : "") + "\\n\\nProvide clear, concise debugging help. Use code blocks when showing code examples.";
 
   const groqMessages = messages
     .filter((m) => m.role === "user" || (m.role === "assistant" && !m.id?.startsWith("init-")))
@@ -208,12 +210,12 @@ const CSS = `
 `;
 
 function FormatAIResponse({ text }) {
-  const parts = text.split(/(```[\s\S]*?```|`[^`]+`)/g);
+  const parts = text.split(/(```[\\s\\S]*?```|`[^`]+`)/g);
   return (
     <>
       {parts.map((part, i) => {
         if (part.startsWith("```") && part.endsWith("```")) {
-          const inner = part.replace(/^```[a-z]*\n?/, "").replace(/```$/, "");
+          const inner = part.replace(/^```[a-z]*\\n?/, "").replace(/```$/, "");
           return <div key={i} className="dbgm-ai-code">{inner}</div>;
         }
         if (part.startsWith("`") && part.endsWith("`")) {
@@ -259,7 +261,7 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts", isFullP
     setAiMessages([{
       id: "init-welcome",
       role: "assistant",
-      text: "Ready to help debug!\n\nEnter your Groq API key above, paste your code context below if needed, then ask me anything about your issues.",
+      text: "Ready to help debug!\\n\\nEnter your Groq API key above, paste your code context below if needed, then ask me anything about your issues.",
       t: nowTs(),
     }]);
   }, [lang, isOpen]);
@@ -472,3 +474,7 @@ export default function DebuggingRoomPage() {
     </div>
   );
 }
+"""
+
+with codecs.open('src/pages/Debug.jsx', 'w', 'utf-8') as f:
+    f.write(js_content)

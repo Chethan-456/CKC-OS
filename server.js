@@ -11,6 +11,7 @@ dotenv.config({ path: path.join(__dirname, ".env") });
 import express  from "express";
 import cors     from "cors";
 import fetch    from "node-fetch";
+import net      from "net";
 import neo4j    from "neo4j-driver";
 import { v4 as uuidv4 } from "uuid";
 
@@ -19,7 +20,7 @@ const { initChatServer, chatRouter, getHistory, getPresenceForChannel } = requir
 
 // ─── Startup diagnostics ──────────────────────────────────────────────────────
 console.log("─────────────────────────────────────────────");
-console.log("GROQ_API_KEY  :", process.env.GROQ_API_KEY   ? "✅ loaded (" + process.env.GROQ_API_KEY.slice(0,8)  + "...)" : "❌ MISSING");
+console.log("GROQ_API_KEY  :", (process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY) ? "✅ loaded (" + (process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY).slice(0,8)  + "...)" : "❌ MISSING");
 console.log("NEO4J_URI     :", process.env.NEO4J_URI       || "❌ MISSING");
 console.log("NEO4J_USER    :", process.env.NEO4J_USER      || "❌ MISSING");
 console.log("NEO4J_PASSWORD:", process.env.NEO4J_PASSWORD  ? "✅ loaded"  : "❌ MISSING");
@@ -53,6 +54,33 @@ function toNum(v) {
   return typeof v.toNumber === "function" ? v.toNumber() : (Number(v) || 0);
 }
 
+async function getAvailablePort(startPort) {
+  let port = Number(startPort) || 5000;
+  while (port < 65535) {
+    try {
+      await new Promise((resolve, reject) => {
+        const checker = net.createServer();
+        checker.once("error", (err) => {
+          checker.close();
+          reject(err);
+        });
+        checker.once("listening", () => {
+          checker.close(() => resolve());
+        });
+        checker.listen(port);
+      });
+      return port;
+    } catch (err) {
+      if (err.code === "EADDRINUSE") {
+        port += 1;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("No available ports found.");
+}
+
 async function runQuery(cypher, params = {}) {
   const session = driver.session();
   try   { return await session.run(cypher, params); }
@@ -84,7 +112,7 @@ async function reconstructGraph(graphId, nodes) {
 
 // ─── POST /api/chat  (Groq proxy) ────────────────────────────────────────────
 app.post("/api/chat", async (req, res) => {
-  const apiKey = process.env.GROQ_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "GROQ_API_KEY not set on server." });
 
   const { messages } = req.body;

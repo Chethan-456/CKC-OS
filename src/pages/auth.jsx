@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from "react";
+import { Navigate, Link } from "react-router-dom";
+import { supabase } from "../lib/supabase.js";
 
 /* ═══════════════════════════════════════════════════════════════
    CKC-OS · AUTH + SETTINGS MODULE
@@ -14,25 +16,25 @@ import { useState, useEffect, useCallback, createContext, useContext, useRef } f
 
 // ─── Design tokens (matches CKC-OS dark system) ───────────────
 const C = {
-  bg:     "#080a0f",
-  bg2:    "#0c0e15",
-  bg3:    "#10131c",
-  bg4:    "#151825",
-  glass:  "rgba(255,255,255,.032)",
-  rim:    "rgba(255,255,255,.06)",
-  rim2:   "rgba(255,255,255,.1)",
-  cyan:   "#00d4ff",
-  green:  "#00ff9d",
-  rose:   "#ff4d8d",
-  amber:  "#ffb547",
+  bg: "#080a0f",
+  bg2: "#0c0e15",
+  bg3: "#10131c",
+  bg4: "#151825",
+  glass: "rgba(255,255,255,.032)",
+  rim: "rgba(255,255,255,.06)",
+  rim2: "rgba(255,255,255,.1)",
+  cyan: "#00d4ff",
+  green: "#00ff9d",
+  rose: "#ff4d8d",
+  amber: "#ffb547",
   violet: "#a78bfa",
-  red:    "#ff5555",
-  text:   "#dde4f5",
-  text2:  "#6b7a9e",
-  text3:  "#343d54",
-  mono:   "'JetBrains Mono', monospace",
-  disp:   "'Syne', sans-serif",
-  body:   "'DM Sans', sans-serif",
+  red: "#ff5555",
+  text: "#dde4f5",
+  text2: "#6b7a9e",
+  text3: "#343d54",
+  mono: "'JetBrains Mono', monospace",
+  disp: "'Syne', sans-serif",
+  body: "'DM Sans', sans-serif",
 };
 
 // ─── CSS ──────────────────────────────────────────────────────
@@ -362,22 +364,22 @@ const DEFAULT_PREFS = {
 };
 
 const CURSOR_COLORS = [
-  { hex: "#00d4ff", label: "Cyan"   },
-  { hex: "#00ff9d", label: "Green"  },
-  { hex: "#ff4d8d", label: "Rose"   },
-  { hex: "#ffb547", label: "Amber"  },
+  { hex: "#00d4ff", label: "Cyan" },
+  { hex: "#00ff9d", label: "Green" },
+  { hex: "#ff4d8d", label: "Rose" },
+  { hex: "#ffb547", label: "Amber" },
   { hex: "#a78bfa", label: "Violet" },
-  { hex: "#f472b6", label: "Pink"   },
+  { hex: "#f472b6", label: "Pink" },
 ];
 
 const LANG_OPTIONS = [
-  "JavaScript","TypeScript","Python","Rust","Go","Java","C/C++","SQL",
+  "JavaScript", "TypeScript", "Python", "Rust", "Go", "Java", "C/C++", "SQL",
 ];
 
 // ─── Persistent store helpers ─────────────────────────────────
-const STORE_KEY  = "ckc_s";
-const PREFS_KEY  = "ckc_prefs";
-const STATS_KEY  = "ckc_stats";
+const STORE_KEY = "ckc_s";
+const PREFS_KEY = "ckc_prefs";
+const STATS_KEY = "ckc_stats";
 
 function loadSession() {
   try { return JSON.parse(sessionStorage.getItem(STORE_KEY) || "null"); }
@@ -420,36 +422,75 @@ function deepMerge(defaults, overrides) {
 
 // ─── Legacy authStore shim (compat with editor.jsx + index.jsx) ──
 export const authStore = {
-  get:   loadSession,
-  set:   saveSession,
+  get: loadSession,
+  set: saveSession,
   clear: clearSession,
 };
 
 // ─── Auth Context ─────────────────────────────────────────────
 const AuthContext = createContext(null);
 
+function initials(n) {
+  return (n || "?").split(" ").map(w => w[0] || "").join("").toUpperCase().slice(0, 2) || "?";
+}
+
 export function AuthProvider({ children }) {
-  const [user, setUserState]   = useState(() => loadSession());
+  const [user, setUserState] = useState(() => loadSession());
   const [prefs, setPrefsState] = useState(() => loadPrefs());
   const [stats, setStatsState] = useState(() => loadStats());
 
   useEffect(() => {
-    if (user) saveSession(user);
-    else clearSession();
-  }, [user]);
+    // Initial session check
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        const userData = {
+          id: session.user.id,
+          email: session.user.email,
+          name: session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "Developer",
+          cursorColor: session.user.user_metadata?.cursor_color || "#00d4ff",
+          bg: session.user.user_metadata?.cursor_color ? session.user.user_metadata.cursor_color + "22" : "rgba(0,212,255,0.15)",
+          inits: initials(session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "D"),
+          sid: Math.random().toString(36).substring(7),
+          loginTime: Date.now(),
+        };
+        setUserState(userData);
+      }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        const userData = {
+          id: session.user.id,
+          email: session.user.email,
+          name: session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "Developer",
+          cursorColor: session.user.user_metadata?.cursor_color || "#00d4ff",
+          bg: session.user.user_metadata?.cursor_color ? session.user.user_metadata.cursor_color + "22" : "rgba(0,212,255,0.15)",
+          inits: initials(session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "D"),
+          sid: Math.random().toString(36).substring(7),
+          loginTime: Date.now(),
+        };
+        setUserState(userData);
+      } else {
+        setUserState(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => { savePrefs(prefs); }, [prefs]);
   useEffect(() => { saveStats(stats); }, [stats]);
 
-  const login = useCallback((userData) => {
-    const session = { ...userData, loginTime: Date.now() };
-    setUserState(session);
-    setStatsState(prev => ({ ...prev, sessions: (prev.sessions || 0) + 1 }));
+  const login = useCallback(async (email, password) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    return data;
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    await supabase.auth.signOut();
     setUserState(null);
-    clearSession();
   }, []);
 
   const updateUser = useCallback((patch) => {
@@ -489,37 +530,21 @@ export function useAuth() {
   return ctx;
 }
 
-// ─── ProtectedRoute ───────────────────────────────────────────
-// router-safe: uses dynamic import of useNavigate so it works
-// both inside and outside a RouterProvider context
-export function ProtectedRoute({ children, fallback }) {
+export function ProtectedRoute({ children }) {
   const { user } = useAuth();
+  if (user) return children;
+  return <Navigate to="/login" replace />;
+}
 
-  // Try to get navigate — if no router context, fall back gracefully
-  let navigate = null;
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const { useNavigate } = require("react-router-dom");
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    navigate = useNavigate();
-  } catch {
-    navigate = null;
-  }
-
+export function ProtectedScreen({ children }) {
+  const { user } = useAuth();
   if (user) return children;
   return (
     <div className="ckc-protected">
       <div style={{ fontSize: 32 }}>🔐</div>
       <div className="ckc-protected-title">Session required</div>
       <div className="ckc-protected-desc">You need an active CKC-OS session to access this page.</div>
-      {fallback || (
-        <button
-          className="ckc-btn-primary"
-          onClick={() => navigate ? navigate("/") : (window.location.href = "/")}
-        >
-          Go to login →
-        </button>
-      )}
+      <Link to="/login" className="ckc-btn-primary">Go to Login</Link>
     </div>
   );
 }
@@ -569,9 +594,9 @@ export function SettingsButton({ onClick }) {
 // ─── SettingsPanel ────────────────────────────────────────────
 export function SettingsPanel({ onClose }) {
   const { user, prefs, stats, updateUser, updatePref, resetPrefs, logout } = useAuth();
-  const [tab, setTab]     = useState("profile");
+  const [tab, setTab] = useState("profile");
   const [toast, setToast] = useState(null);
-  const overlayRef        = useRef();
+  const overlayRef = useRef();
 
   const notify = (msg) => setToast({ msg, id: Date.now() });
 
@@ -607,16 +632,16 @@ export function SettingsPanel({ onClose }) {
 
   const NAV = [
     { section: "Account" },
-    { id: "profile",     label: "Profile",       icon: "👤" },
-    { id: "session",     label: "Session",        icon: "🔑" },
+    { id: "profile", label: "Profile", icon: "👤" },
+    { id: "session", label: "Session", icon: "🔑" },
     { section: "Workspace" },
-    { id: "editor",      label: "Editor",         icon: "📝" },
-    { id: "appearance",  label: "Appearance",     icon: "🎨" },
-    { id: "keybindings", label: "Keybindings",    icon: "⌨️" },
+    { id: "editor", label: "Editor", icon: "📝" },
+    { id: "appearance", label: "Appearance", icon: "🎨" },
+    { id: "keybindings", label: "Keybindings", icon: "⌨️" },
     { section: "AI" },
-    { id: "ai",          label: "AI assistant",   icon: "🤖" },
+    { id: "ai", label: "AI assistant", icon: "🤖" },
     { section: "System" },
-    { id: "danger",      label: "Danger zone",    icon: "⚠️" },
+    { id: "danger", label: "Danger zone", icon: "⚠️" },
   ];
 
   return (
@@ -674,10 +699,10 @@ export function SettingsPanel({ onClose }) {
 
                 <div className="ckc-stats-row">
                   {[
-                    ["Sessions",   stats.sessions  || 0,   ""],
-                    ["Total keys", stats.totalKeys || 0,   ""],
-                    ["Top lang",   stats.topLang   || "—", ""],
-                    ["WPM best",   stats.wpmBest   || "—", ""],
+                    ["Sessions", stats.sessions || 0, ""],
+                    ["Total keys", stats.totalKeys || 0, ""],
+                    ["Top lang", stats.topLang || "—", ""],
+                    ["WPM best", stats.wpmBest || "—", ""],
                   ].map(([lbl, val]) => (
                     <div key={lbl} className="ckc-stat-chip">
                       <div className="ckc-stat-val">{val}</div>
@@ -753,9 +778,11 @@ export function SettingsPanel({ onClose }) {
                     <div className="ckc-s-row-desc">Share this to collaborate in editor</div>
                   </div>
                   <span
-                    style={{ fontFamily: C.mono, fontSize: 11, color: C.cyan,
+                    style={{
+                      fontFamily: C.mono, fontSize: 11, color: C.cyan,
                       background: "rgba(0,212,255,.08)", padding: "5px 12px",
-                      borderRadius: 7, border: "1px solid rgba(0,212,255,.2)", cursor: "pointer" }}
+                      borderRadius: 7, border: "1px solid rgba(0,212,255,.2)", cursor: "pointer"
+                    }}
                     title="Click to copy"
                     onClick={() => { navigator.clipboard?.writeText(user.sid || ""); notify("Session ID copied!"); }}
                   >
@@ -812,8 +839,8 @@ export function SettingsPanel({ onClose }) {
 
                 <div className="ckc-s-section-label">Formatting</div>
                 {[
-                  ["Tab size",  "tabSize",  ["2 spaces","4 spaces","Tab"], ["2","4","tab"]],
-                  ["Font size", "fontSize", ["12px","14px","16px","18px"], ["12","14","16","18"]],
+                  ["Tab size", "tabSize", ["2 spaces", "4 spaces", "Tab"], ["2", "4", "tab"]],
+                  ["Font size", "fontSize", ["12px", "14px", "16px", "18px"], ["12", "14", "16", "18"]],
                 ].map(([label, key, opts, vals]) => (
                   <div key={key} className="ckc-s-row">
                     <div className="ckc-s-row-left">
@@ -831,11 +858,11 @@ export function SettingsPanel({ onClose }) {
 
                 <div className="ckc-s-section-label">Behaviour</div>
                 {[
-                  ["Word wrap",           "wordWrap",     "Wrap long lines"],
-                  ["Vim keybindings",     "vim",          "Enable Vim mode in CodeMirror"],
-                  ["Auto-close brackets", "autoClose",    "Auto-pair (), [], {}"],
-                  ["Line numbers",        "lineNumbers",  "Show line numbers in gutter"],
-                  ["Show behavior HUD",   "showBehavior", "WPM, error rate overlay"],
+                  ["Word wrap", "wordWrap", "Wrap long lines"],
+                  ["Vim keybindings", "vim", "Enable Vim mode in CodeMirror"],
+                  ["Auto-close brackets", "autoClose", "Auto-pair (), [], {}"],
+                  ["Line numbers", "lineNumbers", "Show line numbers in gutter"],
+                  ["Show behavior HUD", "showBehavior", "WPM, error rate overlay"],
                 ].map(([label, key, desc]) => (
                   <div key={key} className="ckc-s-row">
                     <div className="ckc-s-row-left">
@@ -928,12 +955,12 @@ export function SettingsPanel({ onClose }) {
 
                 <div className="ckc-s-section-label">Global</div>
                 {[
-                  ["Open AI assistant",  "openAI",        "⌘K"],
-                  ["Toggle sidebar",     "toggleSidebar", "⌘\\"],
-                  ["Run code",           "runCode",        "⇧⌘R"],
-                  ["Open settings",      "openSettings",   "⌘,"],
-                  ["New session",        "newSession",     "⇧⌘N"],
-                  ["Copy response",      "copyResponse",   "⇧⌘C"],
+                  ["Open AI assistant", "openAI", "⌘K"],
+                  ["Toggle sidebar", "toggleSidebar", "⌘\\"],
+                  ["Run code", "runCode", "⇧⌘R"],
+                  ["Open settings", "openSettings", "⌘,"],
+                  ["New session", "newSession", "⇧⌘N"],
+                  ["Copy response", "copyResponse", "⇧⌘C"],
                 ].map(([label, key, defaultKbd]) => (
                   <div key={key} className="ckc-s-row">
                     <div className="ckc-s-row-left">
@@ -962,10 +989,10 @@ export function SettingsPanel({ onClose }) {
                 <div className="ckc-s-row" style={{ flexDirection: "column", alignItems: "flex-start", gap: 10 }}>
                   <div className="ckc-pills">
                     {[
-                      ["auto",         "Auto-detect"],
-                      ["beginner",     "Beginner"],
+                      ["auto", "Auto-detect"],
+                      ["beginner", "Beginner"],
                       ["intermediate", "Intermediate"],
-                      ["advanced",     "Advanced"],
+                      ["advanced", "Advanced"],
                     ].map(([val, label]) => (
                       <button
                         key={val}
@@ -983,10 +1010,10 @@ export function SettingsPanel({ onClose }) {
 
                 <div className="ckc-s-section-label">Behaviour</div>
                 {[
-                  ["Proactive tips",       "proactiveTips",  "Show usage tips between messages"],
-                  ["Always show Big-O",    "alwaysShowBigO", "Include complexity in every code response"],
-                  ["Code review on paste", "reviewOnPaste",  "Auto-analyse code when you paste it"],
-                  ["Explain errors",       "explainErrors",  "Interpret lint errors in plain English"],
+                  ["Proactive tips", "proactiveTips", "Show usage tips between messages"],
+                  ["Always show Big-O", "alwaysShowBigO", "Include complexity in every code response"],
+                  ["Code review on paste", "reviewOnPaste", "Auto-analyse code when you paste it"],
+                  ["Explain errors", "explainErrors", "Interpret lint errors in plain English"],
                 ].map(([label, key, desc]) => (
                   <div key={key} className="ckc-s-row">
                     <div className="ckc-s-row-left">
@@ -1090,7 +1117,7 @@ export function SettingsPanel({ onClose }) {
 // ─── useSettings convenience hook ────────────────────────────
 export function useSettings() {
   const [open, setOpen] = useState(false);
-  const openSettings  = useCallback(() => setOpen(true),  []);
+  const openSettings = useCallback(() => setOpen(true), []);
   const closeSettings = useCallback(() => setOpen(false), []);
 
   const panel = open
@@ -1101,7 +1128,7 @@ export function useSettings() {
 }
 
 // ─── Default export ───────────────────────────────────────────
-export default function AuthSettingsModule() {
+export default function Auth() {
   const { user } = useAuth();
   const { open, openSettings, panel } = useSettings();
 

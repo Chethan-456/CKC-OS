@@ -1,522 +1,677 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useRef, useCallback } from "react";
 
-const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"];
+const PRESETS = [
+  {
+    label: "GitHub",
+    url: "https://api.github.com/user",
+    keyName: "Authorization",
+    placeholder: "Bearer ghp_xxxxxxxxxxxx",
+    note: "Returns 200 with your user profile if valid, 401 if not. Token needs no special scopes.",
+  },
+  {
+    label: "OpenAI",
+    url: "https://api.openai.com/v1/models",
+    keyName: "Authorization",
+    placeholder: "Bearer sk-xxxxxxxxxxxx",
+    note: "Lists available models if key is valid, 401 if not.",
+  },
+  {
+    label: "Anthropic",
+    url: "https://api.anthropic.com/v1/models",
+    keyName: "x-api-key",
+    placeholder: "sk-ant-xxxxxxxxxxxx",
+    note: "Lists Claude models. Also requires anthropic-version header — may return 400 without it.",
+  },
+  {
+    label: "JSONPlaceholder",
+    url: "https://jsonplaceholder.typicode.com/todos/1",
+    keyName: "x-api-key",
+    placeholder: "any-value",
+    note: "Public test API. Always returns 200 and ignores the key — useful to smoke-test this tool.",
+  },
+  {
+    label: "Custom",
+    url: "",
+    keyName: "",
+    placeholder: "",
+    note: "Enter your own endpoint and key.",
+  },
+];
+
+const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"];
+
 const METHOD_COLORS = {
-  GET: "#22d3ee",
-  POST: "#4ade80",
-  PUT: "#facc15",
-  PATCH: "#fb923c",
-  DELETE: "#f87171",
-  OPTIONS: "#c084fc",
-  HEAD: "#94a3b8",
+  GET: "#00d4aa",
+  POST: "#7c6fcd",
+  PUT: "#f59e0b",
+  PATCH: "#f97316",
+  DELETE: "#ef4444",
+  HEAD: "#64748b",
 };
 
-const TEAM_MEMBERS = [
-  { id: 1, name: "Alex K.", avatar: "AK", color: "#22d3ee", status: "active" },
-  { id: 2, name: "Sam R.", avatar: "SR", color: "#4ade80", status: "active" },
-  { id: 3, name: "Priya M.", avatar: "PM", color: "#fb923c", status: "idle" },
-  { id: 4, name: "Jordan L.", avatar: "JL", color: "#c084fc", status: "active" },
-];
+const STATUS_CONFIG = {
+  success: { bg: "#0a1f15", border: "#00d4aa33", titleColor: "#00d4aa", icon: "✓", dotColor: "#00d4aa" },
+  danger:  { bg: "#1f0a0a", border: "#ef444433", titleColor: "#ef4444", icon: "✗", dotColor: "#ef4444" },
+  warning: { bg: "#1f1800", border: "#f59e0b33", titleColor: "#f59e0b", icon: "!", dotColor: "#f59e0b" },
+  info:    { bg: "#0a1020", border: "#7c6fcd33", titleColor: "#7c6fcd", icon: "i", dotColor: "#7c6fcd" },
+};
 
-const SAVED_REQUESTS = [
-  { id: 1, name: "Get Users", method: "GET", url: "https://jsonplaceholder.typicode.com/users", tag: "Users" },
-  { id: 2, name: "Create Post", method: "POST", url: "https://jsonplaceholder.typicode.com/posts", tag: "Posts" },
-  { id: 3, name: "Update Todo", method: "PUT", url: "https://jsonplaceholder.typicode.com/todos/1", tag: "Todos" },
-  { id: 4, name: "Get Albums", method: "GET", url: "https://jsonplaceholder.typicode.com/albums", tag: "Albums" },
-  { id: 5, name: "Delete Post", method: "DELETE", url: "https://jsonplaceholder.typicode.com/posts/1", tag: "Posts" },
-];
-
-const LIVE_FEED = [
-  { user: "Alex K.", color: "#22d3ee", action: "sent GET /users", time: "2s ago" },
-  { user: "Sam R.", color: "#4ade80", action: "saved 'Auth Token Test'", time: "14s ago" },
-  { user: "Jordan L.", color: "#c084fc", action: "viewed POST /login response", time: "1m ago" },
-];
-
-function formatJSON(str) {
-  try {
-    return JSON.stringify(JSON.parse(str), null, 2);
-  } catch {
-    return str;
-  }
+function Spinner({ size = 18, color = "#00d4aa" }) {
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        width: size,
+        height: size,
+        border: `2px solid ${color}33`,
+        borderTopColor: color,
+        borderRadius: "50%",
+        animation: "spin 0.65s linear infinite",
+        flexShrink: 0,
+      }}
+    />
+  );
 }
 
-function StatusBadge({ code }) {
-  if (!code) return null;
-  const color = code < 300 ? "#4ade80" : code < 400 ? "#facc15" : "#f87171";
+function StatusBadge({ type }) {
+  const cfg = STATUS_CONFIG[type];
+  if (!cfg) return null;
   return (
-    <span style={{ color, background: color + "18", border: `1px solid ${color}44`, borderRadius: 6, padding: "2px 10px", fontFamily: "monospace", fontWeight: 700, fontSize: 13 }}>
-      {code}
+    <span
+      style={{
+        width: 20,
+        height: 20,
+        borderRadius: "50%",
+        background: cfg.bg,
+        border: `1px solid ${cfg.titleColor}55`,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 11,
+        fontWeight: 700,
+        color: cfg.titleColor,
+        flexShrink: 0,
+      }}
+    >
+      {cfg.icon}
     </span>
   );
 }
 
-function Avatar({ member, size = 32 }) {
+function ResultCard({ type, title, detail, code, elapsed, responseHeaders }) {
+  const [showHeaders, setShowHeaders] = useState(false);
+  const cfg = STATUS_CONFIG[type] || STATUS_CONFIG.info;
+
   return (
-    <div style={{
-      width: size, height: size, borderRadius: "50%", background: member.color + "22",
-      border: `2px solid ${member.color}66`, display: "flex", alignItems: "center",
-      justifyContent: "center", fontSize: size * 0.35, fontWeight: 700,
-      color: member.color, letterSpacing: 0.5, flexShrink: 0, position: "relative"
-    }}>
-      {member.avatar}
-      {member.status === "active" && (
-        <span style={{
-          position: "absolute", bottom: 0, right: 0, width: size * 0.28, height: size * 0.28,
-          background: "#4ade80", borderRadius: "50%", border: "2px solid #0a0f1e"
-        }} />
+    <div
+      style={{
+        background: cfg.bg,
+        border: `1px solid ${cfg.border}`,
+        borderRadius: 14,
+        padding: "18px 20px",
+        animation: "fadeSlideUp 0.22s ease",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <StatusBadge type={type} />
+        <span style={{ fontSize: 14, fontWeight: 700, color: cfg.titleColor, letterSpacing: 0.2 }}>
+          {title}
+        </span>
+        <div style={{ flex: 1 }} />
+        {code && (
+          <span
+            style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 12,
+              fontWeight: 700,
+              color: cfg.titleColor,
+              background: cfg.titleColor + "18",
+              border: `1px solid ${cfg.titleColor}33`,
+              borderRadius: 6,
+              padding: "2px 10px",
+            }}
+          >
+            {code}
+          </span>
+        )}
+        {elapsed != null && (
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "#3d5066" }}>
+            {elapsed}ms
+          </span>
+        )}
+      </div>
+
+      <p style={{ fontSize: 13, color: "#4a6080", margin: "0 0 0 30px", lineHeight: 1.7 }}>
+        {detail}
+      </p>
+
+      {responseHeaders && Object.keys(responseHeaders).length > 0 && (
+        <div style={{ marginTop: 14, marginLeft: 30 }}>
+          <button
+            onClick={() => setShowHeaders((v) => !v)}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#3d5066",
+              fontSize: 11,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              padding: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 8,
+                display: "inline-block",
+                transition: "transform 0.15s",
+                transform: showHeaders ? "rotate(90deg)" : "none",
+              }}
+            >
+              ▶
+            </span>
+            {showHeaders ? "Hide" : "Show"} response headers ({Object.keys(responseHeaders).length})
+          </button>
+
+          {showHeaders && (
+            <div
+              style={{
+                marginTop: 10,
+                background: "#060c18",
+                border: "1px solid #0f1e32",
+                borderRadius: 8,
+                padding: "10px 14px",
+                maxHeight: 180,
+                overflowY: "auto",
+              }}
+            >
+              {Object.entries(responseHeaders).map(([k, v]) => (
+                <div
+                  key={k}
+                  style={{
+                    display: "flex",
+                    gap: 12,
+                    padding: "4px 0",
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 11,
+                    borderBottom: "1px solid #0a1427",
+                  }}
+                >
+                  <span style={{ color: "#00d4aa", minWidth: 200, flexShrink: 0 }}>{k}</span>
+                  <span style={{ color: "#3d5066", wordBreak: "break-all" }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
-function Pulse() {
+function HistoryRow({ entry }) {
+  const dotColor =
+    entry.type === "success" ? "#00d4aa" : entry.type === "danger" ? "#ef4444" : "#f59e0b";
+  const methColor = METHOD_COLORS[entry.method] || "#64748b";
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <span style={{
-        display: "inline-block", width: 8, height: 8, borderRadius: "50%",
-        background: "#4ade80", boxShadow: "0 0 0 0 #4ade8088",
-        animation: "pulse 1.5s infinite"
-      }} />
-      <style>{`@keyframes pulse { 0%,100%{box-shadow:0 0 0 0 #4ade8088} 50%{box-shadow:0 0 0 6px #4ade8000} }`}</style>
-      <span style={{ color: "#4ade80", fontSize: 11, fontWeight: 600, letterSpacing: 1 }}>LIVE</span>
-    </span>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 10px",
+        borderBottom: "1px solid #080f1c",
+        fontSize: 11,
+        fontFamily: "'JetBrains Mono', monospace",
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
+      <span style={{ color: methColor, minWidth: 44, fontWeight: 700 }}>{entry.method}</span>
+      <span style={{ color: dotColor, minWidth: 36, fontWeight: 700 }}>{entry.code}</span>
+      <span style={{ color: "#00d4aa99", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {entry.keyName}
+      </span>
+      <span style={{ color: "#3d5066", minWidth: 46, textAlign: "right" }}>{entry.elapsed}ms</span>
+      <span style={{ color: "#1e2d4a", minWidth: 54, textAlign: "right" }}>{entry.ts}</span>
+    </div>
   );
 }
 
-function SyntaxHighlight({ json }) {
-  if (!json) return null;
-  const highlighted = json
-    .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
-      let cls = "json-number";
-      if (/^"/.test(match)) cls = /:$/.test(match) ? "json-key" : "json-string";
-      else if (/true|false/.test(match)) cls = "json-bool";
-      else if (/null/.test(match)) cls = "json-null";
-      return `<span class="${cls}">${match}</span>`;
-    });
+export default function ApiKeyValidator() {
+  const [preset, setPreset] = useState(0);
+  const [keyName, setKeyName] = useState("Authorization");
+  const [keyValue, setKeyValue] = useState("");
+  const [testUrl, setTestUrl] = useState("https://api.github.com/user");
+  const [method, setMethod] = useState("GET");
+  const [showKey, setShowKey] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [history, setHistory] = useState([]);
+  const inputRef = useRef();
+
+  const applyPreset = (i) => {
+    setPreset(i);
+    const p = PRESETS[i];
+    if (p.url) setTestUrl(p.url);
+    if (p.keyName) setKeyName(p.keyName);
+    setResult({ type: "info", title: p.label + (p.label === "Custom" ? "" : " endpoint"), detail: p.note });
+  };
+
+  const validate = useCallback(async () => {
+    if (!keyName.trim() || !keyValue.trim()) {
+      setResult({ type: "danger", title: "Missing fields", detail: "Enter both a header name and key value." });
+      return;
+    }
+    if (!testUrl.trim()) {
+      setResult({ type: "danger", title: "Missing URL", detail: "Enter a test endpoint URL." });
+      return;
+    }
+
+    setLoading(true);
+    setResult(null);
+    const start = performance.now();
+
+    try {
+      const res = await fetch(testUrl, { method, headers: { [keyName]: keyValue } });
+      const elapsed = Math.round(performance.now() - start);
+      const code = res.status;
+      const responseHeaders = Object.fromEntries(res.headers.entries());
+
+      let type, title, detail;
+      if (code >= 200 && code < 300) {
+        type = "success"; title = "Key accepted";
+        detail = `Server responded ${code} in ${elapsed}ms. Your API key is valid and working.`;
+      } else if (code === 401) {
+        type = "danger"; title = "Unauthorized — key rejected";
+        detail = "The server returned 401. The key name or value is wrong, or the key has been revoked.";
+      } else if (code === 403) {
+        type = "danger"; title = "Forbidden — insufficient permissions";
+        detail = "The key was recognised but doesn't have access to this endpoint (403). Check the key's scopes or try a different endpoint.";
+      } else if (code === 404) {
+        type = "warning"; title = "Not found — but key may be valid";
+        detail = "The endpoint returned 404. The URL is likely wrong, not the key. Try a different endpoint.";
+      } else if (code === 429) {
+        type = "warning"; title = "Rate limited — key likely valid";
+        detail = "Too many requests (429). The key is probably valid but you've hit a rate limit. Wait a moment and retry.";
+      } else if (code === 422) {
+        type = "warning"; title = "Unprocessable — key may be valid";
+        detail = "Status 422 — the key was likely accepted but the request body is invalid or missing.";
+      } else {
+        type = "warning"; title = `Status ${code}`;
+        detail = `Server responded in ${elapsed}ms with status ${code}. Check the API docs to interpret this code.`;
+      }
+
+      setHistory((h) => [
+        { type, title, code, elapsed, keyName, url: testUrl, method, ts: new Date().toLocaleTimeString() },
+        ...h.slice(0, 9),
+      ]);
+      setResult({ type, title, detail, code, elapsed, responseHeaders });
+    } catch (err) {
+      const elapsed = Math.round(performance.now() - start);
+      let detail = err.message;
+      if (
+        err.message.toLowerCase().includes("failed to fetch") ||
+        err.message.toLowerCase().includes("networkerror") ||
+        err.message.toLowerCase().includes("cors")
+      ) {
+        detail =
+          "CORS or network error — the server blocked this browser request. This is a browser security restriction, not necessarily a bad key. Try testing server-side or use a CORS-friendly endpoint like GitHub.";
+      }
+      setHistory((h) => [
+        { type: "danger", title: "Error", code: "ERR", elapsed, keyName, url: testUrl, method, ts: new Date().toLocaleTimeString() },
+        ...h.slice(0, 9),
+      ]);
+      setResult({ type: "danger", title: "Request failed", detail, elapsed });
+    } finally {
+      setLoading(false);
+    }
+  }, [keyName, keyValue, testUrl, method]);
+
+  const handleKeyDown = (e) => e.key === "Enter" && validate();
+
+  const maskedKey = keyValue
+    ? showKey
+      ? keyValue
+      : keyValue.slice(0, 6) + "••••••••" + keyValue.slice(-4)
+    : "";
+
   return (
     <>
       <style>{`
-        .json-key { color: #22d3ee; }
-        .json-string { color: #4ade80; }
-        .json-number { color: #fb923c; }
-        .json-bool { color: #c084fc; }
-        .json-null { color: #94a3b8; }
-      `}</style>
-      <pre style={{ margin: 0, fontFamily: "'JetBrains Mono', 'Fira Mono', monospace", fontSize: 12.5, lineHeight: 1.7, color: "#e2e8f0", whiteSpace: "pre-wrap", wordBreak: "break-all" }}
-        dangerouslySetInnerHTML={{ __html: highlighted }} />
-    </>
-  );
-}
-
-export default function App() {
-  const [method, setMethod] = useState("GET");
-  const [url, setUrl] = useState("https://jsonplaceholder.typicode.com/users");
-  const [activeTab, setActiveTab] = useState("params");
-  const [responseTab, setResponseTab] = useState("body");
-  const [headers, setHeaders] = useState([{ key: "Content-Type", value: "application/json", enabled: true }]);
-  const [params, setParams] = useState([{ key: "", value: "", enabled: true }]);
-  const [body, setBody] = useState('{\n  "title": "Hello",\n  "body": "World",\n  "userId": 1\n}');
-  const [response, setResponse] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [responseTime, setResponseTime] = useState(null);
-  const [responseSize, setResponseSize] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [selectedSaved, setSelectedSaved] = useState(null);
-  const [liveFeed, setLiveFeed] = useState(LIVE_FEED);
-  const [sidebarTab, setSidebarTab] = useState("collection");
-  const [notification, setNotification] = useState(null);
-  const urlRef = useRef();
-
-  const showNotification = (msg, type = "success") => {
-    setNotification({ msg, type });
-    setTimeout(() => setNotification(null), 2500);
-  };
-
-  const sendRequest = useCallback(async () => {
-    setLoading(true);
-    setResponse(null);
-    const start = performance.now();
-    try {
-      const enabledHeaders = headers.filter(h => h.enabled && h.key);
-      const headerObj = Object.fromEntries(enabledHeaders.map(h => [h.key, h.value]));
-      const options = { method, headers: headerObj };
-      if (!["GET", "HEAD"].includes(method) && body) options.body = body;
-
-      let finalUrl = url;
-      const enabledParams = params.filter(p => p.enabled && p.key);
-      if (enabledParams.length > 0) {
-        const qs = new URLSearchParams(enabledParams.map(p => [p.key, p.value])).toString();
-        finalUrl += (url.includes("?") ? "&" : "?") + qs;
-      }
-
-      const res = await fetch(finalUrl, options);
-      const elapsed = Math.round(performance.now() - start);
-      const text = await res.text();
-      let parsed;
-      try { parsed = JSON.parse(text); } catch { parsed = text; }
-      const size = new Blob([text]).size;
-
-      const result = {
-        status: res.status,
-        statusText: res.statusText,
-        headers: Object.fromEntries(res.headers.entries()),
-        body: typeof parsed === "object" ? JSON.stringify(parsed, null, 2) : parsed,
-        time: elapsed,
-        size,
-      };
-      setResponse(result);
-      setResponseTime(elapsed);
-      setResponseSize(size);
-      setHistory(h => [{ method, url, status: res.status, time: elapsed, ts: new Date().toLocaleTimeString() }, ...h.slice(0, 9)]);
-      setLiveFeed(f => [{ user: "You", color: "#22d3ee", action: `sent ${method} ${new URL(url).pathname}`, time: "just now" }, ...f.slice(0, 4)]);
-      showNotification(`${res.status} ${res.statusText} · ${elapsed}ms`);
-    } catch (err) {
-      setResponse({ error: err.message });
-      showNotification("Request failed: " + err.message, "error");
-    }
-    setLoading(false);
-  }, [method, url, headers, params, body]);
-
-  const loadSaved = (req) => {
-    setSelectedSaved(req.id);
-    setMethod(req.method);
-    setUrl(req.url);
-    showNotification(`Loaded "${req.name}"`);
-  };
-
-  const addRow = (setter) => setter(r => [...r, { key: "", value: "", enabled: true }]);
-  const updateRow = (setter, idx, field, val) => setter(r => r.map((row, i) => i === idx ? { ...row, [field]: val } : row));
-  const removeRow = (setter, idx) => setter(r => r.filter((_, i) => i !== idx));
-
-  return (
-    <div style={{
-      minHeight: "100vh", background: "#060b18", color: "#e2e8f0",
-      fontFamily: "'DM Sans', 'Segoe UI', sans-serif", display: "flex", flexDirection: "column",
-      overflow: "hidden"
-    }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
-        * { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: #1e2d4a #060b18; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-thumb { background: #1e2d4a; border-radius: 3px; }
-        input, textarea, select { outline: none; }
-        button { cursor: pointer; }
-        .tab-btn { background: none; border: none; padding: 8px 16px; font-size: 13px; font-weight: 500; color: #64748b; border-bottom: 2px solid transparent; transition: all 0.15s; font-family: inherit; }
-        .tab-btn.active { color: #22d3ee; border-bottom-color: #22d3ee; }
-        .tab-btn:hover:not(.active) { color: #94a3b8; }
-        .sidebar-tab { background: none; border: none; padding: 7px 12px; font-size: 12px; font-weight: 600; color: #475569; border-radius: 6px; transition: all 0.15s; font-family: inherit; letter-spacing: 0.5px; text-transform: uppercase; }
-        .sidebar-tab.active { background: #0f172a; color: #22d3ee; }
-        .input-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
-        .kv-input { background: #0d1627; border: 1px solid #1e2d4a; border-radius: 6px; color: #e2e8f0; padding: 6px 10px; font-size: 12.5px; font-family: 'JetBrains Mono', monospace; flex: 1; transition: border 0.15s; }
-        .kv-input:focus { border-color: #22d3ee44; }
-        .kv-input::placeholder { color: #334155; }
-        .saved-item { padding: 10px 12px; border-radius: 8px; cursor: pointer; transition: background 0.15s; border: 1px solid transparent; }
-        .saved-item:hover { background: #0d1627; }
-        .saved-item.selected { background: #0d1627; border-color: #22d3ee33; }
-        .hist-item { padding: 8px 10px; border-radius: 6px; display: flex; gap: 8px; align-items: center; font-size: 12px; cursor: pointer; }
-        .hist-item:hover { background: #0d1627; }
-        .send-btn { background: linear-gradient(135deg, #0ea5e9, #06b6d4); border: none; color: white; padding: 0 28px; border-radius: 10px; font-weight: 700; font-size: 14px; letter-spacing: 0.5px; transition: all 0.18s; font-family: inherit; height: 44px; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-        .send-btn:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); box-shadow: 0 4px 20px #0ea5e940; }
-        .send-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #0f1e32; border-radius: 2px; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes shimmer { 0%,100%{opacity:0.4} 50%{opacity:1} }
+        @keyframes fadeSlideUp {
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: none; }
+        }
+        .akv-input {
+          width: 100%; height: 42px; background: #060c18;
+          border: 1px solid #0f1e32; border-radius: 8px;
+          color: #c8d8e8; padding: 0 14px; font-size: 13px;
+          font-family: 'JetBrains Mono', monospace; outline: none;
+          transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .akv-input:focus { border-color: #00d4aa44; box-shadow: 0 0 0 3px #00d4aa0d; }
+        .akv-input::placeholder { color: #1e3a52; }
+        .preset-pill {
+          background: #080f1c; border: 1px solid #0f1e32; color: #2d4a60;
+          border-radius: 20px; padding: 4px 14px; font-size: 11px;
+          font-family: 'Space Grotesk', sans-serif; font-weight: 600;
+          letter-spacing: 0.3px; cursor: pointer; transition: all 0.15s;
+        }
+        .preset-pill:hover { border-color: #00d4aa33; color: #4a7a90; }
+        .preset-pill.active { border-color: #00d4aa55; color: #00d4aa; background: #00d4aa0d; }
+        .method-select {
+          background: #060c18; border: 1px solid #0f1e32; border-radius: 8px;
+          padding: 0 10px; font-weight: 700; font-size: 12px;
+          font-family: 'JetBrains Mono', monospace; height: 42px;
+          width: 80px; flex-shrink: 0; cursor: pointer; outline: none;
+          transition: border-color 0.15s;
+        }
+        .method-select:focus { border-color: #00d4aa44; }
+        .check-btn {
+          width: 100%; height: 46px;
+          background: linear-gradient(135deg, #00d4aa18, #00b8942a);
+          border: 1px solid #00d4aa44; border-radius: 10px; color: #00d4aa;
+          font-weight: 700; font-size: 14px; cursor: pointer;
+          font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.5px;
+          transition: all 0.18s; display: flex; align-items: center;
+          justify-content: center; gap: 9px;
+        }
+        .check-btn:hover:not(:disabled) {
+          background: linear-gradient(135deg, #00d4aa22, #00b89436);
+          border-color: #00d4aa77; box-shadow: 0 0 20px #00d4aa1a;
+          transform: translateY(-1px);
+        }
+        .check-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+        .clear-btn {
+          background: #060c18; border: 1px solid #0f1e32; color: #2d4a60;
+          border-radius: 6px; padding: 5px 14px; font-size: 11px;
+          font-family: 'Space Grotesk', sans-serif; cursor: pointer; transition: all 0.12s;
+        }
+        .clear-btn:hover { border-color: #1e3a52; color: #4a7a90; }
+        .toggle-show {
+          position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+          background: none; border: none; color: #1e3a52; font-size: 11px;
+          cursor: pointer; font-family: 'Space Grotesk', sans-serif;
+          padding: 2px 6px; border-radius: 4px; transition: color 0.12s;
+        }
+        .toggle-show:hover { color: #4a7a90; }
       `}</style>
 
-      {/* Notification */}
-      {notification && (
-        <div style={{
-          position: "fixed", top: 18, right: 24, zIndex: 999,
-          background: notification.type === "error" ? "#1c0a0a" : "#0a1c14",
-          border: `1px solid ${notification.type === "error" ? "#f87171" : "#4ade80"}44`,
-          color: notification.type === "error" ? "#f87171" : "#4ade80",
-          padding: "10px 20px", borderRadius: 10, fontSize: 13, fontWeight: 600,
-          animation: "fadeIn 0.2s ease", boxShadow: "0 8px 32px #00000060"
-        }}>
-          {notification.type === "error" ? "✗" : "✓"} {notification.msg}
-        </div>
-      )}
-
-      {/* Header */}
-      <div style={{
-        height: 56, background: "#080d1c", borderBottom: "1px solid #0f1e36",
-        display: "flex", alignItems: "center", padding: "0 20px", gap: 20,
-        flexShrink: 0
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 30, height: 30, background: "linear-gradient(135deg, #0ea5e9, #06b6d4)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>⚡</div>
-          <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: -0.5, background: "linear-gradient(90deg, #22d3ee, #a5f3fc)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Nexus API</span>
-          <span style={{ background: "#0ea5e922", color: "#0ea5e9", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4, letterSpacing: 1, border: "1px solid #0ea5e933" }}>COLLAB</span>
-        </div>
-        <div style={{ flex: 1 }} />
-        <Pulse />
-        <div style={{ display: "flex", gap: -6 }}>
-          {TEAM_MEMBERS.map((m, i) => (
-            <div key={m.id} style={{ marginLeft: i === 0 ? 0 : -8, zIndex: TEAM_MEMBERS.length - i }} title={`${m.name} · ${m.status}`}>
-              <Avatar member={m} size={30} />
-            </div>
-          ))}
-        </div>
-        <span style={{ fontSize: 12, color: "#475569" }}>{TEAM_MEMBERS.filter(m => m.status === "active").length} online</span>
-      </div>
-
-      {/* Main layout */}
-      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-
-        {/* Sidebar */}
-        <div style={{ width: 240, background: "#080d1c", borderRight: "1px solid #0f1e36", display: "flex", flexDirection: "column", flexShrink: 0 }}>
-          <div style={{ padding: "12px 10px 8px", display: "flex", gap: 4 }}>
-            {["collection", "history", "team"].map(t => (
-              <button key={t} className={`sidebar-tab ${sidebarTab === t ? "active" : ""}`} onClick={() => setSidebarTab(t)}>{t}</button>
-            ))}
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "#030810",
+          color: "#c8d8e8",
+          fontFamily: "'Space Grotesk', sans-serif",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            background: "#050b16",
+            borderBottom: "1px solid #080f1c",
+            padding: "0 28px",
+            height: 54,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              width: 30, height: 30, background: "#00d4aa14",
+              border: "1px solid #00d4aa33", borderRadius: 8,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 14, color: "#00d4aa", fontWeight: 700,
+            }}
+          >
+            ⚡
           </div>
-          <div style={{ flex: 1, overflowY: "auto", padding: "4px 8px 12px" }}>
-            {sidebarTab === "collection" && (
-              <>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#334155", letterSpacing: 1.5, textTransform: "uppercase", padding: "8px 4px 6px" }}>Saved Requests</div>
-                {SAVED_REQUESTS.map(req => (
-                  <div key={req.id} className={`saved-item ${selectedSaved === req.id ? "selected" : ""}`} onClick={() => loadSaved(req)}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ color: METHOD_COLORS[req.method], fontSize: 10, fontWeight: 800, fontFamily: "monospace", minWidth: 42, letterSpacing: 0.5 }}>{req.method}</span>
-                      <span style={{ fontSize: 12.5, fontWeight: 500, color: "#cbd5e1", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{req.name}</span>
-                    </div>
-                    <div style={{ fontSize: 11, color: "#334155", marginTop: 2, paddingLeft: 50, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "monospace" }}>
-                      {new URL(req.url).pathname}
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
-            {sidebarTab === "history" && (
-              <>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#334155", letterSpacing: 1.5, textTransform: "uppercase", padding: "8px 4px 6px" }}>Recent</div>
-                {history.length === 0 && <div style={{ color: "#334155", fontSize: 12, padding: "12px 4px" }}>No history yet</div>}
-                {history.map((h, i) => (
-                  <div key={i} className="hist-item" onClick={() => { setMethod(h.method); setUrl(h.url); }}>
-                    <span style={{ color: METHOD_COLORS[h.method], fontWeight: 700, fontFamily: "monospace", fontSize: 10, minWidth: 36 }}>{h.method}</span>
-                    <StatusBadge code={h.status} />
-                    <span style={{ color: "#64748b", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "monospace", fontSize: 11 }}>{new URL(h.url).pathname}</span>
-                    <span style={{ color: "#334155", fontSize: 11 }}>{h.ts}</span>
-                  </div>
-                ))}
-              </>
-            )}
-            {sidebarTab === "team" && (
-              <>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#334155", letterSpacing: 1.5, textTransform: "uppercase", padding: "8px 4px 6px" }}>Team Members</div>
-                {TEAM_MEMBERS.map(m => (
-                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 6px", borderRadius: 8 }}>
-                    <Avatar member={m} size={34} />
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#cbd5e1" }}>{m.name}</div>
-                      <div style={{ fontSize: 11, color: m.status === "active" ? "#4ade80" : "#475569", fontWeight: 500 }}>{m.status}</div>
-                    </div>
-                  </div>
-                ))}
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#334155", letterSpacing: 1.5, textTransform: "uppercase", padding: "16px 4px 6px" }}>Live Activity</div>
-                {liveFeed.map((f, i) => (
-                  <div key={i} style={{ padding: "7px 4px", borderLeft: `2px solid ${f.color}44`, paddingLeft: 10, marginBottom: 6 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: f.color }}>{f.user}</div>
-                    <div style={{ fontSize: 11, color: "#475569" }}>{f.action}</div>
-                    <div style={{ fontSize: 10, color: "#334155", marginTop: 1 }}>{f.time}</div>
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
+          <span style={{ fontWeight: 700, fontSize: 15, color: "#00d4aa", letterSpacing: 0.5 }}>
+            API Key Validator
+          </span>
+          <span
+            style={{
+              background: "#00d4aa14", color: "#00d4aa", fontSize: 9,
+              fontWeight: 700, padding: "2px 7px", borderRadius: 4,
+              letterSpacing: 1.5, border: "1px solid #00d4aa22",
+            }}
+          >
+            LIVE
+          </span>
+          <div style={{ flex: 1 }} />
+          <button
+            className="clear-btn"
+            onClick={() => {
+              setKeyName("Authorization");
+              setKeyValue("");
+              setTestUrl("https://api.github.com/user");
+              setMethod("GET");
+              setResult(null);
+              setPreset(0);
+            }}
+          >
+            Clear
+          </button>
         </div>
 
-        {/* Main content */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-
-          {/* URL Bar */}
-          <div style={{ padding: "14px 20px 12px", background: "#080d1c", borderBottom: "1px solid #0f1e36", display: "flex", gap: 10 }}>
-            <select value={method} onChange={e => setMethod(e.target.value)} style={{
-              background: "#0d1627", border: `1px solid ${METHOD_COLORS[method]}44`, color: METHOD_COLORS[method],
-              borderRadius: 8, padding: "0 12px", fontWeight: 800, fontSize: 13, fontFamily: "monospace",
-              flexShrink: 0, height: 44, cursor: "pointer"
-            }}>
-              {METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-            <div style={{ flex: 1, position: "relative" }}>
-              <input ref={urlRef} value={url} onChange={e => setUrl(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && sendRequest()}
-                placeholder="Enter request URL..."
+        {/* Body */}
+        <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+          {/* Left: Form */}
+          <div
+            style={{
+              width: 400, borderRight: "1px solid #080f1c",
+              padding: "24px", overflowY: "auto", flexShrink: 0, background: "#040a14",
+            }}
+          >
+            {/* Presets */}
+            <div style={{ marginBottom: 22 }}>
+              <div
                 style={{
-                  width: "100%", height: 44, background: "#0d1627", border: "1px solid #1e2d4a",
-                  borderRadius: 8, color: "#e2e8f0", padding: "0 16px", fontSize: 13.5,
-                  fontFamily: "'JetBrains Mono', monospace", transition: "border 0.15s"
-                }} />
-            </div>
-            <button className="send-btn" onClick={sendRequest} disabled={loading}>
-              {loading ? (
-                <span style={{ width: 16, height: 16, border: "2.5px solid white", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }} />
-              ) : "▶"}
-              {loading ? "Sending..." : "Send"}
-            </button>
-            <button onClick={() => { setUrl(""); setMethod("GET"); setResponse(null); showNotification("Cleared"); }}
-              style={{ background: "#0d1627", border: "1px solid #1e2d4a", color: "#475569", borderRadius: 8, padding: "0 14px", fontSize: 13, height: 44, transition: "all 0.15s" }}
-              title="Clear">✕</button>
-          </div>
-
-          {/* Request / Response split */}
-          <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-
-            {/* Request Panel */}
-            <div style={{ width: "46%", borderRight: "1px solid #0f1e36", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              <div style={{ borderBottom: "1px solid #0f1e36", display: "flex", paddingLeft: 8 }}>
-                {["params", "headers", "body", "auth"].map(t => (
-                  <button key={t} className={`tab-btn ${activeTab === t ? "active" : ""}`} onClick={() => setActiveTab(t)}
-                    style={{ textTransform: "capitalize" }}>
-                    {t}
-                    {t === "headers" && headers.filter(h => h.enabled && h.key).length > 0 && (
-                      <span style={{ background: "#22d3ee22", color: "#22d3ee", borderRadius: 10, padding: "0 5px", fontSize: 10, marginLeft: 5, fontWeight: 700 }}>
-                        {headers.filter(h => h.enabled && h.key).length}
-                      </span>
-                    )}
+                  fontSize: 10, fontWeight: 700, color: "#1e3a52",
+                  letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 9,
+                }}
+              >
+                Quick presets
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {PRESETS.map((p, i) => (
+                  <button
+                    key={i}
+                    className={`preset-pill${preset === i ? " active" : ""}`}
+                    onClick={() => applyPreset(i)}
+                  >
+                    {p.label}
                   </button>
                 ))}
               </div>
-              <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-                {activeTab === "params" && (
-                  <>
-                    <div style={{ fontSize: 11, color: "#475569", marginBottom: 10, fontWeight: 600 }}>QUERY PARAMETERS</div>
-                    {params.map((p, i) => (
-                      <div key={i} className="input-row">
-                        <input type="checkbox" checked={p.enabled} onChange={e => updateRow(setParams, i, "enabled", e.target.checked)}
-                          style={{ accentColor: "#22d3ee", flexShrink: 0 }} />
-                        <input className="kv-input" placeholder="Key" value={p.key} onChange={e => updateRow(setParams, i, "key", e.target.value)} />
-                        <input className="kv-input" placeholder="Value" value={p.value} onChange={e => updateRow(setParams, i, "value", e.target.value)} />
-                        <button onClick={() => removeRow(setParams, i)} style={{ background: "none", border: "none", color: "#334155", fontSize: 16, padding: "0 4px", flexShrink: 0 }}>×</button>
-                      </div>
-                    ))}
-                    <button onClick={() => addRow(setParams)} style={{ background: "#0d1627", border: "1px dashed #1e2d4a", color: "#475569", borderRadius: 6, padding: "6px 14px", fontSize: 12, marginTop: 4, fontFamily: "inherit" }}>+ Add Param</button>
-                  </>
-                )}
-                {activeTab === "headers" && (
-                  <>
-                    <div style={{ fontSize: 11, color: "#475569", marginBottom: 10, fontWeight: 600 }}>REQUEST HEADERS</div>
-                    {headers.map((h, i) => (
-                      <div key={i} className="input-row">
-                        <input type="checkbox" checked={h.enabled} onChange={e => updateRow(setHeaders, i, "enabled", e.target.checked)}
-                          style={{ accentColor: "#22d3ee", flexShrink: 0 }} />
-                        <input className="kv-input" placeholder="Header name" value={h.key} onChange={e => updateRow(setHeaders, i, "key", e.target.value)} />
-                        <input className="kv-input" placeholder="Value" value={h.value} onChange={e => updateRow(setHeaders, i, "value", e.target.value)} />
-                        <button onClick={() => removeRow(setHeaders, i)} style={{ background: "none", border: "none", color: "#334155", fontSize: 16, padding: "0 4px", flexShrink: 0 }}>×</button>
-                      </div>
-                    ))}
-                    <button onClick={() => addRow(setHeaders)} style={{ background: "#0d1627", border: "1px dashed #1e2d4a", color: "#475569", borderRadius: 6, padding: "6px 14px", fontSize: 12, marginTop: 4, fontFamily: "inherit" }}>+ Add Header</button>
-                  </>
-                )}
-                {activeTab === "body" && (
-                  <>
-                    <div style={{ fontSize: 11, color: "#475569", marginBottom: 10, fontWeight: 600 }}>REQUEST BODY · JSON</div>
-                    <div style={{ position: "relative" }}>
-                      <textarea value={body} onChange={e => setBody(e.target.value)}
-                        style={{
-                          width: "100%", minHeight: 220, background: "#0a1120", border: "1px solid #1e2d4a",
-                          borderRadius: 8, color: "#e2e8f0", padding: 14, fontFamily: "'JetBrains Mono', monospace",
-                          fontSize: 12.5, lineHeight: 1.7, resize: "vertical"
-                        }} />
-                      <button onClick={() => { setBody(formatJSON(body)); showNotification("Body formatted"); }}
-                        style={{ position: "absolute", top: 8, right: 8, background: "#0d1627", border: "1px solid #1e2d4a", color: "#475569", borderRadius: 5, padding: "3px 10px", fontSize: 11, fontFamily: "inherit" }}>
-                        Format
-                      </button>
-                    </div>
-                  </>
-                )}
-                {activeTab === "auth" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>AUTHORIZATION</div>
-                    {[["Bearer Token", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."], ["API Key", "x-api-key"], ["Basic Auth", "username:password"]].map(([label, hint]) => (
-                      <div key={label}>
-                        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4, fontWeight: 500 }}>{label}</div>
-                        <input className="kv-input" placeholder={hint} style={{ width: "100%" }} />
-                      </div>
-                    ))}
-                    <button onClick={() => showNotification("Auth applied to headers")}
-                      style={{ background: "linear-gradient(135deg, #0ea5e9, #06b6d4)", border: "none", color: "white", borderRadius: 7, padding: "8px 18px", fontSize: 13, fontWeight: 600, fontFamily: "inherit", alignSelf: "flex-start", marginTop: 4 }}>
-                      Apply Auth
-                    </button>
-                  </div>
-                )}
+            </div>
+
+            {/* Key Name */}
+            <div style={{ marginBottom: 16 }}>
+              <label
+                style={{
+                  display: "block", fontSize: 11, fontWeight: 600, color: "#1e3a52",
+                  letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 7,
+                }}
+              >
+                Header name
+              </label>
+              <input
+                className="akv-input"
+                placeholder="Authorization, x-api-key…"
+                value={keyName}
+                onChange={(e) => setKeyName(e.target.value)}
+              />
+            </div>
+
+            {/* Key Value */}
+            <div style={{ marginBottom: 16 }}>
+              <label
+                style={{
+                  display: "block", fontSize: 11, fontWeight: 600, color: "#1e3a52",
+                  letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 7,
+                }}
+              >
+                Key value
+              </label>
+              <div style={{ position: "relative" }}>
+                <input
+                  ref={inputRef}
+                  className="akv-input"
+                  type={showKey ? "text" : "password"}
+                  placeholder={PRESETS[preset]?.placeholder || "Paste your API key here"}
+                  value={keyValue}
+                  onChange={(e) => setKeyValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  style={{ paddingRight: 64 }}
+                />
+                <button className="toggle-show" onClick={() => setShowKey((v) => !v)}>
+                  {showKey ? "hide" : "show"}
+                </button>
               </div>
             </div>
 
-            {/* Response Panel */}
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              <div style={{ borderBottom: "1px solid #0f1e36", display: "flex", alignItems: "center", paddingLeft: 8, gap: 0 }}>
-                {["body", "headers", "info"].map(t => (
-                  <button key={t} className={`tab-btn ${responseTab === t ? "active" : ""}`} onClick={() => setResponseTab(t)}
-                    style={{ textTransform: "capitalize" }}>{t}</button>
+            {/* Method + URL */}
+            <div style={{ marginBottom: 20 }}>
+              <label
+                style={{
+                  display: "block", fontSize: 11, fontWeight: 600, color: "#1e3a52",
+                  letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 7,
+                }}
+              >
+                Test endpoint
+              </label>
+              <div style={{ display: "flex", gap: 8, marginBottom: 7 }}>
+                <select
+                  className="method-select"
+                  value={method}
+                  onChange={(e) => setMethod(e.target.value)}
+                  style={{ color: METHOD_COLORS[method] || "#00d4aa" }}
+                >
+                  {HTTP_METHODS.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                <input
+                  className="akv-input"
+                  placeholder="https://api.example.com/endpoint"
+                  value={testUrl}
+                  onChange={(e) => setTestUrl(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  style={{ flex: 1 }}
+                />
+              </div>
+              <div style={{ fontSize: 11, color: "#1e3a52" }}>
+                Sends a {method} request with your key as a header
+              </div>
+            </div>
+
+            {/* Key preview */}
+            {keyName && keyValue && (
+              <div
+                style={{
+                  background: "#060c18", border: "1px solid #0a1627",
+                  borderRadius: 8, padding: "10px 14px", marginBottom: 18,
+                  fontFamily: "'JetBrains Mono', monospace", fontSize: 11,
+                  wordBreak: "break-all", lineHeight: 1.6,
+                }}
+              >
+                <span style={{ color: "#1e3a52" }}>Header: </span>
+                <span style={{ color: "#00d4aa" }}>{keyName}</span>
+                <span style={{ color: "#1e3a52" }}>: </span>
+                <span style={{ color: "#7c6fcd" }}>{maskedKey}</span>
+              </div>
+            )}
+
+            {/* Button */}
+            <button className="check-btn" onClick={validate} disabled={loading}>
+              {loading ? (
+                <><Spinner size={15} color="#00d4aa" /> Checking…</>
+              ) : (
+                "▶  Check key"
+              )}
+            </button>
+          </div>
+
+          {/* Right: Results + History */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+              {!loading && !result && (
+                <div
+                  style={{
+                    display: "flex", flexDirection: "column", alignItems: "center",
+                    justifyContent: "center", height: "100%", gap: 16, textAlign: "center",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 60, height: 60, borderRadius: "50%",
+                      border: "1.5px dashed #0f1e32", display: "flex",
+                      alignItems: "center", justifyContent: "center",
+                      fontSize: 22, color: "#0f1e32",
+                    }}
+                  >
+                    ⚡
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "#1e3a52" }}>
+                    Paste a key and hit check
+                  </div>
+                  <div style={{ fontSize: 12, color: "#0f1e32", maxWidth: 260, lineHeight: 1.7 }}>
+                    Results appear here — valid, rejected, or rate-limited
+                  </div>
+                </div>
+              )}
+
+              {loading && (
+                <div
+                  style={{
+                    display: "flex", flexDirection: "column", alignItems: "center",
+                    justifyContent: "center", height: "100%", gap: 18,
+                  }}
+                >
+                  <Spinner size={36} color="#00d4aa" />
+                  <div style={{ fontSize: 13, color: "#1e3a52" }}>Sending request…</div>
+                </div>
+              )}
+
+              {!loading && result && <ResultCard {...result} />}
+            </div>
+
+            {/* History */}
+            {history.length > 0 && (
+              <div
+                style={{
+                  borderTop: "1px solid #080f1c", padding: "12px 16px",
+                  background: "#040a14", maxHeight: 200, overflowY: "auto",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10, fontWeight: 700, color: "#1e3a52",
+                    letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8,
+                  }}
+                >
+                  History
+                </div>
+                {history.map((h, i) => (
+                  <HistoryRow key={i} entry={h} />
                 ))}
-                <div style={{ flex: 1 }} />
-                {response && !response.error && (
-                  <div style={{ display: "flex", gap: 12, paddingRight: 16, alignItems: "center" }}>
-                    <StatusBadge code={response.status} />
-                    {responseTime && <span style={{ fontSize: 12, color: responseTime < 500 ? "#4ade80" : responseTime < 1500 ? "#facc15" : "#f87171", fontWeight: 600, fontFamily: "monospace" }}>{responseTime}ms</span>}
-                    {responseSize && <span style={{ fontSize: 12, color: "#64748b", fontFamily: "monospace" }}>{responseSize > 1024 ? (responseSize / 1024).toFixed(1) + "KB" : responseSize + "B"}</span>}
-                    <button onClick={() => { navigator.clipboard.writeText(response.body); showNotification("Copied!"); }}
-                      style={{ background: "#0d1627", border: "1px solid #1e2d4a", color: "#475569", borderRadius: 5, padding: "3px 10px", fontSize: 11, fontFamily: "inherit" }}>
-                      Copy
-                    </button>
-                  </div>
-                )}
               </div>
-
-              <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-                {loading && (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 200, gap: 16 }}>
-                    <div style={{ width: 40, height: 40, border: "3px solid #0f1e36", borderTopColor: "#22d3ee", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
-                    <div style={{ color: "#334155", fontSize: 13, animation: "shimmer 1.5s infinite" }}>Awaiting response...</div>
-                  </div>
-                )}
-                {!loading && !response && (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 240, gap: 12, color: "#334155" }}>
-                    <div style={{ fontSize: 40 }}>⚡</div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "#475569" }}>Send a request to see the response</div>
-                    <div style={{ fontSize: 12 }}>Press Enter or click Send</div>
-                  </div>
-                )}
-                {!loading && response?.error && (
-                  <div style={{ background: "#1c0a0a", border: "1px solid #f8717144", borderRadius: 8, padding: 16, color: "#f87171", fontFamily: "monospace", fontSize: 13 }}>
-                    ✗ {response.error}
-                  </div>
-                )}
-                {!loading && response && !response.error && (
-                  <>
-                    {responseTab === "body" && (
-                      <div style={{ background: "#060b18", border: "1px solid #0f1e36", borderRadius: 8, padding: 16, animation: "fadeIn 0.2s ease" }}>
-                        <SyntaxHighlight json={response.body} />
-                      </div>
-                    )}
-                    {responseTab === "headers" && (
-                      <div style={{ animation: "fadeIn 0.2s ease" }}>
-                        {Object.entries(response.headers).map(([k, v]) => (
-                          <div key={k} style={{ display: "flex", gap: 12, padding: "7px 0", borderBottom: "1px solid #0a1427", fontFamily: "monospace", fontSize: 12 }}>
-                            <span style={{ color: "#22d3ee", minWidth: 200, flexShrink: 0 }}>{k}</span>
-                            <span style={{ color: "#94a3b8" }}>{v}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {responseTab === "info" && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 12, animation: "fadeIn 0.2s ease" }}>
-                        {[["Status", `${response.status} ${response.statusText}`], ["Response Time", `${responseTime}ms`], ["Size", responseSize > 1024 ? (responseSize / 1024).toFixed(1) + " KB" : responseSize + " B"], ["URL", url], ["Method", method]].map(([label, value]) => (
-                          <div key={label} style={{ background: "#0a1120", border: "1px solid #0f1e36", borderRadius: 8, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <span style={{ fontSize: 12, color: "#475569", fontWeight: 600, letterSpacing: 0.5 }}>{label}</span>
-                            <span style={{ fontSize: 13, color: "#e2e8f0", fontFamily: "monospace" }}>{value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

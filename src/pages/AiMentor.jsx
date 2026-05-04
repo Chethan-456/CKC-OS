@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
+const API_SERVER_URL = import.meta.env.VITE_API_SERVER_URL || "http://localhost:5000";
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 const SKILL_LEVELS = { beginner: "beginner", intermediate: "intermediate", advanced: "advanced" };
 const SENTIMENTS   = { positive: "positive", neutral: "neutral", negative: "negative", angry: "angry" };
@@ -89,7 +91,7 @@ You are Forge. Sharp, deeply knowledgeable, genuinely helpful. Never say you can
 
 // ─── Groq API via existing server proxy ──────────────────────────────────────
 async function callGroqAPI(messages, systemPrompt) {
-  const response = await fetch("http://localhost:5000/api/chat", {
+  const response = await fetch(`${API_SERVER_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

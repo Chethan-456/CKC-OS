@@ -36,7 +36,6 @@ const styles = `
 
   @keyframes fadeIn   { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
   @keyframes pulse    { 0%,100%{opacity:1} 50%{opacity:.4} }
-  @keyframes glow     { 0%,100%{box-shadow:0 0 8px rgba(56,189,248,.2)} 50%{box-shadow:0 0 24px rgba(56,189,248,.5)} }
   @keyframes spin     { to{transform:rotate(360deg)} }
   @keyframes blink    { 0%,100%{opacity:1} 50%{opacity:0} }
   @keyframes float    { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
@@ -44,11 +43,10 @@ const styles = `
   @keyframes shieldPulse { 0%,100%{opacity:.6} 50%{opacity:1} }
   @keyframes containerPulse { 0%{box-shadow:0 0 0 0 rgba(56,189,248,.4)} 70%{box-shadow:0 0 0 12px rgba(56,189,248,0)} 100%{box-shadow:0 0 0 0 rgba(56,189,248,0)} }
 
-  .fade-in   { animation: fadeIn .3s ease both; }
-  .blink-dot { animation: blink 1s step-end infinite; }
-  .float     { animation: float 3s ease-in-out infinite; }
-  .spin-anim { animation: spin .8s linear infinite; }
-  .shield-pulse { animation: shieldPulse 2.5s ease-in-out infinite; }
+  .fade-in        { animation: fadeIn .3s ease both; }
+  .float          { animation: float 3s ease-in-out infinite; }
+  .spin-anim      { animation: spin .8s linear infinite; }
+  .shield-pulse   { animation: shieldPulse 2.5s ease-in-out infinite; }
   .container-pulse-anim { animation: containerPulse .6s ease; }
 
   .grid-bg {
@@ -109,9 +107,6 @@ const styles = `
 
   .status-bar { background: linear-gradient(90deg, rgba(56,189,248,.08), rgba(45,212,191,.08)); border-top: 1px solid rgba(56,189,248,.1); }
 
-  .icon-btn { transition: all .15s; cursor: pointer; border: none; background: transparent; color: rgba(255,255,255,.3); }
-  .icon-btn:hover { background: rgba(255,255,255,.06); color: rgba(255,255,255,.8); }
-
   .modal-overlay {
     position: fixed; inset: 0; z-index: 50;
     display: flex; align-items: center; justify-content: center;
@@ -158,7 +153,6 @@ const styles = `
     cursor: col-resize;
     flex-shrink: 0;
     transition: background .15s;
-    position: relative;
   }
   .drag-divider:hover { background: rgba(56,189,248,.3); }
 
@@ -173,7 +167,7 @@ const styles = `
     transition: all .15s;
     text-transform: capitalize;
   }
-  .tab-active-style { border-bottom-color: #38bdf8 !important; color: #38bdf8 !important; }
+  .tab-active-style  { border-bottom-color: #38bdf8 !important; color: #38bdf8 !important; }
   .tab-inactive-style { color: rgba(255,255,255,.3); }
   .tab-inactive-style:hover { color: rgba(255,255,255,.6); }
 
@@ -209,6 +203,15 @@ const SNIPPETS = {
   },
 };
 
+const SNIP_LABELS = {
+  hello: "Hello World",
+  fibonacci: "Fibonacci",
+  fetch: "Async/Await",
+  array: "Array Ops",
+  list: "List Comp",
+  class: "Classes & OOP",
+};
+
 /* ─── PYTHON INTERPRETER ─── */
 function interpretPython(code) {
   const output = [];
@@ -217,11 +220,11 @@ function interpretPython(code) {
   try {
     let js = code
       .replace(/^#.*$/gm, "")
-      .replace(/print\(f"([^"]+)"\)/g, (m, s) => {
+      .replace(/print\(f"([^"]+)"\)/g, (_, s) => {
         const converted = s.replace(/\{([^}]+)\}/g, "${$1}");
         return `__print__(\`${converted}\`)`;
       })
-      .replace(/print\(f'([^']+)'\)/g, (m, s) => {
+      .replace(/print\(f'([^']+)'\)/g, (_, s) => {
         const converted = s.replace(/\{([^}]+)\}/g, "${$1}");
         return `__print__(\`${converted}\`)`;
       })
@@ -229,15 +232,19 @@ function interpretPython(code) {
       .replace(/def (\w+)\(([^)]*)\):/g, "function $1($2) {")
       .replace(/class (\w+):/g, "class $1 {")
       .replace(/class (\w+)\((\w+)\):/g, "class $1 extends $2 {")
-      .replace(/    def (\w+)\(self,?\s*([^)]*)\):/g, (m, name, args) => `  ${name}(${args}) {`)
-      .replace(/    def (\w+)\(self\):/g, (m, name) => `  ${name}() {`)
+      .replace(/    def (\w+)\(self,?\s*([^)]*)\):/g, (_, name, args) => `  ${name}(${args}) {`)
+      .replace(/    def (\w+)\(self\):/g, (_, name) => `  ${name}() {`)
       .replace(/\bself\./g, "this.")
       .replace(/\bself\b/g, "")
-      .replace(/True/g, "true").replace(/False/g, "false").replace(/None/g, "null")
+      .replace(/True/g, "true")
+      .replace(/False/g, "false")
+      .replace(/None/g, "null")
       .replace(/elif /g, "else if ")
-      .replace(/and /g, "&& ").replace(/ or /g, " || ").replace(/\bnot /g, "!")
-      .replace(/f"([^"]+)"/g, (m, s) => "`" + s.replace(/\{([^}]+)\}/g, "${$1}") + "`")
-      .replace(/f'([^']+)'/g, (m, s) => "`" + s.replace(/\{([^}]+)\}/g, "${$1}") + "`")
+      .replace(/and /g, "&& ")
+      .replace(/ or /g, " || ")
+      .replace(/\bnot /g, "!")
+      .replace(/f"([^"]+)"/g, (_, s) => "`" + s.replace(/\{([^}]+)\}/g, "${$1}") + "`")
+      .replace(/f'([^']+)'/g, (_, s) => "`" + s.replace(/\{([^}]+)\}/g, "${$1}") + "`")
       .replace(/range\((\d+)\)/g, "{length:$1}")
       .replace(/len\(([^)]+)\)/g, "$1.length")
       .replace(/\.append\(([^)]+)\)/g, ".push($1)")
@@ -275,10 +282,12 @@ function interpretPython(code) {
         if (printMatch) {
           try {
             const val = printMatch[1]
-              .replace(/f"([^"]+)"/g, (m, s) => "`" + s.replace(/\{([^}]+)\}/g, "${$1}") + "`")
-              .replace(/f'([^']+)'/g, (m, s) => "`" + s.replace(/\{([^}]+)\}/g, "${$1}") + "`");
+              .replace(/f"([^"]+)"/g, (_, s) => "`" + s.replace(/\{([^}]+)\}/g, "${$1}") + "`")
+              .replace(/f'([^']+)'/g, (_, s) => "`" + s.replace(/\{([^}]+)\}/g, "${$1}") + "`");
             output.push(String(eval(val)));
-          } catch { output.push(eval(printMatch[1].replace(/'/g, '"'))); }
+          } catch {
+            output.push(eval(printMatch[1].replace(/'/g, '"')));
+          }
         }
       }
     } catch (e2) {
@@ -292,11 +301,11 @@ function interpretPython(code) {
 function executeNode(code) {
   const output = [];
   const consoleMock = {
-    log: (...args) => output.push({ type: "log", text: args.map((a) => (typeof a === "object" ? JSON.stringify(a, null, 2) : String(a))).join(" ") }),
+    log:   (...args) => output.push({ type: "log",   text: args.map((a) => (typeof a === "object" ? JSON.stringify(a, null, 2) : String(a))).join(" ") }),
     error: (...args) => output.push({ type: "error", text: args.map(String).join(" ") }),
-    warn: (...args) => output.push({ type: "warn", text: args.map(String).join(" ") }),
-    info: (...args) => output.push({ type: "info", text: args.map(String).join(" ") }),
-    table: (data) => output.push({ type: "table", text: JSON.stringify(data, null, 2) }),
+    warn:  (...args) => output.push({ type: "warn",  text: args.map(String).join(" ") }),
+    info:  (...args) => output.push({ type: "info",  text: args.map(String).join(" ") }),
+    table: (data)   => output.push({ type: "table",  text: JSON.stringify(data, null, 2) }),
   };
   try {
     const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
@@ -315,21 +324,28 @@ function executeNode(code) {
 
 function TerminalDot({ color }) {
   const bg = { red: "#f87171", yellow: "#facc15", green: "#4ade80" }[color];
-  return <div style={{ width: 12, height: 12, borderRadius: "50%", background: bg, opacity: 0.8 }} />;
+  return (
+    <div style={{ width: 12, height: 12, borderRadius: "50%", background: bg, opacity: 0.8 }} />
+  );
 }
 
 function SecurityBadge() {
   return (
-    <div className="shield-pulse" style={{
-      display: "flex", alignItems: "center", gap: 6,
-      padding: "5px 10px", borderRadius: 8,
-      border: "1px solid rgba(52,211,153,.2)",
-      background: "rgba(52,211,153,.05)",
-    }}>
+    <div
+      className="shield-pulse"
+      style={{
+        display: "flex", alignItems: "center", gap: 6,
+        padding: "5px 10px", borderRadius: 8,
+        border: "1px solid rgba(52,211,153,.2)",
+        background: "rgba(52,211,153,.05)",
+      }}
+    >
       <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#34d399" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
       </svg>
-      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(52,211,153,.8)" }}>SANDBOXED</span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(52,211,153,.8)" }}>
+        SANDBOXED
+      </span>
     </div>
   );
 }
@@ -337,11 +353,13 @@ function SecurityBadge() {
 function StatusIndicator({ running }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      <div style={{
-        width: 8, height: 8, borderRadius: "50%",
-        background: running ? "#fbbf24" : "#34d399",
-        ...(running ? { animation: "pulse 1s ease infinite" } : {}),
-      }} />
+      <div
+        style={{
+          width: 8, height: 8, borderRadius: "50%",
+          background: running ? "#fbbf24" : "#34d399",
+          ...(running ? { animation: "pulse 1s ease infinite" } : {}),
+        }}
+      />
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.4)" }}>
         {running ? "EXECUTING" : "READY"}
       </span>
@@ -353,30 +371,56 @@ function LineNumbers({ code }) {
   const lines = code.split("\n");
   return (
     <div className="line-nums">
-      {lines.map((_, i) => <div key={i}>{i + 1}</div>)}
+      {lines.map((_, i) => (
+        <div key={i}>{i + 1}</div>
+      ))}
     </div>
   );
 }
 
 function OutputLine({ line, idx }) {
-  const colors = { log: "rgba(255,255,255,.8)", error: "#fb7185", warn: "#fbbf24", info: "#38bdf8", table: "#a78bfa", system: "rgba(255,255,255,.3)" };
+  const colors = {
+    log:    "rgba(255,255,255,.8)",
+    error:  "#fb7185",
+    warn:   "#fbbf24",
+    info:   "#38bdf8",
+    table:  "#a78bfa",
+    system: "rgba(255,255,255,.3)",
+  };
   const prefixes = { error: "✖ ", warn: "⚠ ", info: "ℹ ", log: "  ", system: "  ", table: "  " };
+
   return (
-    <div className="output-line" style={{ color: colors[line.type] || colors.log, padding: "2px 16px", display: "flex", gap: 8, animationDelay: `${idx * 30}ms` }}>
-      <span style={{ color: "rgba(255,255,255,.2)", userSelect: "none", fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>{String(idx + 1).padStart(2, "0")}</span>
-      <span style={{ color: "rgba(255,255,255,.2)", userSelect: "none" }}>{prefixes[line.type] || "  "}</span>
-      <span style={{ wordBreak: "break-all", whiteSpace: line.type === "table" ? "pre" : "normal" }}>{line.text}</span>
+    <div
+      className="output-line"
+      style={{
+        color: colors[line.type] || colors.log,
+        padding: "2px 16px",
+        display: "flex",
+        gap: 8,
+        animationDelay: `${idx * 30}ms`,
+      }}
+    >
+      <span style={{ color: "rgba(255,255,255,.2)", userSelect: "none", fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>
+        {String(idx + 1).padStart(2, "0")}
+      </span>
+      <span style={{ color: "rgba(255,255,255,.2)", userSelect: "none" }}>
+        {prefixes[line.type] || "  "}
+      </span>
+      <span style={{ wordBreak: "break-all", whiteSpace: line.type === "table" ? "pre" : "normal" }}>
+        {line.text}
+      </span>
     </div>
   );
 }
 
 function SnippetPicker({ lang, onPick }) {
   const snips = SNIPPETS[lang];
-  const labels = { hello: "Hello World", fibonacci: "Fibonacci", fetch: "Async/Await", array: "Array Ops", list: "List Comp", class: "Classes & OOP" };
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
       {Object.keys(snips).map((k) => (
-        <button key={k} className="snippet-btn" onClick={() => onPick(snips[k])}>{labels[k]}</button>
+        <button key={k} className="snippet-btn" onClick={() => onPick(snips[k])}>
+          {SNIP_LABELS[k]}
+        </button>
       ))}
     </div>
   );
@@ -385,53 +429,83 @@ function SnippetPicker({ lang, onPick }) {
 function ShareModal({ output, onClose }) {
   const [copied, setCopied] = useState(false);
   const shareText = output.map((l, i) => `[${i + 1}] ${l.text}`).join("\n");
-  const shareId = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const shareId   = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const shareUrl  = `https://ckcos.dev/sandbox/${shareId.toLowerCase()}`;
+
+  const copyLink = () => {
+    navigator.clipboard?.writeText(shareUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const downloadTxt = () => {
+    const blob = new Blob([shareText], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `ckcos-output-${shareId}.txt`;
+    a.click();
+  };
 
   return (
-    <div className="modal-overlay">
+    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card fade-in">
+        {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, background: "rgba(56,189,248,.12)", color: "#38bdf8" }}>⬡</div>
             <div>
               <div style={{ fontWeight: 700, fontSize: 14 }}>Share Output</div>
-              <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.3)" }}>Snapshot ID: {shareId}</div>
+              <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.3)" }}>
+                Snapshot ID: {shareId}
+              </div>
             </div>
           </div>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: "transparent", color: "rgba(255,255,255,.3)", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}
-            onMouseEnter={(e) => { e.target.style.color = "#fb7185"; e.target.style.background = "rgba(251,113,133,.1)"; }}
-            onMouseLeave={(e) => { e.target.style.color = "rgba(255,255,255,.3)"; e.target.style.background = "transparent"; }}>✕</button>
+          <button
+            onClick={onClose}
+            style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: "transparent", color: "rgba(255,255,255,.3)", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", transition: "all .15s" }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "#fb7185"; e.currentTarget.style.background = "rgba(251,113,133,.1)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(255,255,255,.3)"; e.currentTarget.style.background = "transparent"; }}
+          >✕</button>
         </div>
 
+        {/* Preview */}
         <div style={{ background: "var(--void)", borderRadius: 12, border: "1px solid rgba(255,255,255,.06)", padding: 16, marginBottom: 16, maxHeight: 192, overflowY: "auto" }}>
-          <pre style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "rgba(255,255,255,.6)", whiteSpace: "pre-wrap" }}>{shareText || "// No output yet"}</pre>
+          <pre style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "rgba(255,255,255,.6)", whiteSpace: "pre-wrap" }}>
+            {shareText || "// No output yet"}
+          </pre>
         </div>
 
+        {/* URL row */}
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
           <div style={{ flex: 1, background: "var(--panel)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, padding: "8px 12px", fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "rgba(255,255,255,.4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            https://ckcos.dev/sandbox/{shareId.toLowerCase()}
+            {shareUrl}
           </div>
-          <button onClick={() => { navigator.clipboard?.writeText(`https://ckcos.dev/sandbox/${shareId.toLowerCase()}`); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-            style={{ padding: "8px 16px", borderRadius: 12, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, fontWeight: 600, cursor: "pointer", transition: "all .15s", background: copied ? "rgba(52,211,153,.2)" : "rgba(56,189,248,.15)", color: copied ? "#34d399" : "#38bdf8", border: `1px solid ${copied ? "rgba(52,211,153,.3)" : "rgba(56,189,248,.3)"}` }}>
-            {copied ? "✓ Copied" : "Copy Link"}
-          </button>
+          <button
+            onClick={copyLink}
+            style={{
+              padding: "8px 16px", borderRadius: 12,
+              fontFamily: "'JetBrains Mono',monospace", fontSize: 11, fontWeight: 600,
+              cursor: "pointer", transition: "all .15s",
+              background: copied ? "rgba(52,211,153,.2)" : "rgba(56,189,248,.15)",
+              color:      copied ? "#34d399" : "#38bdf8",
+              border:     `1px solid ${copied ? "rgba(52,211,153,.3)" : "rgba(56,189,248,.3)"}`,
+            }}
+          >{copied ? "✓ Copied" : "Copy Link"}</button>
         </div>
 
+        {/* Actions */}
         <div style={{ display: "flex", gap: 8 }}>
-          {["Download .txt", "Copy Output"].map((label, i) => (
-            <button key={i} onClick={() => {
-              if (i === 1) { navigator.clipboard?.writeText(shareText); }
-              else {
-                const blob = new Blob([shareText], { type: "text/plain" });
-                const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-                a.download = `ckcos-output-${shareId}.txt`; a.click();
-              }
-            }}
+          {[
+            { label: "Download .txt", action: downloadTxt },
+            { label: "Copy Output",   action: () => navigator.clipboard?.writeText(shareText) },
+          ].map(({ label, action }) => (
+            <button
+              key={label}
+              onClick={action}
               style={{ flex: 1, padding: "8px 0", borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "rgba(255,255,255,.4)", background: "transparent", cursor: "pointer", transition: "all .15s" }}
-              onMouseEnter={(e) => { e.target.style.color = "rgba(255,255,255,.7)"; e.target.style.borderColor = "rgba(255,255,255,.2)"; }}
-              onMouseLeave={(e) => { e.target.style.color = "rgba(255,255,255,.4)"; e.target.style.borderColor = "rgba(255,255,255,.08)"; }}>
-              {label}
-            </button>
+              onMouseEnter={(e) => { e.currentTarget.style.color = "rgba(255,255,255,.7)"; e.currentTarget.style.borderColor = "rgba(255,255,255,.2)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(255,255,255,.4)"; e.currentTarget.style.borderColor = "rgba(255,255,255,.08)"; }}
+            >{label}</button>
           ))}
         </div>
       </div>
@@ -441,28 +515,42 @@ function ShareModal({ output, onClose }) {
 
 /* ─── MAIN APP ─── */
 export default function CKCOSSandbox() {
-  const [lang, setLang] = useState("node");
-  const [code, setCode] = useState(SNIPPETS.node.hello);
-  const [output, setOutput] = useState([]);
-  const [running, setRunning] = useState(false);
-  const [runCount, setRunCount] = useState(0);
-  const [execTime, setExecTime] = useState(null);
-  const [showShare, setShowShare] = useState(false);
-  const [splitPane, setSplitPane] = useState(60);
-  const [fontSize, setFontSize] = useState(13);
-  const [activeTab, setActiveTab] = useState("output");
-  const [history, setHistory] = useState([]);
+  const [lang,          setLang]          = useState("node");
+  const [code,          setCode]          = useState(SNIPPETS.node.hello);
+  const [output,        setOutput]        = useState([]);
+  const [running,       setRunning]       = useState(false);
+  const [runCount,      setRunCount]      = useState(0);
+  const [execTime,      setExecTime]      = useState(null);
+  const [showShare,     setShowShare]     = useState(false);
+  const [splitPane,     setSplitPane]     = useState(60);
+  const [fontSize,      setFontSize]      = useState(13);
+  const [activeTab,     setActiveTab]     = useState("output");
+  const [history,       setHistory]       = useState([]);
   const [containerPulse, setContainerPulse] = useState(false);
 
-  const outputRef = useRef(null);
+  const outputRef   = useRef(null);
   const textareaRef = useRef(null);
-  const dragRef = useRef(null);
-  const isDragging = useRef(false);
+  const dragRef     = useRef(null);
+  const isDragging  = useRef(false);
 
+  /* Auto-scroll output */
   useEffect(() => {
     if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
   }, [output]);
 
+  /* ⌘/Ctrl + Enter global shortcut */
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        e.preventDefault();
+        runCode();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  });
+
+  /* ── Run ── */
   const runCode = useCallback(async () => {
     if (running) return;
     setRunning(true);
@@ -502,7 +590,10 @@ export default function CKCOSSandbox() {
 
     setOutput(finalOutput);
     setRunCount((c) => c + 1);
-    setHistory((h) => [{ code, lang, output: finalOutput, time: new Date().toLocaleTimeString() }, ...h.slice(0, 9)]);
+    setHistory((h) => [
+      { code, lang, output: finalOutput, time: new Date().toLocaleTimeString() },
+      ...h.slice(0, 9),
+    ]);
     setRunning(false);
   }, [code, lang, running]);
 
@@ -514,17 +605,21 @@ export default function CKCOSSandbox() {
   };
 
   const handleKeyDown = (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); runCode(); }
     if (e.key === "Tab") {
       e.preventDefault();
       const start = e.target.selectionStart;
-      const end = e.target.selectionEnd;
+      const end   = e.target.selectionEnd;
       const newCode = code.slice(0, start) + "  " + code.slice(end);
       setCode(newCode);
-      setTimeout(() => { e.target.selectionStart = e.target.selectionEnd = start + 2; }, 0);
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + 2;
+        }
+      }, 0);
     }
   };
 
+  /* ── Drag divider ── */
   const startDrag = () => {
     isDragging.current = true;
     const handleMove = (ev) => {
@@ -532,12 +627,16 @@ export default function CKCOSSandbox() {
       const container = dragRef.current?.parentElement;
       if (!container) return;
       const rect = container.getBoundingClientRect();
-      const pct = Math.min(80, Math.max(20, ((ev.clientX - rect.left) / rect.width) * 100));
+      const pct  = Math.min(80, Math.max(20, ((ev.clientX - rect.left) / rect.width) * 100));
       setSplitPane(pct);
     };
-    const handleUp = () => { isDragging.current = false; window.removeEventListener("mousemove", handleMove); window.removeEventListener("mouseup", handleUp); };
+    const handleUp = () => {
+      isDragging.current = false;
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup",   handleUp);
+    };
     window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleUp);
+    window.addEventListener("mouseup",   handleUp);
   };
 
   const lineCount = code.split("\n").length;
@@ -550,6 +649,7 @@ export default function CKCOSSandbox() {
 
         {/* ─── TOP NAV ─── */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 20px", height: 56, borderBottom: "1px solid rgba(255,255,255,.06)", background: "rgba(11,15,26,.8)", backdropFilter: "blur(12px)", flexShrink: 0 }}>
+
           {/* Logo */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginRight: 8 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 700, background: "linear-gradient(135deg,#38bdf8,#2dd4bf)", boxShadow: "0 0 16px rgba(56,189,248,.3)" }}>⚡</div>
@@ -563,10 +663,15 @@ export default function CKCOSSandbox() {
 
           {/* Language tabs */}
           <div style={{ display: "flex", alignItems: "center", gap: 4, padding: 4, borderRadius: 12, border: "1px solid rgba(255,255,255,.06)", background: "rgba(15,21,35,.5)" }}>
-            {[{ id: "node", label: "Node.js", cls: "lang-node", icon: "⬡" }, { id: "python", label: "Python", cls: "lang-python", icon: "🐍" }].map((l) => (
-              <button key={l.id} className={`lang-tab-btn ${lang === l.id ? l.cls : ""}`}
-                style={lang === l.id ? {} : {}}
-                onClick={() => handleLangChange(l.id)}>
+            {[
+              { id: "node",   label: "Node.js", cls: "lang-node",   icon: "⬡"  },
+              { id: "python", label: "Python",  cls: "lang-python", icon: "🐍" },
+            ].map((l) => (
+              <button
+                key={l.id}
+                className={`lang-tab-btn ${lang === l.id ? l.cls : ""}`}
+                onClick={() => handleLangChange(l.id)}
+              >
                 <span style={{ fontSize: 13 }}>{l.icon}</span>
                 {l.label}
               </button>
@@ -587,16 +692,24 @@ export default function CKCOSSandbox() {
               <button onClick={() => setFontSize((s) => Math.min(18, s + 1))} style={{ color: "rgba(255,255,255,.3)", background: "transparent", border: "none", cursor: "pointer", fontFamily: "'JetBrains Mono',monospace", fontSize: 12, width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
             </div>
 
-            <button onClick={() => setShowShare(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,.1)", color: "rgba(255,255,255,.4)", background: "transparent", cursor: "pointer", fontFamily: "'JetBrains Mono',monospace", fontSize: 11, transition: "all .15s" }}
+            <button
+              onClick={() => setShowShare(true)}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,.1)", color: "rgba(255,255,255,.4)", background: "transparent", cursor: "pointer", fontFamily: "'JetBrains Mono',monospace", fontSize: 11, transition: "all .15s" }}
               onMouseEnter={(e) => { e.currentTarget.style.color = "rgba(255,255,255,.7)"; e.currentTarget.style.borderColor = "rgba(255,255,255,.2)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(255,255,255,.4)"; e.currentTarget.style.borderColor = "rgba(255,255,255,.1)"; }}>
-              ⬡ Share
-            </button>
+              onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(255,255,255,.4)"; e.currentTarget.style.borderColor = "rgba(255,255,255,.1)"; }}
+            >⬡ Share</button>
 
             <button className="run-btn" onClick={runCode} disabled={running}>
-              {running
-                ? <><div className="spin-anim" style={{ width: 14, height: 14, border: "2px solid rgba(7,9,15,.4)", borderTopColor: "#07090f", borderRadius: "50%" }} />Running</>
-                : <><span style={{ fontSize: 14 }}>▶</span>Run</>}
+              {running ? (
+                <>
+                  <div className="spin-anim" style={{ width: 14, height: 14, border: "2px solid rgba(7,9,15,.4)", borderTopColor: "#07090f", borderRadius: "50%" }} />
+                  Running
+                </>
+              ) : (
+                <>
+                  <span style={{ fontSize: 14 }}>▶</span>Run
+                </>
+              )}
               <kbd style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, opacity: 0.6, marginLeft: 4 }}>⌘↵</kbd>
             </button>
           </div>
@@ -606,7 +719,10 @@ export default function CKCOSSandbox() {
         <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
 
           {/* EDITOR */}
-          <div className={containerPulse ? "container-pulse-anim" : ""} style={{ width: `${splitPane}%`, display: "flex", flexDirection: "column", borderRight: "1px solid rgba(255,255,255,.06)", transition: "box-shadow .3s" }}>
+          <div
+            className={containerPulse ? "container-pulse-anim" : ""}
+            style={{ width: `${splitPane}%`, display: "flex", flexDirection: "column", borderRight: "1px solid rgba(255,255,255,.06)", transition: "box-shadow .3s" }}
+          >
             {/* Editor toolbar */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,.05)", background: "rgba(11,15,26,.4)", flexShrink: 0 }}>
               <div style={{ display: "flex", gap: 6 }}>
@@ -615,15 +731,18 @@ export default function CKCOSSandbox() {
               <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "rgba(255,255,255,.3)", marginLeft: 8 }}>
                 {lang === "node" ? "index.js" : "main.py"}
               </span>
-              <span className={`${lang === "node" ? "lang-node" : "lang-python"}`} style={{ marginLeft: 8, padding: "0 6px", borderRadius: 4, fontSize: 9, fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>
+              <span className={lang === "node" ? "lang-node" : "lang-python"} style={{ marginLeft: 8, padding: "0 6px", borderRadius: 4, fontSize: 9, fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>
                 {lang === "node" ? "JavaScript" : "Python 3"}
               </span>
               <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
                 <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.2)" }}>{lineCount} lines</span>
                 <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.2)" }}>{charCount} chars</span>
-                <button onClick={() => setCode("")} style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.2)", background: "transparent", border: "none", cursor: "pointer", transition: "color .15s" }}
-                  onMouseEnter={(e) => { e.target.style.color = "#fb7185"; }}
-                  onMouseLeave={(e) => { e.target.style.color = "rgba(255,255,255,.2)"; }}>clear</button>
+                <button
+                  onClick={() => setCode("")}
+                  style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.2)", background: "transparent", border: "none", cursor: "pointer", transition: "color .15s" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = "#fb7185"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(255,255,255,.2)"; }}
+                >clear</button>
               </div>
             </div>
 
@@ -648,22 +767,30 @@ export default function CKCOSSandbox() {
           {/* DRAG DIVIDER */}
           <div ref={dragRef} className="drag-divider" onMouseDown={startDrag} />
 
-          {/* OUTPUT */}
+          {/* OUTPUT PANE */}
           <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, overflow: "hidden" }}>
             {/* Output toolbar */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,.05)", background: "rgba(11,15,26,.4)", flexShrink: 0 }}>
               <div style={{ display: "flex", gap: 6 }}>
                 <TerminalDot color="red" /><TerminalDot color="yellow" /><TerminalDot color="green" />
               </div>
-              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "rgba(255,255,255,.3)", marginLeft: 8 }}>Terminal Output</span>
+              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "rgba(255,255,255,.3)", marginLeft: 8 }}>
+                Terminal Output
+              </span>
 
               {/* Tabs */}
               <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 16 }}>
                 {["output", "history"].map((t) => (
-                  <button key={t} className={`tab-btn ${activeTab === t ? "tab-active-style" : "tab-inactive-style"}`} onClick={() => setActiveTab(t)}>
+                  <button
+                    key={t}
+                    className={`tab-btn ${activeTab === t ? "tab-active-style" : "tab-inactive-style"}`}
+                    onClick={() => setActiveTab(t)}
+                  >
                     {t}
                     {t === "history" && history.length > 0 && (
-                      <span style={{ marginLeft: 6, background: "rgba(56,189,248,.2)", color: "#38bdf8", fontSize: 9, padding: "1px 6px", borderRadius: 9999 }}>{history.length}</span>
+                      <span style={{ marginLeft: 6, background: "rgba(56,189,248,.2)", color: "#38bdf8", fontSize: 9, padding: "1px 6px", borderRadius: 9999 }}>
+                        {history.length}
+                      </span>
                     )}
                   </button>
                 ))}
@@ -671,17 +798,27 @@ export default function CKCOSSandbox() {
 
               <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
                 <StatusIndicator running={running} />
-                {execTime && <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.25)" }}>{execTime}s</span>}
+                {execTime && (
+                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.25)" }}>
+                    {execTime}s
+                  </span>
+                )}
                 {output.length > 0 && (
-                  <button onClick={() => setOutput([])} style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.2)", background: "transparent", border: "none", cursor: "pointer" }}
-                    onMouseEnter={(e) => { e.target.style.color = "#fb7185"; }}
-                    onMouseLeave={(e) => { e.target.style.color = "rgba(255,255,255,.2)"; }}>clear</button>
+                  <button
+                    onClick={() => { setOutput([]); setExecTime(null); }}
+                    style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.2)", background: "transparent", border: "none", cursor: "pointer", transition: "color .15s" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = "#fb7185"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(255,255,255,.2)"; }}
+                  >clear</button>
                 )}
               </div>
             </div>
 
             {/* Output content */}
-            <div ref={outputRef} style={{ flex: 1, overflowY: "auto", background: "rgba(7,9,15,.4)", paddingTop: 12, paddingBottom: 12 }}>
+            <div
+              ref={outputRef}
+              style={{ flex: 1, overflowY: "auto", background: "rgba(7,9,15,.4)", paddingTop: 12, paddingBottom: 12 }}
+            >
               {activeTab === "output" ? (
                 output.length === 0 ? (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 16, color: "rgba(255,255,255,.2)" }}>
@@ -690,27 +827,54 @@ export default function CKCOSSandbox() {
                     <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.15)" }}>or use ⌘↵ keyboard shortcut</div>
                   </div>
                 ) : (
-                  <div>{output.map((line, i) => <OutputLine key={i} line={line} idx={i} />)}</div>
+                  <div>
+                    {output.map((line, i) => (
+                      <OutputLine key={i} line={line} idx={i} />
+                    ))}
+                  </div>
                 )
               ) : (
+                /* HISTORY TAB */
                 <div style={{ padding: "0 16px" }}>
                   {history.length === 0 ? (
-                    <div style={{ textAlign: "center", paddingTop: 48, color: "rgba(255,255,255,.2)", fontFamily: "'JetBrains Mono',monospace", fontSize: 12 }}>No execution history yet</div>
-                  ) : history.map((h, i) => (
-                    <div key={i} className="history-item" style={{ marginBottom: 8 }}
-                      onClick={() => { setCode(h.code); setLang(h.lang); setOutput(h.output); setActiveTab("output"); }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span className={h.lang === "node" ? "lang-node" : "lang-python"} style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4 }}>
-                            {h.lang === "node" ? "Node.js" : "Python"}
-                          </span>
-                          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.3)" }}>Run #{history.length - i}</span>
-                        </div>
-                        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.2)" }}>{h.time}</span>
-                      </div>
-                      <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "rgba(255,255,255,.4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.code.split("\n")[0]}</div>
+                    <div style={{ textAlign: "center", paddingTop: 48, color: "rgba(255,255,255,.2)", fontFamily: "'JetBrains Mono',monospace", fontSize: 12 }}>
+                      No execution history yet
                     </div>
-                  ))}
+                  ) : (
+                    history.map((h, i) => (
+                      <div
+                        key={i}
+                        className="history-item"
+                        style={{ marginBottom: 8 }}
+                        onClick={() => {
+                          setCode(h.code);
+                          setLang(h.lang);
+                          setOutput(h.output);
+                          setActiveTab("output");
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span
+                              className={h.lang === "node" ? "lang-node" : "lang-python"}
+                              style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4 }}
+                            >
+                              {h.lang === "node" ? "Node.js" : "Python"}
+                            </span>
+                            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.3)" }}>
+                              Run #{history.length - i}
+                            </span>
+                          </div>
+                          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.2)" }}>
+                            {h.time}
+                          </span>
+                        </div>
+                        <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: "rgba(255,255,255,.4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {h.code.split("\n")[0]}
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
             </div>
@@ -724,24 +888,29 @@ export default function CKCOSSandbox() {
                     {output.filter((o) => o.type === "log").length} lines · Run #{runCount}
                   </span>
                 </div>
-                <button onClick={() => setShowShare(true)} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(56,189,248,.6)", background: "transparent", border: "none", cursor: "pointer", transition: "color .15s" }}
+                <button
+                  onClick={() => setShowShare(true)}
+                  style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(56,189,248,.6)", background: "transparent", border: "none", cursor: "pointer", transition: "color .15s" }}
                   onMouseEnter={(e) => { e.currentTarget.style.color = "#38bdf8"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(56,189,248,.6)"; }}>
-                  ⬡ Share this output →
-                </button>
+                  onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(56,189,248,.6)"; }}
+                >⬡ Share this output →</button>
               </div>
             )}
           </div>
         </div>
 
-        {/* ─── STATUS BAR ─── */}
+        {/* ─── BOTTOM STATUS BAR ─── */}
         <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "6px 20px", borderTop: "1px solid rgba(255,255,255,.05)", background: "rgba(11,15,26,.6)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#38bdf8" }} />
-            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.25)" }}>CKC-OS Sandbox v1.0</span>
+            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.25)" }}>
+              CKC-OS Sandbox v1.0
+            </span>
           </div>
           <div style={{ width: 1, height: 12, background: "rgba(255,255,255,.08)" }} />
-          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.2)" }}>{lang === "node" ? "Node.js 18 LTS (Browser)" : "Python 3.11 (Browser)"}</span>
+          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.2)" }}>
+            {lang === "node" ? "Node.js 18 LTS (Browser)" : "Python 3.11 (Browser)"}
+          </span>
           <div style={{ width: 1, height: 12, background: "rgba(255,255,255,.08)" }} />
           <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "rgba(255,255,255,.2)" }}>UTF-8</span>
           <div style={{ width: 1, height: 12, background: "rgba(255,255,255,.08)" }} />
@@ -753,7 +922,9 @@ export default function CKCOSSandbox() {
           </div>
         </div>
 
+        {/* ─── SHARE MODAL ─── */}
         {showShare && <ShareModal output={output} onClose={() => setShowShare(false)} />}
+
       </div>
     </>
   );

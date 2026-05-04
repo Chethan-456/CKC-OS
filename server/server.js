@@ -1,42 +1,7 @@
+// server/server.js
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-
-/**
- * ╔══════════════════════════════════════════════════════════════╗
- * ║  CKC-OS  ·  Combined Server                                  ║
- * ║  File location:  CKC-OS/server/index.js                      ║
- * ║                                                              ║
- * ║  Handles:                                                    ║
- * ║   • Knowledge Graph API  (Neo4j)                             ║
- * ║   • Groq AI proxy        POST /api/chat                      ║
- * ║   • Live Chat WebSocket  ws://…/ws   (chat.js)               ║
- * ║   • Metrics WebSocket    ws://…/     (live dashboard)        ║
- * ║   • Performance monitor  /api/metrics/*                      ║
- * ║   • All original REST routes unchanged                       ║
- * ╚══════════════════════════════════════════════════════════════╝
- *
- * Setup
- * ──────
- *  npm install groq-sdk ws uuid neo4j-driver express cors node-fetch dotenv
- *
- *  .env
- *    GROQ_API_KEY=gsk_…
- *    NEO4J_URI=bolt://localhost:7687
- *    NEO4J_USER=neo4j
- *    NEO4J_PASSWORD=secret
- *    PORT=5000
- *
- *  chat.js must export: { initChatServer, chatRouter, getHistory, getPresenceForChannel }
- */
-
-import dotenv from "dotenv";
-import path   from "path";
-import { fileURLToPath } from "url";
-import { createRequire }  from "module";
-
-// ─── ESM / CJS interop ───────────────────────────────────────────────────────
-const require    = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, ".env") });
@@ -44,58 +9,258 @@ dotenv.config({ path: path.join(__dirname, ".env") });
 import express  from "express";
 import cors     from "cors";
 import fetch    from "node-fetch";
+import helmet   from "helmet";
 import neo4j    from "neo4j-driver";
 import { v4 as uuidv4 } from "uuid";
+import { createServer } from "http";
+import { Server as SocketIOServer } from "socket.io";
 
 // ─── Startup diagnostics ──────────────────────────────────────────────────────
 console.log("─────────────────────────────────────────────");
-console.log("GROQ_API_KEY  :", process.env.GROQ_API_KEY   ? "✅ loaded (" + process.env.GROQ_API_KEY.slice(0,8)  + "...)" : "❌ MISSING");
-import http     from "http";
-import { WebSocketServer } from "ws";
-import os       from "os";
-import fs       from "fs";
-
-// ─── Chat module (CJS → ESM via createRequire) ───────────────────────────────
-// chat.js uses require('ws') / require('uuid') / require('express') — all CJS.
-import {
-  initChatServer,
-  chatRouter,
-  getHistory,
-  getPresenceForChannel,
-} from "./chat.js";
-
-// ─── Startup diagnostics ─────────────────────────────────────────────────────
-console.log("─────────────────────────────────────────────");
-console.log("GROQ_API_KEY  :", process.env.GROQ_API_KEY   ? "✅ (" + process.env.GROQ_API_KEY.slice(0, 8) + "...)" : "❌ MISSING");
+console.log("GROQ_API_KEY  :", process.env.GROQ_API_KEY   ? "✅ loaded" : "❌ MISSING");
 console.log("NEO4J_URI     :", process.env.NEO4J_URI       || "❌ MISSING");
 console.log("NEO4J_USER    :", process.env.NEO4J_USER      || "❌ MISSING");
-console.log("NEO4J_PASSWORD:", process.env.NEO4J_PASSWORD  ? "✅ loaded"  : "❌ MISSING");
+console.log("NEO4J_PASSWORD:", process.env.NEO4J_PASSWORD  ? "✅ loaded" : "❌ MISSING");
 console.log("─────────────────────────────────────────────");
 
-// ─── Express ──────────────────────────────────────────────────────────────────
-const app = express();
-app.use(cors());
-app.use(express.json({ limit: "2mb" }));
-
-// ─── Neo4j ────────────────────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════════
-//  SECTION 1 — Express app + shared HTTP server
-// ═══════════════════════════════════════════════════════════════════════════════
-
+// ─── Express + HTTP server ────────────────────────────────────────────────────
 const app    = express();
-const server = http.createServer(app);   // single http.Server shared by ALL WebSocket servers
+const server = createServer(app);
 
-app.use(cors({
-  origin: ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
-  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5174";
+const ALLOWED_ORIGINS = new Set([
+  CLIENT_ORIGIN,
+  "http://127.0.0.1:5174",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:5178",
+  "http://127.0.0.1:5178",
+  "http://localhost:5179",
+  "http://127.0.0.1:5179",
+  "http://localhost:5180",
+  "http://127.0.0.1:5180",
+]);
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || ALLOWED_ORIGINS.has(origin)) return callback(null, true);
+    callback(new Error(`CORS denied by policy for origin: ${origin}`));
+  },
   credentials: true,
+};
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+app.use(express.json({ limit: "512kb" }));
+app.disable("x-powered-by");
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: false,
 }));
-app.use(express.json({ limit: "2mb" }));
+if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
 
-// ═══════════════════════════════════════════════════════════════════════════════
-//  SECTION 2 — Neo4j
-// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Socket.IO ───────────────────────────────────────────────────────────────
+const io = new SocketIOServer(server, { cors: corsOptions });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ── OT ENGINE (collaborative code editor) ────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+class OTEngine {
+  constructor(text = "") { this.text = text; this.version = 0; this.history = []; }
+  static xform(a, b) {
+    let r = { ...b };
+    if (a.type === "insert" && b.type === "insert") {
+      if (a.pos < b.pos || (a.pos === b.pos && a.uid < b.uid)) r.pos = b.pos + a.chars.length;
+    } else if (a.type === "insert" && b.type === "delete") {
+      if (a.pos <= b.pos) r.pos = b.pos + a.chars.length;
+    } else if (a.type === "delete" && b.type === "insert") {
+      if (a.pos < b.pos) r.pos = Math.max(b.pos - a.len, a.pos);
+    } else if (a.type === "delete" && b.type === "delete") {
+      if (a.pos < b.pos) r.pos = Math.max(b.pos - a.len, a.pos);
+      else if (a.pos === b.pos) r.skip = true;
+    }
+    return r;
+  }
+  apply(op) {
+    let x = { ...op };
+    const conc = this.history.filter(h => h.ver > (op.baseVer ?? this.version));
+    for (const h of conc) x = OTEngine.xform(h, x);
+    if (x.skip) return null;
+    if (x.type === "insert") {
+      const p = Math.max(0, Math.min(x.pos, this.text.length));
+      this.text = this.text.slice(0, p) + x.chars + this.text.slice(p);
+    } else if (x.type === "delete") {
+      const p = Math.max(0, Math.min(x.pos, this.text.length));
+      const l = Math.min(x.len, this.text.length - p);
+      if (l > 0) this.text = this.text.slice(0, p) + this.text.slice(p + l);
+    }
+    this.version++;
+    const rec = { ...x, ver: this.version };
+    this.history.push(rec);
+    if (this.history.length > 300) this.history = this.history.slice(-150);
+    return rec;
+  }
+  reset(t) { this.text = t; this.version = 0; this.history = []; }
+}
+
+const STARTERS = {
+  ts: `import { EventEmitter } from 'events';\ninterface Config { port: number; debug: boolean; }\nclass CKCEngine extends EventEmitter {\n  private config: Config;\n  constructor(config: Config) { super(); this.config = config; }\n  createSession(id: string) { console.log(\`Session: \${id}\`); }\n}\nconst engine = new CKCEngine({ port: 8080, debug: true });\nengine.createSession('sess_abc123');`,
+  js: `const routes = new Map();\nconst get = (p, fn) => routes.set('GET:' + p, fn);\nget('/api/status', () => console.log(JSON.stringify({ status: 'ok' })));\nconsole.log('Server on http://localhost:3000');`,
+  py: `def greet(name):\n    return f"Hello, {name}!"\n\nnumbers = [1, 2, 3, 4, 5]\nprint(greet("CKC-OS"))\nprint(f"Sum = {sum(numbers)}")`,
+  java: `public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from CKC-OS!");\n    }\n}`,
+  cpp: `#include <iostream>\nusing namespace std;\nint main() {\n    cout << "Hello, World!" << endl;\n    return 0;\n}`,
+  rs: `fn main() {\n    println!("Hello from Rust!");\n}`,
+  go: `package main\nimport "fmt"\nfunc main() {\n    fmt.Println("Hello from Go!")\n}`,
+  sql: `SELECT 1 AS hello;`,
+};
+
+// Per-language OT engines (code editor)
+const otEngines = new Map();
+const getOTEngine = (lang) => {
+  if (!otEngines.has(lang)) otEngines.set(lang, new OTEngine(STARTERS[lang] || ""));
+  return otEngines.get(lang);
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── CHAT STATE ────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+const chatRooms   = {};   // channelId  → Message[]
+const chatUsers   = {};   // socketId   → { ...user, channel }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── EDITOR STATE (OT users) ───────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+const editorUsers = new Map();  // socketId → { name, color, lang }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── SOCKET.IO ─────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+io.on("connection", (socket) => {
+  console.log("🔌 Socket connected:", socket.id);
+
+  // ── CHAT EVENTS ────────────────────────────────────────────────────────────
+
+  // Chat: user joins a channel
+  socket.on("chat:join", ({ user, channel }) => {
+    chatUsers[socket.id] = { ...user, channel };
+    socket.join(`chat:${channel}`);
+    socket.emit("chat:history", chatRooms[channel] || []);
+    const inChannel = Object.values(chatUsers).filter(u => u.channel === channel);
+    io.to(`chat:${channel}`).emit("chat:online_users", inChannel);
+    console.log(`💬 ${user.name} joined #${channel}`);
+  });
+
+  // Chat: send message
+  socket.on("chat:send_message", ({ channel, message }) => {
+    if (!chatRooms[channel]) chatRooms[channel] = [];
+    chatRooms[channel].push(message);
+    if (chatRooms[channel].length > 200) chatRooms[channel].shift();
+    io.to(`chat:${channel}`).emit("chat:new_message", message);
+  });
+
+  // Chat: thread reply
+  socket.on("chat:send_reply", ({ channel, msgId, reply }) => {
+    io.to(`chat:${channel}`).emit("chat:new_reply", { msgId, reply });
+  });
+
+  // Chat: reaction
+  socket.on("chat:react", ({ channel, msgId, emoji, userId }) => {
+    io.to(`chat:${channel}`).emit("chat:reaction", { msgId, emoji, userId });
+  });
+
+  // Chat: typing indicator
+  socket.on("chat:typing", ({ channel, user, isTyping }) => {
+    socket.to(`chat:${channel}`).emit("chat:typing", { user, isTyping });
+  });
+
+  // Chat: switch channel
+  socket.on("chat:switch_channel", ({ oldChannel, newChannel, user }) => {
+    socket.leave(`chat:${oldChannel}`);
+    socket.join(`chat:${newChannel}`);
+    chatUsers[socket.id] = { ...user, channel: newChannel };
+    socket.emit("chat:history", chatRooms[newChannel] || []);
+    const oldOnline = Object.values(chatUsers).filter(u => u.channel === oldChannel);
+    const newOnline = Object.values(chatUsers).filter(u => u.channel === newChannel);
+    io.to(`chat:${oldChannel}`).emit("chat:online_users", oldOnline);
+    io.to(`chat:${newChannel}`).emit("chat:online_users", newOnline);
+  });
+
+  // ── EDITOR (OT) EVENTS ─────────────────────────────────────────────────────
+
+  // Editor: user joins
+  socket.on("editor:join", ({ name, color, lang = "ts" }) => {
+    const username = typeof name === "string" ? name.trim().slice(0, 32) : "";
+    const userColor = typeof color === "string" && /^#[0-9A-Fa-f]{6}$/.test(color) ? color : "#4FC1FF";
+    const ALLOWED_LANGS = new Set(["ts","js","py","java","cpp","rs","go","sql"]);
+    const userLang = ALLOWED_LANGS.has(lang) ? lang : "ts";
+    if (!username) { socket.emit("error", { message: "Authentication required." }); socket.disconnect(true); return; }
+
+    editorUsers.set(socket.id, { name: username, color: userColor, lang: userLang });
+    const eng = getOTEngine(userLang);
+    socket.emit("editor:sync", { lang: userLang, text: eng.text, ver: eng.version });
+    socket.broadcast.emit("editor:presence", { id: socket.id, name: username, color: userColor, online: true });
+    const userList = [...editorUsers.entries()].map(([id, u]) => ({ id, ...u }));
+    socket.emit("editor:user_list", userList);
+    console.log(`✏️  Editor joined: ${username} [${socket.id}]`);
+  });
+
+  // Editor: OT operation
+  socket.on("editor:op", ({ lang, op }) => {
+    const user = editorUsers.get(socket.id);
+    if (!user || typeof op !== "object" || !op) return;
+    const ALLOWED_LANGS = new Set(["ts","js","py","java","cpp","rs","go","sql"]);
+    const safeLang = ALLOWED_LANGS.has(lang) ? lang : user.lang;
+    if (!["insert","delete"].includes(op.type) || typeof op.pos !== "number" || op.pos < 0) return;
+    if (op.type === "insert" && typeof op.chars !== "string") return;
+    if (op.type === "delete" && typeof op.len !== "number") return;
+    const eng = getOTEngine(safeLang);
+    const applied = eng.apply({ ...op, uid: socket.id });
+    if (applied) socket.broadcast.emit("editor:op", { lang: safeLang, op: applied, ver: eng.version });
+  });
+
+  // Editor: switch language
+  socket.on("editor:switch_lang", ({ lang }) => {
+    const user = editorUsers.get(socket.id);
+    const ALLOWED_LANGS = new Set(["ts","js","py","java","cpp","rs","go","sql"]);
+    if (!user || !ALLOWED_LANGS.has(lang)) return;
+    editorUsers.set(socket.id, { ...user, lang });
+    const eng = getOTEngine(lang);
+    socket.emit("editor:sync", { lang, text: eng.text, ver: eng.version });
+  });
+
+  // Editor: cursor broadcast
+  socket.on("editor:cursor", ({ line, col, lang }) => {
+    const user = editorUsers.get(socket.id);
+    if (!user || typeof line !== "number" || typeof col !== "number") return;
+    const ALLOWED_LANGS = new Set(["ts","js","py","java","cpp","rs","go","sql"]);
+    const safeLang = ALLOWED_LANGS.has(lang) ? lang : user.lang;
+    socket.broadcast.emit("editor:cursor", { id: socket.id, name: user.name, color: user.color, line, col, lang: safeLang });
+  });
+
+  // ── DISCONNECT ─────────────────────────────────────────────────────────────
+  socket.on("disconnect", () => {
+    // Chat cleanup
+    const chatUser = chatUsers[socket.id];
+    if (chatUser) {
+      delete chatUsers[socket.id];
+      const inChannel = Object.values(chatUsers).filter(u => u.channel === chatUser.channel);
+      io.to(`chat:${chatUser.channel}`).emit("chat:online_users", inChannel);
+    }
+
+    // Editor cleanup
+    const editorUser = editorUsers.get(socket.id);
+    if (editorUser) {
+      socket.broadcast.emit("editor:presence", { id: socket.id, online: false });
+      editorUsers.delete(socket.id);
+      console.log(`👋 Editor left: ${editorUser.name} [${socket.id}]`);
+    }
+
+    console.log("🔌 Socket disconnected:", socket.id);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── NEO4J ─────────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
 const driver = neo4j.driver(
   process.env.NEO4J_URI      || "bolt://localhost:7687",
   neo4j.auth.basic(
@@ -104,52 +269,22 @@ const driver = neo4j.driver(
   ),
   { maxConnectionPoolSize: 50 }
 );
-
-// ✅ FIX 1: Do NOT await this at the top level.
-// If Neo4j is down, the old code threw here and Express never called .listen(),
-// leaving port 5000 closed → Vite proxy got a 502 on every request.
-// Now we connect in the background; the server always starts.
-let neo4jReady = false;
-driver.getServerInfo()
-  .then(() => {
-    neo4jReady = true;
-    console.log("✅ Neo4j connected:", process.env.NEO4J_URI);
-  })
-  .catch(err => {
-    console.warn("⚠️  Neo4j connection failed (save/load features disabled):", err.message);
-  });
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-  { 
-    maxConnectionPoolSize: 50,
-    logging: {
-      level: 'error',
-      logger: (level, message) => {
-        // Suppress routing discovery spam when Neo4j is paused/offline
-        if (message && !String(message).includes('Could not perform discovery')) {
-          console.error(`[Neo4j ${level}] ${message}`);
-        }
-      }
-    }
-  }
-);
-
-let neo4jReady = false;
-driver.getServerInfo()
-  .then(() => { neo4jReady = true; console.log("✅ Neo4j connected:", process.env.NEO4J_URI); })
-  .catch(err  => console.log("⚠️  Neo4j unavailable (save/load disabled). This is expected if the Aura DB is paused."));
+try {
+  await driver.getServerInfo();
+  console.log("✅ Neo4j connected:", process.env.NEO4J_URI);
+} catch (err) {
+  console.warn("⚠️  Neo4j connection failed:", err.message);
+}
 
 function toNum(v) {
   if (v == null) return 0;
   return typeof v.toNumber === "function" ? v.toNumber() : (Number(v) || 0);
 }
-
 async function runQuery(cypher, params = {}) {
   const session = driver.session();
   try   { return await session.run(cypher, params); }
   finally { await session.close(); }
 }
-
 async function reconstructGraph(graphId, nodes) {
   const prefix = graphId + "__";
   const withConnections = await Promise.all(
@@ -173,94 +308,54 @@ async function reconstructGraph(graphId, nodes) {
   };
 }
 
-// ─── POST /api/chat  (Groq proxy) ────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// ── REST API ROUTES ───────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+// POST /api/chat  (Groq proxy)
 app.post("/api/chat", async (req, res) => {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "GROQ_API_KEY not set on server." });
-
   const { messages } = req.body;
   if (!messages || !Array.isArray(messages))
     return res.status(400).json({ error: "'messages' must be an array." });
-
   try {
     const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method:  "POST",
-      headers: {
-        "Content-Type":  "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
       body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages }),
     });
-
     const data = await groqRes.json();
-    if (!groqRes.ok) {
-      console.error("Groq error:", data);
-      return res.status(groqRes.status).json({ error: data });
-    }
+    if (!groqRes.ok) return res.status(groqRes.status).json({ error: data });
     res.json(data);
   } catch (err) {
-    console.error("Chat proxy error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ─── POST /api/graphs  (save) ────────────────────────────────────────────────
+// POST /api/graphs
 app.post("/api/graphs", async (req, res) => {
-  if (!neo4jReady)
-    return res.status(503).json({ error: "Neo4j is not connected. Check NEO4J_URI / credentials in .env." });
-// ═══════════════════════════════════════════════════════════════════════════════
-//  SECTION 3 — Knowledge Graph + Chat REST routes
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// ── POST /api/chat  (Groq AI proxy — single authoritative definition) ─────────
-// chat.js's chatRouter is mounted here; the old inline handler is removed.
-// chat.js reads GROQ_API_KEY from process.env at request time, same as before.
-app.use("/api/chat", chatRouter);
-
-// ── Live-chat history / presence REST helpers ─────────────────────────────────
-app.get("/api/chat/history/:channel",  (req, res) => res.json(getHistory(req.params.channel)));
-app.get("/api/chat/presence/:channel", (req, res) => res.json({ users: getPresenceForChannel(req.params.channel) }));
-
-// ── POST /api/graphs ──────────────────────────────────────────────────────────
-app.post("/api/graphs", async (req, res) => {
-  if (!neo4jReady) return res.status(503).json({ error: "Neo4j is not connected." });
-
   const { language, code, graph, name } = req.body;
   if (!graph || (!graph.concepts && !graph.errors))
     return res.status(400).json({ error: "Invalid graph payload." });
-
-  const id      = uuidv4();
-  const savedAt = new Date().toISOString();
-  const label   = name || `${language || "unknown"} — ${new Date().toLocaleTimeString()}`;
-
+  const id = uuidv4(), savedAt = new Date().toISOString();
+  const label = name || `${language || "unknown"} — ${new Date().toLocaleTimeString()}`;
   const session = driver.session();
   try {
-    // ✅ FIX 2: neo4j-driver v6 removed writeTransaction / readTransaction.
-    // Use executeWrite / executeRead instead.
-    await session.executeWrite(async (tx) => {
+    await session.writeTransaction(async (tx) => {
       await tx.run(
-        `CREATE (g:CodeGraph {
-           id:$id, name:$name, language:$language, code:$code, savedAt:$savedAt,
-           conceptCount:$cc, errorCount:$ec, fixCount:$fc, explanationCount:$xc
-         })`,
-        {
-          id, name: label, language: language || "unknown", code: code || "", savedAt,
+        `CREATE (g:CodeGraph { id:$id, name:$name, language:$language, code:$code, savedAt:$savedAt,
+           conceptCount:$cc, errorCount:$ec, fixCount:$fc, explanationCount:$xc })`,
+        { id, name: label, language: language || "unknown", code: code || "", savedAt,
           cc: neo4j.int((graph.concepts     || []).length),
           ec: neo4j.int((graph.errors       || []).length),
           fc: neo4j.int((graph.fixes        || []).length),
-          xc: neo4j.int((graph.explanations || []).length),
-        }
+          xc: neo4j.int((graph.explanations || []).length) }
       );
-
       const allNodes = [
-        ...(graph.concepts     || []),
-        ...(graph.errors       || []),
-        ...(graph.fixes        || []),
-        ...(graph.explanations || []),
         ...(graph.concepts || []), ...(graph.errors || []),
-        ...(graph.fixes    || []), ...(graph.explanations || []),
+        ...(graph.fixes || []),    ...(graph.explanations || []),
       ];
-
       for (const n of allNodes) {
         await tx.run(
           `MATCH (g:CodeGraph {id: $graphId})
@@ -269,7 +364,6 @@ app.post("/api/graphs", async (req, res) => {
           { graphId: id, nodeId: `${id}__${n.id}`, label: n.label || "", type: n.type || "concept", desc: n.desc || "" }
         );
       }
-
       for (const n of allNodes) {
         for (const tid of (n.connections || [])) {
           await tx.run(
@@ -279,101 +373,68 @@ app.post("/api/graphs", async (req, res) => {
         }
       }
     });
-
-    console.log("✅ Graph saved:", id);
     res.json({ id, name: label, language, savedAt });
   } catch (err) {
-    console.error("Neo4j save error:", err.message);
     res.status(500).json({ error: err.message });
   } finally {
     await session.close();
   }
 });
 
-// ─── GET /api/graphs  (list) ─────────────────────────────────────────────────
+// GET /api/graphs
 app.get("/api/graphs", async (req, res) => {
-  if (!neo4jReady) return res.json([]); // return empty list gracefully
-// ── GET /api/graphs ───────────────────────────────────────────────────────────
-app.get("/api/graphs", async (req, res) => {
-  if (!neo4jReady) return res.json([]);
-
   try {
     const result = await runQuery(
-      `MATCH (g:CodeGraph)
-       OPTIONAL MATCH (g)-[:HAS_NODE]->(n:KGNode)
+      `MATCH (g:CodeGraph) OPTIONAL MATCH (g)-[:HAS_NODE]->(n:KGNode)
        WITH g, collect(n) AS nodes
        RETURN g { .id, .name, .language, .savedAt, .code,
                   .conceptCount, .errorCount, .fixCount, .explanationCount } AS graph,
               [nd IN nodes | nd { .id, .label, .type, .desc }] AS nodes
        ORDER BY g.savedAt DESC`
     );
-
     const graphs = await Promise.all(
       result.records.map(async (record) => {
-        const g     = record.get("graph");
-        const nodes = record.get("nodes");
+        const g = record.get("graph"), nodes = record.get("nodes");
         const reconstructed = await reconstructGraph(g.id, nodes);
         reconstructed.language = g.language;
         return {
-          id:       g.id,
-          name:     g.name,
-          language: g.language,
-          savedAt:  g.savedAt,
-          code:     g.code,
           id: g.id, name: g.name, language: g.language, savedAt: g.savedAt, code: g.code,
           counts: {
-            concept:     toNum(g.conceptCount),
-            error:       toNum(g.errorCount),
-            fix:         toNum(g.fixCount),
-            explanation: toNum(g.explanationCount),
+            concept:     toNum(g.conceptCount), error:       toNum(g.errorCount),
+            fix:         toNum(g.fixCount),     explanation: toNum(g.explanationCount),
           },
           graph: reconstructed,
         };
       })
     );
-
     res.json(graphs);
   } catch (err) {
-    console.error("Neo4j list error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ─── GET /api/graphs/:id  (single) ───────────────────────────────────────────
-// ── GET /api/graphs/:id ───────────────────────────────────────────────────────
+// GET /api/graphs/:id
 app.get("/api/graphs/:id", async (req, res) => {
-  if (!neo4jReady) return res.status(503).json({ error: "Neo4j not connected." });
-
   const { id } = req.params;
   try {
     const result = await runQuery(
-      `MATCH (g:CodeGraph {id: $id})
-       OPTIONAL MATCH (g)-[:HAS_NODE]->(n:KGNode)
+      `MATCH (g:CodeGraph {id: $id}) OPTIONAL MATCH (g)-[:HAS_NODE]->(n:KGNode)
        RETURN g { .id, .name, .language, .savedAt, .code } AS graph,
-              collect(n { .id, .label, .type, .desc }) AS nodes`,
-      { id }
+              collect(n { .id, .label, .type, .desc }) AS nodes`, { id }
     );
     if (!result.records.length) return res.status(404).json({ error: "Graph not found." });
-
-    const g     = result.records[0].get("graph");
-    const nodes = result.records[0].get("nodes");
+    const g = result.records[0].get("graph"), nodes = result.records[0].get("nodes");
     const reconstructed = await reconstructGraph(g.id, nodes);
     reconstructed.language = g.language;
-
     res.json({ id: g.id, name: g.name, language: g.language, savedAt: g.savedAt, code: g.code, graph: reconstructed });
   } catch (err) {
-    console.error("Neo4j get error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ─── PATCH /api/graphs/:id  (rename) ─────────────────────────────────────────
-// ── PATCH /api/graphs/:id ─────────────────────────────────────────────────────
+// PATCH /api/graphs/:id  (rename)
 app.patch("/api/graphs/:id", async (req, res) => {
-  if (!neo4jReady) return res.status(503).json({ error: "Neo4j not connected." });
-
-  const { id }   = req.params;
-  const { name } = req.body;
+  const { id } = req.params, { name } = req.body;
   if (!name || typeof name !== "string") return res.status(400).json({ error: "name is required." });
 
   try {
@@ -384,77 +445,59 @@ app.patch("/api/graphs/:id", async (req, res) => {
     if (!result.records.length) return res.status(404).json({ error: "Graph not found." });
     res.json({ id, name: result.records[0].get("name") });
   } catch (err) {
-    console.error("Neo4j rename error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
 // ─── DELETE /api/graphs/:id ──────────────────────────────────────────────────
 // ── DELETE /api/graphs/:id ────────────────────────────────────────────────────
+// DELETE /api/graphs/:id
 app.delete("/api/graphs/:id", async (req, res) => {
-  if (!neo4jReady) return res.status(503).json({ error: "Neo4j not connected." });
-
   const { id } = req.params;
   try {
     await runQuery(
-      `MATCH (g:CodeGraph {id: $id})
-       OPTIONAL MATCH (g)-[:HAS_NODE]->(n:KGNode)
-       DETACH DELETE n, g`,
+      `MATCH (g:CodeGraph {id: $id}) OPTIONAL MATCH (g)-[:HAS_NODE]->(n:KGNode) DETACH DELETE n, g`,
       { id }
     );
     res.json({ ok: true, id });
   } catch (err) {
-    console.error("Neo4j delete error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
 // ─── PATCH /api/graphs/:id/nodes/:nodeLocalId  (edit node) ───────────────────
 // ── PATCH /api/graphs/:id/nodes/:nodeLocalId ──────────────────────────────────
+// PATCH /api/graphs/:id/nodes/:nodeLocalId
 app.patch("/api/graphs/:id/nodes/:nodeLocalId", async (req, res) => {
-  if (!neo4jReady) return res.status(503).json({ error: "Neo4j not connected." });
-
-  const { id, nodeLocalId } = req.params;
-  const { label, desc }     = req.body;
+  const { id, nodeLocalId } = req.params, { label, desc } = req.body;
   if (label == null && desc == null) return res.status(400).json({ error: "Provide label and/or desc." });
-
   const globalNodeId = `${id}__${nodeLocalId}`;
   const setClauses = [];
   const params = { nodeId: globalNodeId };
   const setClauses   = [];
   const params       = { nodeId: globalNodeId };
+  const setClauses = [], params = { nodeId: globalNodeId };
   if (label != null) { setClauses.push("n.label = $label"); params.label = label.trim(); }
-  if (desc  != null) { setClauses.push("n.desc  = $desc");  params.desc  = desc.trim();  }
-
+  if (desc  != null) { setClauses.push("n.desc  = $desc");  params.desc  = desc.trim(); }
   try {
     const result = await runQuery(
       `MATCH (n:KGNode {id: $nodeId}) SET ${setClauses.join(", ")}
-       RETURN n.id AS id, n.label AS label, n.type AS type, n.desc AS desc`,
-      params
+       RETURN n.id AS id, n.label AS label, n.type AS type, n.desc AS desc`, params
     );
     if (!result.records.length) return res.status(404).json({ error: "Node not found." });
     const r = result.records[0];
-    res.json({
-      id:    r.get("id").replace(`${id}__`, ""),
-      label: r.get("label"),
-      type:  r.get("type"),
-      desc:  r.get("desc"),
-    });
+    res.json({ id: r.get("id").replace(`${id}__`, ""), label: r.get("label"), type: r.get("type"), desc: r.get("desc") });
   } catch (err) {
-    console.error("Neo4j node edit error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ─── Health ───────────────────────────────────────────────────────────────────
-app.get("/health", (_req, res) => res.json({ ok: true, neo4j: neo4jReady, ts: new Date().toISOString() }));
+// GET /health
+app.get("/health", (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () =>
-  console.log(`🚀  Server running on http://localhost:${PORT}`)
-);
-
+server.listen(PORT, () => console.log(`🚀  Server running on http://localhost:${PORT}`));
 server.on("error", (err) => {
   if (err.code === "EADDRINUSE") {
     console.error(`❌ Port ${PORT} already in use. Run: kill $(lsof -t -i:${PORT})`);
@@ -956,7 +999,7 @@ server.on("error", (err) => {
     console.error(`❌ Port ${PORT} in use. Run:  kill $(lsof -t -i:${PORT})`);
     process.exit(1);
   }
+  if (err.code === "EADDRINUSE") { console.error(`❌ Port ${PORT} in use.`); process.exit(1); }
 });
-
 process.on("SIGINT",  async () => { await driver.close(); process.exit(0); });
 process.on("SIGTERM", async () => { await driver.close(); process.exit(0); });

@@ -381,7 +381,7 @@ chatRouter.post('/', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default chatRouter;
 
 /* ═══════════════════════════════════════════════════════════════
    SECTION 5 — REST helpers  (call from server/index.js if needed)
