@@ -1,5 +1,3 @@
-import fetch from "node-fetch";
-
 export default async function handler(req, res) {
   // Add CORS headers for Vercel
   res.setHeader("Access-Control-Allow-Credentials", true);
@@ -15,13 +13,23 @@ export default async function handler(req, res) {
     return;
   }
 
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+  // Debugging: Let's see every single environment variable name Vercel has
+  const envKeys = Object.keys(process.env);
+  const apiKey = (process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY || "").trim();
+  
+  if (!apiKey) {
+    return res.status(500).json({ 
+      error: "GROQ_API_KEY not set on server.",
+      debug: {
+        message: "This is a list of ALL environment variable names found on the server. Look for GROQ_API_KEY or VITE_GROQ_API_KEY here.",
+        allFoundKeys: envKeys,
+        vercelEnv: process.env.VERCEL_ENV || "unknown"
+      }
+    });
   }
 
-  const apiKey = process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: "GROQ_API_KEY not set on server." });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
   const { messages } = req.body;
@@ -44,13 +52,11 @@ export default async function handler(req, res) {
 
     const data = await groqRes.json();
     if (!groqRes.ok) {
-      console.error("Groq error:", data);
       return res.status(groqRes.status).json({ error: data });
     }
     
     res.status(200).json(data);
   } catch (err) {
-    console.error("Chat proxy error:", err.message);
     res.status(500).json({ error: err.message });
   }
 }
