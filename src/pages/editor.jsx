@@ -1388,6 +1388,64 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* ── MEDIA QUERIES ── */
+
+/* 1. Large Tablets & Small Laptops (1024px and down) */
+@media screen and (max-width: 1024px) {
+  .sb { width: 60px !important; transition: width 0.3s; }
+  .sb span:not(.new-tab-dot):not(.new-tab-dot + span) { display: none; }
+  .ft { padding: 8px !important; justify-content: center; }
+  .ft span:last-child { display: none; }
+  .presence-info, .sec-hdr span:first-child, .divider, .dbg-badge span:not(.dbg-cnt) { display: none; }
+}
+
+/* 2. Tablets (768px and down) */
+@media screen and (max-width: 768px) {
+  .topbar { padding: 0 10px; height: 40px; }
+  .tb-logo { font-size: 14px; }
+  .live-badge, .py-badge, .val-pop { font-size: 9px; padding: 2px 6px; }
+  .tab { padding: 0 10px; font-size: 11px; height: 32px; }
+  .tab .tx { margin-left: 6px; }
+  .bc { padding: 4px 10px; font-size: 10px; }
+  .out-hdr { height: 32px; }
+  .out-tab { padding: 0 10px; font-size: 11px; }
+  .terminal-container { width: 92%; padding: 24px; border-radius: 20px; }
+  .brand-text h1 { font-size: 28px; }
+}
+
+/* 3. Mobile Devices (600px and down - iPhone / Android) */
+@media screen and (max-width: 600px) {
+  .sb, .out-panel, .presence-card, .sec-hdr, .logs-foot, .dbg-badge { display: none !important; }
+  .topbar { justify-content: space-between; }
+  .tb-logo .gem { width: 20px; height: 20px; font-size: 10px; }
+  .lp { padding: 4px 8px !important; }
+  .lp span:last-child { display: none; }
+  .tab { min-width: 80px; max-width: 120px; }
+  .bc span:first-child, .bc span:nth-child(2) { display: none; }
+  
+  .terminal-nav { margin-bottom: 16px; border-radius: 12px; }
+  .nav-item { padding: 10px; font-size: 11px; }
+  .brand-icon { font-size: 36px; }
+  .terminal-submit { padding: 14px; font-size: 13px; }
+  .footer-content { gap: 12px; font-size: 9px; }
+  
+  /* Make editor full screen */
+  .presence-panel-collapsed { display: none; }
+  
+  /* Debugging Room Modal Responsiveness */
+  .dbg-room { width: 95vw !important; height: 85vh !important; flex-direction: column !important; }
+  .dbg-errors-panel { width: 100% !important; height: 180px !important; border-right: none !important; border-bottom: 1px solid rgba(255,255,255,.05); }
+}
+
+/* 4. Small Mobile Devices (360px and down) */
+@media screen and (max-width: 360px) {
+  .brand-text h1 { font-size: 24px; }
+  .terminal-container { padding: 20px; }
+  .footer-content span:last-child { display: none; }
+  .topbar { gap: 4px; }
+  .live-badge { display: none; }
+}
 `;
 
 // ═══════════ CODEMIRROR ═══════════
@@ -1403,13 +1461,23 @@ const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, remoteOp
     suppress.current = true;
     try {
       const v = viewRef.current;
-      for (const op of remoteOps) {
-        const dl = v.state.doc.length;
-        if (op.type === "insert") { const p = Math.max(0, Math.min(op.pos, dl)); v.dispatch({ changes: { from: p, insert: op.chars } }); }
-        else if (op.type === "delete") { const f = Math.max(0, Math.min(op.pos, dl)); const t = Math.min(f + op.len, dl); if (t > f) v.dispatch({ changes: { from: f, to: t } }); }
-      }
+      v.dispatch({
+        changes: remoteOps.map(op => {
+          const dl = v.state.doc.length;
+          if (op.type === "insert") return { from: Math.max(0, Math.min(op.pos, dl)), insert: op.chars };
+          if (op.type === "delete") {
+            const f = Math.max(0, Math.min(op.pos, dl));
+            const t = Math.min(f + op.len, dl);
+            return t > f ? { from: f, to: t } : null;
+          }
+          return null;
+        }).filter(Boolean)
+      });
       prevDoc.current = v.state.doc.toString();
-    } finally { suppress.current = false; }
+    } finally { 
+      suppress.current = false;
+      onRemoteOpsProcessed?.(); // Signal Shell to clear the queue
+    }
   }, [remoteOps]);
   useEffect(() => {
     if (inited.current || !domRef.current) return; inited.current = true;
@@ -2220,11 +2288,9 @@ function Shell({ user, onLogout }) {
       })
       .on("broadcast", { event: "op" }, ({ payload }) => {
         if (payload.uid !== me.id) {
-          // Only apply operation if it's for the current active tab
           if (payload.tabId === activeTab) {
-            setRemOps([payload.op]);
+            setRemOps(prev => [...prev, payload.op]); // Use queue instead of single op
           } else {
-            // Buffer it or update the tab's code property in state
             setTabs(prev => prev.map(t => 
               t.id === payload.tabId ? { ...t, code: (t.code || "") + (payload.op.chars || "") } : t
             ));
@@ -2251,6 +2317,28 @@ function Shell({ user, onLogout }) {
           toast(`User ${payload.name} opened ${payload.tab.name}`);
         }
       })
+      .on("broadcast", { event: "requestState" }, ({ payload }) => {
+        if (payload.uid !== me.id) {
+          // Send current state to the new user
+          channelRef.current.send({
+            type: "broadcast",
+            event: "fullState",
+            payload: {
+              uid: me.id,
+              tabs: tabs.map(t => ({
+                ...t,
+                code: t.id === activeTab ? (activeEditorRef.current?._getText() || t.code) : t.code
+              }))
+            }
+          });
+        }
+      })
+      .on("broadcast", { event: "fullState" }, ({ payload }) => {
+        if (payload.uid !== me.id) {
+          setTabs(payload.tabs);
+          toast("Connected: Synchronizing codebase...");
+        }
+      })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           await channel.track({
@@ -2261,6 +2349,12 @@ function Shell({ user, onLogout }) {
             col: cursor.col,
             tabId: activeTab,
             online: true
+          });
+          // Request initial state from others
+          channel.send({
+            type: "broadcast",
+            event: "requestState",
+            payload: { uid: me.id }
           });
         }
       });
@@ -2359,9 +2453,14 @@ function Shell({ user, onLogout }) {
   }, [lang, me]);
 
   const switchLang = useCallback(lk => {
+    // Save current editor text to tabs state before switching
+    if (activeTab) {
+      const txt = activeEditorRef.current?._getText() || "";
+      setTabs(p => p.map(t => t.id === activeTab ? { ...t, code: txt } : t));
+    }
     setLang(lk); setRemOps([]); remBuf.current = []; setLiveValidation(null);
     WS.send(myId.current, { type: "sync", lang: lk });
-  }, []);
+  }, [activeTab]);
 
   const triggerError = useCallback((msg, cLang) => {
     setErrPopup({ msg, lang: cLang }); setErrShake(true); setTimeout(() => setErrShake(false), 400);
@@ -2738,10 +2837,11 @@ function Shell({ user, onLogout }) {
             <div style={{ flex: 1, overflow: "hidden" }}>
               {activeTab ? (
                 <CMEditor key={activeTab + lang} ref={activeEditorRef} lang={lang}
-                  initText={curTab?.isNew ? (curTab.code || "") : ""} fileKey={activeTab}
+                  initText={tabs.find(t => t.id === activeTab)?.code || ""} fileKey={activeTab}
                   onLocalOp={handleLocalOp} onCursorMove={handleCursorMove}
-                  remoteOps={curTab?.isNew ? [] : remOps} cursors={curTab?.isNew ? [] : cursors} 
-                  lineLocks={lineLocks} myId={me.id} readOnly={false} />
+                  remoteOps={remOps} cursors={activeCursors} 
+                  lineLocks={lineLocks} myId={me.id} readOnly={false} 
+                  onRemoteOpsProcessed={() => setRemOps([])} />
               ) : (
                 <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: "#4a5568" }}>
                   <div style={{ fontSize: 48, opacity: .1 }}>⚡</div>
