@@ -13,7 +13,7 @@
     "server": "node server.js"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": "20.x"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
