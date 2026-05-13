@@ -191,9 +191,13 @@ body { font-family: 'Instrument Sans', sans-serif; background: #0d0f14; color: #
 ::-webkit-scrollbar{width:5px;height:5px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:2px;} ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.14);}
 
 @media(max-width:900px){
-  .hero{padding:7rem 1.5rem 4rem;} .hero-visual{display:none;}
+  .hero{padding:6.5rem 1.5rem 4.5rem; text-align:center; display:flex; flex-direction:column; justify-content:center;} .hero-visual{display:none;}
+  .hero-content{margin:0 auto;}
+  .hero-badge{margin-left:auto; margin-right:auto; justify-content:center;}
+  .hero-stats{justify-content:center; gap:1.5rem; margin-top:3rem;}
+  .fade-4{justify-content:center;}
   .ckc-nav{padding:.9rem 1.5rem;} .nav-links{display:none;}
-  .section{padding:4rem 1.5rem;} .cta-section{padding:4.5rem 1.5rem;} .footer{padding:1.3rem 1.5rem;}
+  .section{padding:4rem 1.5rem;} .cta-section{padding:4.5rem 1.5rem;} .footer{padding:1.3rem 1.5rem; text-align:center; justify-content:center;}
   .layers-grid{grid-template-columns:1fr;} .apps-grid{grid-template-columns:1fr;} .efc-body{grid-template-columns:1fr;}
 }
 `;
@@ -304,7 +308,7 @@ function HomePage({
             <button key={id} className="nav-link" onClick={() => scrollTo(id)}>{l}</button>
           ))}
         </div>
-        <button className="btn-nav" onClick={onLaunch}>⚡ Launch Editor</button>
+        <button className="btn-nav" onClick={onLaunch}>⚡ Open Editor</button>
       </nav>
 
       {/* ── HERO ── */}
@@ -316,7 +320,7 @@ function HomePage({
               <span className="live-dot a-blink"/>
               CRDT/OT · CodeMirror 6 · 8 Languages · Real-Time
             </div>
-            <h1 className="fade-2" style={{ fontFamily:"var(--disp)", fontSize:"clamp(2.7rem,6.5vw,5.2rem)", fontWeight:800, lineHeight:1.0, letterSpacing:"-.04em", color:"#fff", marginBottom:"1.2rem" }}>
+            <h1 className="fade-2" style={{ fontFamily:"var(--disp)", fontSize:"clamp(2.1rem, 9vw, 5.2rem)", fontWeight:800, lineHeight:1.15, letterSpacing:"-.04em", color:"#fff", marginBottom:"1.2rem" }}>
               Cognitive Knowledge<br/><span className="hp-grad">Coding OS</span>
             </h1>
             <p className="fade-3" style={{ fontSize:"1.05rem", color:"var(--text-2)", maxWidth:540, lineHeight:1.8, marginBottom:"2.2rem", fontWeight:300 }}>
@@ -324,7 +328,7 @@ function HomePage({
             </p>
             <div className="fade-4" style={{ display:"flex", gap:".9rem", flexWrap:"wrap", alignItems:"center" }}>
               <button className="btn-primary" onClick={onLaunch}>
-                ⚡ Launch Collaborative Editor <span className="arrow">→</span>
+                ⚡ Open Editor <span className="arrow">→</span>
               </button>
               <button className="btn-ghost" onClick={() => scrollTo("overview")}>System Overview</button>
             </div>

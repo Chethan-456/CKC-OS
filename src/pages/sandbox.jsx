@@ -284,9 +284,9 @@ function interpretPython(code) {
             const val = printMatch[1]
               .replace(/f"([^"]+)"/g, (_, s) => "`" + s.replace(/\{([^}]+)\}/g, "${$1}") + "`")
               .replace(/f'([^']+)'/g, (_, s) => "`" + s.replace(/\{([^}]+)\}/g, "${$1}") + "`");
-            output.push(String(eval(val)));
+            output.push(String((0, eval)(val)));
           } catch {
-            output.push(eval(printMatch[1].replace(/'/g, '"')));
+            output.push((0, eval)(printMatch[1].replace(/'/g, '"')));
           }
         }
       }

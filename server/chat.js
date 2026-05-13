@@ -89,19 +89,28 @@ function getPresence(channel) {
    SECTION 3 — WebSocket server  (initChatServer)
    ═══════════════════════════════════════════════════════════════ */
 
-function initChatServer() {
-  const wss = new WebSocketServer({
-  noServer: true,
-  verifyClient: ({ origin }, cb) => {
+function initChatServer(server) {
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on('upgrade', (request, socket, head) => {
+    const origin = request.headers.origin;
     const allowed = [
       'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:5175',
       'http://localhost:3000',
       'http://127.0.0.1:5173',
+      'http://127.0.0.1:5174',
     ];
-    // Allow if no origin (non-browser clients) or origin is whitelisted
-    cb(!origin || allowed.includes(origin));
-  },
-});
+
+    if (!origin || allowed.includes(origin)) {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    } else {
+      socket.destroy();
+    }
+  });
 
   wss.on('connection', (ws, req) => {
 

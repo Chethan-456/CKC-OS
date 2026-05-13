@@ -151,7 +151,7 @@ app.get("/api/chat/presence/:channel", (req, res) =>
 
 // ─── POST /api/graphs  (save) ────────────────────────────────────────────────
 app.post("/api/graphs", async (req, res) => {
-  const { language, code, graph, name } = req.body;
+  const { language, code, graph, name, userId } = req.body;
   if (!graph || (!graph.concepts && !graph.errors))
     return res.status(400).json({ error: "Invalid graph payload." });
 
@@ -164,11 +164,11 @@ app.post("/api/graphs", async (req, res) => {
     await session.writeTransaction(async (tx) => {
       await tx.run(
         `CREATE (g:CodeGraph {
-           id:$id, name:$name, language:$language, code:$code, savedAt:$savedAt,
+           id:$id, userId:$userId, name:$name, language:$language, code:$code, savedAt:$savedAt,
            conceptCount:$cc, errorCount:$ec, fixCount:$fc, explanationCount:$xc
          })`,
         {
-          id, name: label, language: language || "unknown", code: code || "", savedAt,
+          id, userId: userId || "anonymous", name: label, language: language || "unknown", code: code || "", savedAt,
           cc: neo4j.int((graph.concepts     || []).length),
           ec: neo4j.int((graph.errors       || []).length),
           fc: neo4j.int((graph.fixes        || []).length),
@@ -219,7 +219,7 @@ app.get("/api/graphs", async (req, res) => {
       `MATCH (g:CodeGraph)
        OPTIONAL MATCH (g)-[:HAS_NODE]->(n:KGNode)
        WITH g, collect(n) AS nodes
-       RETURN g { .id, .name, .language, .savedAt, .code,
+       RETURN g { .id, .userId, .name, .language, .savedAt, .code,
                   .conceptCount, .errorCount, .fixCount, .explanationCount } AS graph,
               [nd IN nodes | nd { .id, .label, .type, .desc }] AS nodes
        ORDER BY g.savedAt DESC`
@@ -233,6 +233,7 @@ app.get("/api/graphs", async (req, res) => {
         reconstructed.language = g.language;
         return {
           id:       g.id,
+          userId:   g.userId,
           name:     g.name,
           language: g.language,
           savedAt:  g.savedAt,

@@ -33,6 +33,22 @@ const CSS = `
   ::-webkit-scrollbar-thumb { background:rgba(34,211,165,.2); border-radius:2px; }
   textarea { outline:none; resize:none; }
   button   { cursor:pointer; font-family:inherit; }
+
+  @media screen and (max-width: 1200px) {
+    .metrics-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  }
+
+  @media screen and (max-width: 900px) {
+    .main-grid { grid-template-columns: 1fr !important; }
+    .metrics-grid { grid-template-columns: 1fr !important; }
+  }
+
+  @media screen and (max-width: 600px) {
+    .header-top { flex-direction: column; align-items: flex-start !important; }
+    .header-controls { align-items: flex-start !important; width: 100%; }
+    .stat-box .stat-num { font-size: 18px !important; }
+    .editor-container { height: 400px !important; }
+  }
 `;
 
 /* ── Design Tokens (navy/teal theme matching landing) ── */
@@ -429,9 +445,10 @@ function OutputTerminal({result,lang}){
   </div>);
 }
 
-function Panel({children,style={}}){
-  return<div style={{borderRadius:14,border:`1px solid ${C.border}`,background:C.surface,overflow:"hidden",...style}}>{children}</div>;
+function Panel({children,className,style={}}){
+  return<div className={className} style={{borderRadius:14,border:`1px solid ${C.border}`,background:C.surface,overflow:"hidden",...style}}>{children}</div>;
 }
+
 
 function PanelHeader({left,right}){
   return(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 16px",
@@ -759,7 +776,8 @@ export default function CKCOSUnified(){
         <div style={{position:"relative",zIndex:1,maxWidth:1440,margin:"0 auto",padding:"2rem 1.5rem"}}>
 
           {/* ══ HEADER ══ */}
-          <div style={{display:"flex",flexWrap:"wrap",alignItems:"flex-start",justifyContent:"space-between",gap:20,marginBottom:28}}>
+          <div className="header-top" style={{display:"flex",flexWrap:"wrap",alignItems:"flex-start",justifyContent:"space-between",gap:20,marginBottom:28}}>
+
             <div>
               <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:12}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -784,7 +802,8 @@ export default function CKCOSUnified(){
             </div>
 
             {/* Status + Controls */}
-            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:10}}>
+            <div className="header-controls" style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:10}}>
+
               <div style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",borderRadius:10,
                 border:`1px solid ${isTracking?"rgba(34,211,165,.3)":C.border}`,background:C.surface}}>
                 <span className={isTracking?"live-blink":""} style={{width:7,height:7,borderRadius:"50%",
@@ -836,7 +855,8 @@ export default function CKCOSUnified(){
           )}
 
           {/* ══ ROW 1: Status overview ══ */}
-          <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:10,marginBottom:10}}>
+          <div className="main-grid" style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:10,marginBottom:10}}>
+
             <div style={{borderRadius:12,padding:"1rem 1.4rem",border:`1px solid ${cog.color}2a`,
               background:C.surface,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
               <div style={{width:44,height:44,borderRadius:10,flexShrink:0,display:"flex",alignItems:"center",
@@ -866,7 +886,8 @@ export default function CKCOSUnified(){
           </div>
 
           {/* ══ ROW 2: Metric cards ══ */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:10}}>
+          <div className="metrics-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:10}}>
+
             <MetricCard label="Typing Speed"   value={wpm}          unit="WPM"    color={C.cyan}   history={wpmHistory} icon="⌨"
               status={wpm>60?"FAST":wpm>30?"NORMAL":isTracking?"SLOW":null} statusColor={wpm>60?C.teal:wpm>30?C.cyan:C.amber}/>
             <MetricCard label="Backspace Rate" value={`${bsRate}%`} unit="of keys" color={C.amber}  history={bsHistory}  icon="⌫"
@@ -878,10 +899,12 @@ export default function CKCOSUnified(){
           </div>
 
           {/* ══ ROW 3: Editor + Tabs + optional Assist panel ══ */}
-          <div style={{display:"grid",gridTemplateColumns:activeAssist?"1fr 1fr 300px":"1fr 1fr",gap:12,marginBottom:10,transition:"grid-template-columns .3s"}}>
+          <div className="main-grid" style={{display:"grid",gridTemplateColumns:activeAssist?"1fr 1fr 300px":"1fr 1fr",gap:12,marginBottom:10,transition:"grid-template-columns .3s"}}>
+
 
             {/* ── Code Editor ── */}
-            <Panel style={{display:"flex",flexDirection:"column",minHeight:480}}>
+            <Panel className="editor-container" style={{display:"flex",flexDirection:"column",minHeight:480}}>
+
               <PanelHeader
                 left={
                   <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>

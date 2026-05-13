@@ -3,38 +3,39 @@ import { Navigate, Link } from "react-router-dom";
 import { supabase } from "../lib/supabase.js";
 
 /* ═══════════════════════════════════════════════════════════════
-   CKC-OS · AUTH + SETTINGS MODULE
+   CKC-OS · AUTH + SETTINGS MODULE  (combined v1 + v2)
    Exports:
      - useAuth()          → read/write the global auth store
      - AuthProvider       → wrap your app root with this
      - SettingsPanel      → full settings UI (modal or page)
-     - ProtectedRoute     → guards routes that need a session
+     - ProtectedRoute     → guards routes that need a session (router-safe)
+     - ProtectedScreen    → inline fallback (no router required)
      - authStore          → raw store (legacy compat with editor.jsx)
      - SettingsButton     → drop-in button for topbars
      - useSettings()      → convenience hook for open/close panel
    ═══════════════════════════════════════════════════════════════ */
 
-// ─── Design tokens (matches CKC-OS dark system) ───────────────
+// ─── Design tokens ────────────────────────────────────────────
 const C = {
-  bg: "#080a0f",
-  bg2: "#0c0e15",
-  bg3: "#10131c",
-  bg4: "#151825",
-  glass: "rgba(255,255,255,.032)",
-  rim: "rgba(255,255,255,.06)",
-  rim2: "rgba(255,255,255,.1)",
-  cyan: "#00d4ff",
-  green: "#00ff9d",
-  rose: "#ff4d8d",
-  amber: "#ffb547",
+  bg:     "#080a0f",
+  bg2:    "#0c0e15",
+  bg3:    "#10131c",
+  bg4:    "#151825",
+  glass:  "rgba(255,255,255,.032)",
+  rim:    "rgba(255,255,255,.06)",
+  rim2:   "rgba(255,255,255,.1)",
+  cyan:   "#00d4ff",
+  green:  "#00ff9d",
+  rose:   "#ff4d8d",
+  amber:  "#ffb547",
   violet: "#a78bfa",
-  red: "#ff5555",
-  text: "#dde4f5",
-  text2: "#6b7a9e",
-  text3: "#343d54",
-  mono: "'JetBrains Mono', monospace",
-  disp: "'Syne', sans-serif",
-  body: "'DM Sans', sans-serif",
+  red:    "#ff5555",
+  text:   "#dde4f5",
+  text2:  "#6b7a9e",
+  text3:  "#343d54",
+  mono:   "'JetBrains Mono', monospace",
+  disp:   "'Syne', sans-serif",
+  body:   "'DM Sans', sans-serif",
 };
 
 // ─── CSS ──────────────────────────────────────────────────────
@@ -242,8 +243,7 @@ const AUTH_CSS = `
 }
 .ckc-status-dot::before {
   content: ''; width: 6px; height: 6px; border-radius: 50%;
-  background: #00ff9d;
-  box-shadow: 0 0 6px #00ff9d;
+  background: #00ff9d; box-shadow: 0 0 6px #00ff9d;
   animation: statusPulse 2s ease-in-out infinite;
 }
 @keyframes statusPulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
@@ -251,10 +251,8 @@ const AUTH_CSS = `
 /* ── Stat chips ── */
 .ckc-stats-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
 .ckc-stat-chip {
-  flex: 1; min-width: 90px;
-  padding: 12px; border-radius: 10px;
-  background: rgba(255,255,255,.025);
-  border: 1px solid rgba(255,255,255,.06);
+  flex: 1; min-width: 90px; padding: 12px; border-radius: 10px;
+  background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06);
 }
 .ckc-stat-val { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; color: #dde4f5; }
 .ckc-stat-lbl { font-size: 10px; color: rgba(255,255,255,.3); margin-top: 3px; text-transform: uppercase; letter-spacing: .06em; }
@@ -263,10 +261,8 @@ const AUTH_CSS = `
 .ckc-kbd {
   font-size: 11px; font-family: 'JetBrains Mono', monospace;
   padding: 3px 8px; border-radius: 5px;
-  background: rgba(255,255,255,.06);
-  border: 1px solid rgba(255,255,255,.12);
-  color: rgba(255,255,255,.6);
-  white-space: nowrap;
+  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
+  color: rgba(255,255,255,.6); white-space: nowrap;
 }
 
 /* ── Danger zone ── */
@@ -296,8 +292,7 @@ const AUTH_CSS = `
   border-radius: 10px; padding: 10px 16px;
   display: flex; align-items: center; gap: 8px;
   font-size: 12.5px; color: #dde4f5; font-family: 'DM Sans', sans-serif;
-  animation: toastIn .25s ease both;
-  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  animation: toastIn .25s ease both; box-shadow: 0 8px 32px rgba(0,0,0,.5);
 }
 .ckc-toast.exit { animation: toastOut .2s ease both; }
 .ckc-toast-dot { width: 7px; height: 7px; border-radius: 50%; background: #00ff9d; flex-shrink: 0; }
@@ -318,6 +313,7 @@ const AUTH_CSS = `
   background: linear-gradient(135deg, #00d4ff, #00ff9d);
   color: #080a0f; font-size: 13px; font-weight: 700;
   font-family: 'Syne', sans-serif; cursor: pointer; transition: opacity .15s;
+  text-decoration: none; display: inline-flex; align-items: center;
 }
 .ckc-btn-primary:hover { opacity: .88; }
 
@@ -335,41 +331,47 @@ const AUTH_CSS = `
 // ─── Default preferences ──────────────────────────────────────
 const DEFAULT_PREFS = {
   editor: {
-    tabSize: "2",
-    fontSize: "14",
-    wordWrap: false,
-    vim: false,
-    autoClose: true,
+    tabSize:      "2",
+    fontSize:     "14",
+    wordWrap:     false,
+    vim:          false,
+    autoClose:    true,
     showBehavior: true,
-    lineNumbers: true,
+    lineNumbers:  true,
+    autoRejoin:   true,
+    sessionTimeout: "60",
   },
   appearance: {
-    accent: "#00d4ff",
-    density: "comfortable",
+    accent:       "#00d4ff",
+    density:      "comfortable",
     reduceMotion: false,
-    scanlines: true,
+    scanlines:    true,
   },
   ai: {
-    skillLevel: "auto",
+    skillLevel:    "auto",
     proactiveTips: true,
     alwaysShowBigO: false,
-    model: "llama-3.3-70b-versatile",
+    reviewOnPaste:  false,
+    explainErrors:  false,
+    model:         "llama-3.3-70b-versatile",
   },
   keybindings: {
-    openAI: "⌘K",
+    openAI:        "⌘K",
     toggleSidebar: "⌘\\",
-    runCode: "⇧⌘R",
-    openSettings: "⌘,",
+    runCode:       "⇧⌘R",
+    openSettings:  "⌘,",
+    newSession:    "⇧⌘N",
+    copyResponse:  "⇧⌘C",
   },
 };
 
 const CURSOR_COLORS = [
-  { hex: "#00d4ff", label: "Cyan" },
-  { hex: "#00ff9d", label: "Green" },
-  { hex: "#ff4d8d", label: "Rose" },
-  { hex: "#ffb547", label: "Amber" },
+  { hex: "#00d4ff", label: "Cyan"   },
+  { hex: "#00ff9d", label: "Green"  },
+  { hex: "#ff4d8d", label: "Rose"   },
+  { hex: "#ffb547", label: "Amber"  },
   { hex: "#a78bfa", label: "Violet" },
-  { hex: "#f472b6", label: "Pink" },
+  { hex: "#f472b6", label: "Pink"   },
 ];
 
 const LANG_OPTIONS = [
@@ -385,12 +387,9 @@ function loadSession() {
   try { return JSON.parse(sessionStorage.getItem(STORE_KEY) || "null"); }
   catch { return null; }
 }
-function saveSession(v) {
-  sessionStorage.setItem(STORE_KEY, JSON.stringify(v));
-}
-function clearSession() {
-  sessionStorage.removeItem(STORE_KEY);
-}
+function saveSession(v) { sessionStorage.setItem(STORE_KEY, JSON.stringify(v)); }
+function clearSession() { sessionStorage.removeItem(STORE_KEY); }
+
 function loadPrefs() {
   try {
     const raw = localStorage.getItem(PREFS_KEY);
@@ -398,16 +397,16 @@ function loadPrefs() {
     return deepMerge(DEFAULT_PREFS, JSON.parse(raw));
   } catch { return DEFAULT_PREFS; }
 }
-function savePrefs(prefs) {
-  localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
-}
+function savePrefs(prefs) { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); }
+
 function loadStats() {
-  try { return JSON.parse(localStorage.getItem(STATS_KEY) || "null") || { sessions: 0, totalKeys: 0, topLang: "—" }; }
-  catch { return { sessions: 0, totalKeys: 0, topLang: "—" }; }
+  try {
+    return JSON.parse(localStorage.getItem(STATS_KEY) || "null") ||
+      { sessions: 0, totalKeys: 0, topLang: "—", wpmBest: "—" };
+  } catch { return { sessions: 0, totalKeys: 0, topLang: "—", wpmBest: "—" }; }
 }
-function saveStats(stats) {
-  localStorage.setItem(STATS_KEY, JSON.stringify(stats));
-}
+function saveStats(stats) { localStorage.setItem(STATS_KEY, JSON.stringify(stats)); }
+
 function deepMerge(defaults, overrides) {
   const result = { ...defaults };
   for (const key of Object.keys(overrides)) {
@@ -420,116 +419,163 @@ function deepMerge(defaults, overrides) {
   return result;
 }
 
+function mkInitials(name) {
+  return (name || "?").trim().split(/\s+/).map(w => w[0] || "").join("").toUpperCase().slice(0, 2) || "?";
+}
+
 // ─── Legacy authStore shim (compat with editor.jsx + index.jsx) ──
 export const authStore = {
-  get: loadSession,
-  set: saveSession,
+  get:   loadSession,
+  set:   saveSession,
   clear: clearSession,
 };
 
 // ─── Auth Context ─────────────────────────────────────────────
 const AuthContext = createContext(null);
 
-function initials(n) {
-  return (n || "?").split(" ").map(w => w[0] || "").join("").toUpperCase().slice(0, 2) || "?";
-}
-
 export function AuthProvider({ children }) {
-  const [user, setUserState] = useState(() => loadSession());
+  const [user,  setUserState]  = useState(() => loadSession());
   const [prefs, setPrefsState] = useState(() => loadPrefs());
   const [stats, setStatsState] = useState(() => loadStats());
 
+  // ── Supabase session bootstrap (from v1) ──────────────────
   useEffect(() => {
-    // Initial session check
+    // Restore any existing Supabase session on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        const userData = {
-          id: session.user.id,
-          email: session.user.email,
-          name: session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "Developer",
-          cursorColor: session.user.user_metadata?.cursor_color || "#00d4ff",
-          bg: session.user.user_metadata?.cursor_color ? session.user.user_metadata.cursor_color + "22" : "rgba(0,212,255,0.15)",
-          inits: initials(session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "D"),
-          sid: Math.random().toString(36).substring(7),
-          loginTime: Date.now(),
-        };
-        setUserState(userData);
-      }
+      if (session) _applySupabaseSession(session);
     });
 
-    // Listen for auth changes
+    // Keep in sync with Supabase auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
-        const userData = {
-          id: session.user.id,
-          email: session.user.email,
-          name: session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "Developer",
-          cursorColor: session.user.user_metadata?.cursor_color || "#00d4ff",
-          bg: session.user.user_metadata?.cursor_color ? session.user.user_metadata.cursor_color + "22" : "rgba(0,212,255,0.15)",
-          inits: initials(session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "D"),
-          sid: Math.random().toString(36).substring(7),
-          loginTime: Date.now(),
-        };
-        setUserState(userData);
+        _applySupabaseSession(session);
       } else {
-        setUserState(null);
+        // Only wipe if user was a Supabase user (not a guest)
+        setUserState(prev => (prev && !prev.isGuest) ? null : prev);
       }
     });
 
     return () => subscription.unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => { savePrefs(prefs); }, [prefs]);
-  useEffect(() => { saveStats(stats); }, [stats]);
-
-  const login = useCallback(async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    return data;
-  }, []);
-
-  const logout = useCallback(async () => {
-    await supabase.auth.signOut();
-    setUserState(null);
-  }, []);
-
-  const loginGuest = useCallback(() => {
+  function _applySupabaseSession(session) {
+    const meta = session.user.user_metadata || {};
+    const name = meta.full_name || session.user.email?.split("@")[0] || "Developer";
+    const color = meta.cursor_color || "#00d4ff";
     const userData = {
-      id: "guest_" + Math.random().toString(36).substring(7),
-      email: "guest@ckc-os.io",
-      name: "Guest Developer",
-      cursorColor: "#00d4ff",
-      bg: "rgba(0,212,255,0.15)",
-      inits: "GD",
-      sid: "local_" + Math.random().toString(36).substring(7),
-      loginTime: Date.now(),
-      isGuest: true,
+      id:          session.user.id,
+      email:       session.user.email,
+      name,
+      cursorColor: color,
+      bg:          color + "22",
+      inits:       mkInitials(name),
+      sid:         Math.random().toString(36).substring(7),
+      loginTime:   Date.now(),
+      isGuest:     false,
     };
     setUserState(userData);
     saveSession(userData);
+    setStatsState(prev => ({ ...prev, sessions: (prev.sessions || 0) + 1 }));
+  }
+
+  // Persist prefs/stats on change
+  useEffect(() => { savePrefs(prefs); }, [prefs]);
+  
+  useEffect(() => { saveStats(stats); }, [stats]);
+
+  // ── Auth actions ──────────────────────────────────────────
+
+  /** Supabase email/password login (v1). Returns Supabase data on success. */
+  const login = useCallback(async (email, password) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    return data; // _applySupabaseSession fires via onAuthStateChange
   }, []);
 
-  const updateUser = useCallback((patch) => {
+  /**
+   * Manual/local login — accepts a plain userData object (v2 compat).
+   * Useful for test accounts, SSO callbacks, or non-Supabase flows.
+   */
+  const loginLocal = useCallback(async (userData) => {
+    let finalId = userData.id;
+    let isSupabaseSession = false;
+
+    // Attempt anonymous sign-in if no Supabase ID exists to satisfy RLS
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(finalId || "");
+    if (!isUUID || userData.isGuest) {
+      try {
+        const { data, error } = await supabase.auth.signInAnonymously();
+        if (!error && data?.user) {
+          finalId = data.user.id;
+          isSupabaseSession = true;
+        }
+      } catch (e) {
+        console.warn("Anonymous sign-in failed, falling back to local ID", e);
+      }
+    }
+
+    // Still no valid ID? Generate a fallback UUID
+    if (!finalId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(finalId)) {
+      finalId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+
+    const session = {
+      ...userData,
+      id:        finalId,
+      inits:     mkInitials(userData.name),
+      sid:       userData.sid || Math.random().toString(36).substring(7),
+      loginTime: Date.now(),
+      isGuest:   userData.isGuest ?? false,
+      isSupabaseSession,
+    };
+    setUserState(session);
+    saveSession(session);
+    setStatsState(prev => ({ ...prev, sessions: (prev.sessions || 0) + 1 }));
+  }, []);
+
+  const loginGuest = useCallback(() => {
+    loginLocal({
+      email:       "guest@ckc-os.io",
+      name:        "Guest Developer",
+      cursorColor: "#00d4ff",
+      bg:          "rgba(0,212,255,0.15)",
+      isGuest:     true,
+    });
+  }, [loginLocal]);
+
+  /** Sign out of Supabase (if applicable) and clear local state. */
+  const logout = useCallback(async () => {
+    try { await supabase.auth.signOut(); } catch { /* no-op for guest sessions */ }
+    setUserState(null);
+    clearSession();
+  }, []);
+
+  const updateUser  = useCallback((patch) => {
     setUserState(prev => prev ? { ...prev, ...patch } : prev);
   }, []);
 
-  const updatePref = useCallback((section, key, value) => {
-    setPrefsState(prev => ({
-      ...prev,
-      [section]: { ...prev[section], [key]: value },
-    }));
+  const updatePref  = useCallback((section, key, value) => {
+    setPrefsState(prev => ({ ...prev, [section]: { ...prev[section], [key]: value } }));
   }, []);
 
   const updateStats = useCallback((patch) => {
     setStatsState(prev => ({ ...prev, ...patch }));
   }, []);
 
-  const resetPrefs = useCallback(() => {
+  const resetPrefs  = useCallback(() => {
     setPrefsState(DEFAULT_PREFS);
     savePrefs(DEFAULT_PREFS);
   }, []);
 
-  const value = { user, prefs, stats, login, logout, loginGuest, updateUser, updatePref, updateStats, resetPrefs };
+  const value = {
+    user, prefs, stats,
+    login, loginLocal, loginGuest, logout,
+    updateUser, updatePref, updateStats, resetPrefs,
+  };
 
   return (
     <AuthContext.Provider value={value}>
@@ -546,21 +592,33 @@ export function useAuth() {
   return ctx;
 }
 
-export function ProtectedRoute({ children }) {
+// ─── ProtectedRoute (router-safe, from v2) ───────────────────
+// Works inside and outside a RouterProvider — falls back gracefully.
+export function ProtectedRoute({ children, fallback }) {
   const { user } = useAuth();
   if (user) return children;
-  return <Navigate to="/login" replace />;
+  // Try react-router Navigate; if unavailable, use window redirect
+  try {
+    return <Navigate to="/login" replace />;
+  } catch {
+    return (
+      <ProtectedScreen fallback={fallback} />
+    );
+  }
 }
 
-export function ProtectedScreen({ children }) {
+// ─── ProtectedScreen (inline fallback, from v1) ──────────────
+export function ProtectedScreen({ children, fallback }) {
   const { user } = useAuth();
-  if (user) return children;
+  if (user) return children ?? null;
   return (
     <div className="ckc-protected">
       <div style={{ fontSize: 32 }}>🔐</div>
       <div className="ckc-protected-title">Session required</div>
       <div className="ckc-protected-desc">You need an active CKC-OS session to access this page.</div>
-      <Link to="/login" className="ckc-btn-primary">Go to Login</Link>
+      {fallback || (
+        <Link to="/login" className="ckc-btn-primary">Go to Login</Link>
+      )}
     </div>
   );
 }
@@ -581,22 +639,18 @@ function Toast({ message, onDone }) {
   );
 }
 
-// ─── Toggle component ─────────────────────────────────────────
+// ─── Toggle ──────────────────────────────────────────────────
 function Toggle({ checked, onChange }) {
   return (
     <label className="ckc-toggle">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={e => onChange(e.target.checked)}
-      />
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} />
       <div className="ckc-toggle-track" />
       <div className="ckc-toggle-thumb" />
     </label>
   );
 }
 
-// ─── Settings trigger button (for use in topbars) ────────────
+// ─── SettingsButton ──────────────────────────────────────────
 export function SettingsButton({ onClick }) {
   const { user } = useAuth();
   if (!user) return null;
@@ -607,12 +661,12 @@ export function SettingsButton({ onClick }) {
   );
 }
 
-// ─── SettingsPanel ────────────────────────────────────────────
+// ─── SettingsPanel ───────────────────────────────────────────
 export function SettingsPanel({ onClose }) {
   const { user, prefs, stats, updateUser, updatePref, resetPrefs, logout } = useAuth();
-  const [tab, setTab] = useState("profile");
+  const [tab,   setTab]   = useState("profile");
   const [toast, setToast] = useState(null);
-  const overlayRef = useRef();
+  const overlayRef        = useRef();
 
   const notify = (msg) => setToast({ msg, id: Date.now() });
 
@@ -626,10 +680,9 @@ export function SettingsPanel({ onClose }) {
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     onClose?.();
-    // Navigate without router dependency — works with or without react-router
     window.location.href = "/";
   };
 
@@ -640,24 +693,21 @@ export function SettingsPanel({ onClose }) {
 
   if (!user) return null;
 
-  const initials = user.name
-    ? user.name.trim().split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase()
-    : "DE";
-
+  const inits       = mkInitials(user.name);
   const accentColor = user.cursorColor || prefs.appearance?.accent || "#00d4ff";
 
   const NAV = [
     { section: "Account" },
-    { id: "profile", label: "Profile", icon: "👤" },
-    { id: "session", label: "Session", icon: "🔑" },
+    { id: "profile",     label: "Profile",      icon: "👤" },
+    { id: "session",     label: "Session",       icon: "🔑" },
     { section: "Workspace" },
-    { id: "editor", label: "Editor", icon: "📝" },
-    { id: "appearance", label: "Appearance", icon: "🎨" },
-    { id: "keybindings", label: "Keybindings", icon: "⌨️" },
+    { id: "editor",      label: "Editor",        icon: "📝" },
+    { id: "appearance",  label: "Appearance",    icon: "🎨" },
+    { id: "keybindings", label: "Keybindings",   icon: "⌨️" },
     { section: "AI" },
-    { id: "ai", label: "AI assistant", icon: "🤖" },
+    { id: "ai",          label: "AI assistant",  icon: "🤖" },
     { section: "System" },
-    { id: "danger", label: "Danger zone", icon: "⚠️" },
+    { id: "danger",      label: "Danger zone",   icon: "⚠️" },
   ];
 
   return (
@@ -704,21 +754,24 @@ export function SettingsPanel({ onClose }) {
                     className="ckc-avatar"
                     style={{ background: accentColor + "22", borderColor: accentColor + "66", color: accentColor }}
                   >
-                    {initials}
+                    {inits}
                   </div>
                   <div>
                     <div className="ckc-avatar-info-name">{user.name || "Developer"}</div>
                     <div className="ckc-avatar-info-sid">sid: {user.sid || "—"}</div>
+                    {user.isGuest && (
+                      <div style={{ fontSize: 10, color: C.amber, marginTop: 4 }}>⚠ Guest session</div>
+                    )}
                     <div className="ckc-status-dot">active session</div>
                   </div>
                 </div>
 
                 <div className="ckc-stats-row">
                   {[
-                    ["Sessions", stats.sessions || 0, ""],
-                    ["Total keys", stats.totalKeys || 0, ""],
-                    ["Top lang", stats.topLang || "—", ""],
-                    ["WPM best", stats.wpmBest || "—", ""],
+                    ["Sessions",   stats.sessions  || 0],
+                    ["Total keys", stats.totalKeys || 0],
+                    ["Top lang",   stats.topLang   || "—"],
+                    ["WPM best",   stats.wpmBest   || "—"],
                   ].map(([lbl, val]) => (
                     <div key={lbl} className="ckc-stat-chip">
                       <div className="ckc-stat-val">{val}</div>
@@ -775,6 +828,16 @@ export function SettingsPanel({ onClose }) {
                     {LANG_OPTIONS.map(l => <option key={l}>{l}</option>)}
                   </select>
                 </div>
+
+                <div className="ckc-s-row">
+                  <div className="ckc-s-row-left">
+                    <div className="ckc-s-row-label">Email</div>
+                    <div className="ckc-s-row-desc">Linked Supabase account</div>
+                  </div>
+                  <span style={{ fontFamily: C.mono, fontSize: 11, color: C.text2 }}>
+                    {user.email || "—"}
+                  </span>
+                </div>
               </>
             )}
 
@@ -797,7 +860,7 @@ export function SettingsPanel({ onClose }) {
                     style={{
                       fontFamily: C.mono, fontSize: 11, color: C.cyan,
                       background: "rgba(0,212,255,.08)", padding: "5px 12px",
-                      borderRadius: 7, border: "1px solid rgba(0,212,255,.2)", cursor: "pointer"
+                      borderRadius: 7, border: "1px solid rgba(0,212,255,.2)", cursor: "pointer",
                     }}
                     title="Click to copy"
                     onClick={() => { navigator.clipboard?.writeText(user.sid || ""); notify("Session ID copied!"); }}
@@ -842,6 +905,15 @@ export function SettingsPanel({ onClose }) {
                     {user.loginTime ? new Date(user.loginTime).toLocaleTimeString() : "—"}
                   </span>
                 </div>
+
+                <div className="ckc-s-row">
+                  <div className="ckc-s-row-left">
+                    <div className="ckc-s-row-label">Session type</div>
+                  </div>
+                  <span style={{ fontFamily: C.mono, fontSize: 11, color: user.isGuest ? C.amber : C.green }}>
+                    {user.isGuest ? "guest" : "authenticated"}
+                  </span>
+                </div>
               </>
             )}
 
@@ -855,7 +927,7 @@ export function SettingsPanel({ onClose }) {
 
                 <div className="ckc-s-section-label">Formatting</div>
                 {[
-                  ["Tab size", "tabSize", ["2 spaces", "4 spaces", "Tab"], ["2", "4", "tab"]],
+                  ["Tab size",  "tabSize",  ["2 spaces", "4 spaces", "Tab"], ["2", "4", "tab"]],
                   ["Font size", "fontSize", ["12px", "14px", "16px", "18px"], ["12", "14", "16", "18"]],
                 ].map(([label, key, opts, vals]) => (
                   <div key={key} className="ckc-s-row">
@@ -874,11 +946,11 @@ export function SettingsPanel({ onClose }) {
 
                 <div className="ckc-s-section-label">Behaviour</div>
                 {[
-                  ["Word wrap", "wordWrap", "Wrap long lines"],
-                  ["Vim keybindings", "vim", "Enable Vim mode in CodeMirror"],
-                  ["Auto-close brackets", "autoClose", "Auto-pair (), [], {}"],
-                  ["Line numbers", "lineNumbers", "Show line numbers in gutter"],
-                  ["Show behavior HUD", "showBehavior", "WPM, error rate overlay"],
+                  ["Word wrap",           "wordWrap",     "Wrap long lines"],
+                  ["Vim keybindings",     "vim",          "Enable Vim mode in CodeMirror"],
+                  ["Auto-close brackets", "autoClose",    "Auto-pair (), [], {}"],
+                  ["Line numbers",        "lineNumbers",  "Show line numbers in gutter"],
+                  ["Show behavior HUD",   "showBehavior", "WPM, error rate overlay"],
                 ].map(([label, key, desc]) => (
                   <div key={key} className="ckc-s-row">
                     <div className="ckc-s-row-left">
@@ -971,12 +1043,12 @@ export function SettingsPanel({ onClose }) {
 
                 <div className="ckc-s-section-label">Global</div>
                 {[
-                  ["Open AI assistant", "openAI", "⌘K"],
-                  ["Toggle sidebar", "toggleSidebar", "⌘\\"],
-                  ["Run code", "runCode", "⇧⌘R"],
-                  ["Open settings", "openSettings", "⌘,"],
-                  ["New session", "newSession", "⇧⌘N"],
-                  ["Copy response", "copyResponse", "⇧⌘C"],
+                  ["Open AI assistant", "openAI",        "⌘K"],
+                  ["Toggle sidebar",    "toggleSidebar", "⌘\\"],
+                  ["Run code",          "runCode",        "⇧⌘R"],
+                  ["Open settings",     "openSettings",   "⌘,"],
+                  ["New session",       "newSession",     "⇧⌘N"],
+                  ["Copy response",     "copyResponse",   "⇧⌘C"],
                 ].map(([label, key, defaultKbd]) => (
                   <div key={key} className="ckc-s-row">
                     <div className="ckc-s-row-left">
@@ -1005,10 +1077,10 @@ export function SettingsPanel({ onClose }) {
                 <div className="ckc-s-row" style={{ flexDirection: "column", alignItems: "flex-start", gap: 10 }}>
                   <div className="ckc-pills">
                     {[
-                      ["auto", "Auto-detect"],
-                      ["beginner", "Beginner"],
+                      ["auto",         "Auto-detect"],
+                      ["beginner",     "Beginner"],
                       ["intermediate", "Intermediate"],
-                      ["advanced", "Advanced"],
+                      ["advanced",     "Advanced"],
                     ].map(([val, label]) => (
                       <button
                         key={val}
@@ -1026,10 +1098,10 @@ export function SettingsPanel({ onClose }) {
 
                 <div className="ckc-s-section-label">Behaviour</div>
                 {[
-                  ["Proactive tips", "proactiveTips", "Show usage tips between messages"],
-                  ["Always show Big-O", "alwaysShowBigO", "Include complexity in every code response"],
-                  ["Code review on paste", "reviewOnPaste", "Auto-analyse code when you paste it"],
-                  ["Explain errors", "explainErrors", "Interpret lint errors in plain English"],
+                  ["Proactive tips",       "proactiveTips",  "Show usage tips between messages"],
+                  ["Always show Big-O",    "alwaysShowBigO", "Include complexity in every code response"],
+                  ["Code review on paste", "reviewOnPaste",  "Auto-analyse code when you paste it"],
+                  ["Explain errors",       "explainErrors",  "Interpret lint errors in plain English"],
                 ].map(([label, key, desc]) => (
                   <div key={key} className="ckc-s-row">
                     <div className="ckc-s-row-left">
@@ -1133,26 +1205,24 @@ export function SettingsPanel({ onClose }) {
 // ─── useSettings convenience hook ────────────────────────────
 export function useSettings() {
   const [open, setOpen] = useState(false);
-  const openSettings = useCallback(() => setOpen(true), []);
+  const openSettings  = useCallback(() => setOpen(true),  []);
   const closeSettings = useCallback(() => setOpen(false), []);
-
-  const panel = open
-    ? <SettingsPanel onClose={closeSettings} />
-    : null;
-
+  const panel = open ? <SettingsPanel onClose={closeSettings} /> : null;
   return { open, openSettings, closeSettings, panel };
 }
 
 // ─── Default export ───────────────────────────────────────────
 export default function Auth() {
   const { user } = useAuth();
-  const { open, openSettings, panel } = useSettings();
+  const { openSettings, panel } = useSettings();
 
   return (
     <div style={{ padding: 24, fontFamily: C.body, color: C.text }}>
       <style>{AUTH_CSS}</style>
       <p style={{ marginBottom: 12, fontSize: 13, color: C.text2 }}>
-        Auth module loaded. User: <strong style={{ color: C.cyan }}>{user?.name || "not logged in"}</strong>
+        Auth module loaded. User:{" "}
+        <strong style={{ color: C.cyan }}>{user?.name || "not logged in"}</strong>
+        {user?.isGuest && <span style={{ color: C.amber, marginLeft: 8 }}>(guest)</span>}
       </p>
       <button className="ckc-settings-btn" onClick={openSettings}>
         ⚙ Open Settings

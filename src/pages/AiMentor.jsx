@@ -615,7 +615,33 @@ body { font-family: var(--body); background: var(--bg); color: var(--text); over
 
 .f-sidebar { animation: fadeUp .3s ease both; }
 .f-right   { animation: fadeUp .3s .08s ease both; }
+
+/* ── Media Queries ── */
+@media screen and (max-width: 1024px) {
+  .forge-root { grid-template-columns: 200px 1fr 200px; }
+  .f-online-pill { display: none; }
+}
+
+@media screen and (max-width: 768px) {
+  .forge-root {
+    grid-template-columns: 1fr;
+    grid-template-rows: 52px 1fr;
+    height: 100vh;
+  }
+  .f-sidebar { display: none; } /* Hide sidebars on mobile for simplicity, can be toggled if needed */
+  .f-chat { height: calc(100vh - 52px); }
+  .f-skill-toggle { display: none; }
+  .f-sent-badge { margin-left: auto; }
+}
+
+@media screen and (max-width: 480px) {
+  .f-wordmark-text { display: none; }
+  .msg-bubble { font-size: 12px; padding: 10px 12px; }
+  .f-input-wrap { padding: 8px 12px; }
+  .f-send-btn { width: 40px; height: 40px; }
+}
 `;
+
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function AIBot() {

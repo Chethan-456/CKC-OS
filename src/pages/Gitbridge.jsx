@@ -185,7 +185,34 @@ const GIT_CSS = `
   gap:8px;
 }
 .gb-no-token-banner-icon{flex-shrink:0;margin-top:1px}
+
+@media screen and (max-width: 1024px) {
+  .gb-body { grid-template-columns: 220px 1fr; }
+}
+
+@media screen and (max-width: 768px) {
+  .gb-body { grid-template-columns: 1fr; }
+  .gb-sidebar { 
+    position: absolute; left: 0; top: 0; bottom: 0; 
+    width: 260px; z-index: 20; 
+    transform: translateX(-100%); transition: transform .3s;
+  }
+  .gb-sidebar.open { transform: translateX(0); box-shadow: 10px 0 30px rgba(0,0,0,.5); }
+  .gb-header { padding: 0 10px; }
+  .gb-logo-sub { display: none; }
+  .gb-repo-badge { font-size: 10px; padding: 4px 8px; }
+  .gb-btn span { display: none; }
+  .gb-btn { padding: 5px 8px; }
+}
+
+@media screen and (max-width: 480px) {
+  .gb-logo-text { font-size: 13px; }
+  .gb-diff-ln { width: 24px; padding-right: 4px; font-size: 10px; }
+  .gb-diff-code { font-size: 11px; }
+  .gb-ai-actions button { flex: 1; font-size: 10px; }
+}
 `;
+
 
 // ─── Mock data ───────────────────────────────────────────────
 
@@ -673,6 +700,9 @@ export default function GitBridge({ onClose, editorCode, editorLang }) {
   const [isPushing,      setIsPushing]      = useState(false);
   const [pushProgress,   setPushProgress]   = useState(0);
   const [pushResult,     setPushResult]     = useState(null);
+  const [sbOpen,         setSbOpen]         = useState(false);
+
+
 
   const toastTimer = useRef(null);
 
@@ -814,7 +844,11 @@ export default function GitBridge({ onClose, editorCode, editorLang }) {
 
         {/* ─ HEADER ─ */}
         <div className="gb-header">
+          <button onClick={() => setSbOpen(!sbOpen)} className="gb-btn gb-btn-ghost" style={{ padding: "5px 10px", display: window.innerWidth < 768 ? "flex" : "none", marginRight: 8 }}>
+            {sbOpen ? "✕" : "☰"}
+          </button>
           <div style={{ width:32, height:32, borderRadius:9, background:"linear-gradient(135deg,#00d4aa,#4d9fff)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, flexShrink:0 }}>🔀</div>
+
           <div>
             <div className="gb-logo-text">Git Bridge</div>
             <div className="gb-logo-sub">Version Control · GitHub / GitLab</div>
@@ -912,7 +946,8 @@ export default function GitBridge({ onClose, editorCode, editorLang }) {
           ) : (
             <>
               {/* ═══ SIDEBAR ═══ */}
-              <div className="gb-sidebar">
+              <div className={"gb-sidebar " + (sbOpen ? "open" : "")}>
+
                 <div className="gb-tabs">
                   {[["files","📄 Changed"],["branches","🌿 Branches"]].map(([v, l]) => (
                     <button key={v} className={"gb-tab " + (sideTab === v ? "active" : "")} onClick={() => setSideTab(v)}>{l}</button>

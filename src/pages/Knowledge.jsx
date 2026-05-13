@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "./auth.jsx";
 
 const EXAMPLES = {
   py_sort: `def bubble_sort(arr):
@@ -252,7 +253,8 @@ function SavedGraphsDrawer({ open, onClose, onLoad, currentGraphId }) {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function KnowledgeGraphEngine() {
+export default function KnowledgeGraphEngine({ isEmbedded = false, initialCode = "" }) {
+  const { user }     = useAuth();
   const navigate     = useNavigate();
   const canvasRef    = useRef(null);
   const graphAreaRef = useRef(null);
@@ -264,7 +266,7 @@ export default function KnowledgeGraphEngine() {
     panning:false, panStartX:0, panStartY:0, camStartX:0, camStartY:0,
   });
 
-  const [code,          setCode]          = useState("");
+  const [code,          setCode]          = useState(initialCode || "");
   const [forcedLang,    setForcedLang]    = useState("auto");
   const [loading,       setLoading]       = useState(false);
   const [loadingStep,   setLoadingStep]   = useState("Detecting language & structure");
@@ -281,6 +283,12 @@ export default function KnowledgeGraphEngine() {
   const [saving,        setSaving]        = useState(false);
   const [saveMsg,       setSaveMsg]       = useState(null);
   const [drawerOpen,    setDrawerOpen]    = useState(false);
+
+  useEffect(() => {
+    if (initialCode && initialCode !== code) {
+      setCode(initialCode);
+    }
+  }, [initialCode]);
 
   // ── Draw ──────────────────────────────────────────────────────────────────
   const draw = useCallback(() => {
@@ -417,10 +425,13 @@ export default function KnowledgeGraphEngine() {
   }, [draw]);
 
   useEffect(() => {
-    resize();
-    window.addEventListener("resize",resize);
-    return () => window.removeEventListener("resize",resize);
-  },[resize]);
+    if (!graphAreaRef.current) return;
+    const observer = new ResizeObserver(() => {
+      resize();
+    });
+    observer.observe(graphAreaRef.current);
+    return () => observer.disconnect();
+  }, [resize]);
 
   const getMousePos   = e => { const r=canvasRef.current.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; };
   const screenToWorld = (x,y) => { const s=stateRef.current; return {x:(x-s.camX)/s.camScale,y:(y-s.camY)/s.camScale}; };
@@ -637,6 +648,7 @@ ${trimmed}`;
       setCurrentGraph({ language: detectedGraphLang, graph, code: trimmed });
       buildGraph(graph);
       setTimeout(()=>setAnalyzeDone(false), 2000);
+
     } catch(err){
       clearInterval(stepTimer);
       console.error("Graph analysis error:", err);
@@ -646,6 +658,12 @@ ${trimmed}`;
       setLoading(false);
     }
   },[code, forcedLang, buildGraph]);
+
+  useEffect(() => {
+    if (isEmbedded && initialCode && !currentGraph && !loading) {
+      analyze();
+    }
+  }, [isEmbedded, initialCode, analyze, currentGraph, loading]);
 
   // ── Save to Neo4j ──────────────────────────────────────────────────────────
   const saveGraph = useCallback(async () => {
@@ -659,6 +677,7 @@ ${trimmed}`;
           language: currentGraph.language,
           code: currentGraph.code,
           graph: currentGraph.graph,
+          userId: user?.id || "anonymous",
           name: `${currentGraph.language} — ${new Date().toLocaleTimeString()}`
         })
       });
@@ -696,7 +715,8 @@ ${trimmed}`;
   const canSave  = !!currentGraph && !isSaved && !saving;
 
   return (
-    <div style={{fontFamily:"'Syne',sans-serif",background:"#0a0b0f",color:"#e8eaf2",height:"100vh",display:"grid",gridTemplateColumns:"340px 1fr",gridTemplateRows:"56px 1fr",overflow:"hidden"}}>
+    <div className={`knowledge-root ${isEmbedded ? "embedded" : ""}`}>
+
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@400;600;700;800&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
@@ -707,21 +727,56 @@ ${trimmed}`;
         @keyframes pulse-out{0%{transform:scale(.7);opacity:1}100%{transform:scale(1.3);opacity:0}}
         @keyframes fadeSlideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
         .save-toast{animation:fadeSlideIn .2s ease forwards;}
+        
+        .knowledge-root {
+          display: grid;
+          grid-template-columns: 360px 1fr;
+          grid-template-rows: 56px 1fr;
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          height: 100dvh;
+          background: #0a0b0f;
+          color: #e8eaf2;
+          font-family: 'Syne', sans-serif;
+          overflow: hidden;
+          z-index: 1000;
+        }
+        
+        .knowledge-root.embedded {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          grid-template-columns: 1fr;
+          grid-template-rows: 1fr;
+          z-index: 1;
+        }
+        .knowledge-root.embedded .left-panel, 
+        .knowledge-root.embedded .top-bar {
+          display: none !important;
+        }
       `}</style>
 
-      {/* TOP BAR */}
-      <div style={{gridColumn:"1/-1",display:"flex",alignItems:"center",gap:12,padding:"0 20px",background:"#10121a",borderBottom:"1px solid #2a2f45",zIndex:10}}>
+
+      {/* TOP BAR - Hidden in embedded mode */}
+      {!isEmbedded && (
+        <div className="top-bar" style={{gridColumn:"1/-1",display:"flex",alignItems:"center",gap:12,padding:"0 20px",background:"#10121a",borderBottom:"1px solid #2a2f45",zIndex:10, height: 56}}>
         <button onClick={()=>navigate("/")}
+          className="f-home-btn"
           style={{background:"none",border:"1px solid #2a2f45",borderRadius:7,color:"#8890aa",cursor:"pointer",fontSize:12,padding:"4px 10px",fontFamily:"'Syne',sans-serif",fontWeight:600,display:"flex",alignItems:"center",gap:5,transition:"all .15s"}}
           onMouseEnter={e=>{e.currentTarget.style.borderColor="#7c6ff7";e.currentTarget.style.color="#7c6ff7";}}
           onMouseLeave={e=>{e.currentTarget.style.borderColor="#2a2f45";e.currentTarget.style.color="#8890aa";}}
-        >← Home</button>
+        >← <span>Home</span></button>
+
 
         <div style={{fontWeight:800,fontSize:15,letterSpacing:"-.3px",background:"linear-gradient(135deg,#7c6ff7,#29d4a8)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
-          KnowledgeGraph<span style={{WebkitTextFillColor:"#8890aa",fontWeight:400,fontSize:12,marginLeft:6}}>Engine</span>
+          KnowledgeGraph<span className="top-bar-engine-text" style={{WebkitTextFillColor:"#8890aa",fontWeight:400,fontSize:12,marginLeft:6}}>Engine</span>
         </div>
 
-        <div style={{display:"flex",alignItems:"center",gap:5,marginLeft:6}}>
+
+        <div className="top-bar-labels" style={{display:"flex",alignItems:"center",gap:5,marginLeft:6}}>
           {CHAIN_ORDER.map((type,i)=>(
             <span key={type} style={{display:"flex",alignItems:"center",gap:5}}>
               <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:10,background:NODE_COLORS[type]+"22",border:`1px solid ${NODE_COLORS[type]}55`,color:NODE_COLORS[type],letterSpacing:".04em"}}>{COL_LABELS[type]}</span>
@@ -730,18 +785,20 @@ ${trimmed}`;
           ))}
         </div>
 
+
         {saveMsg && (
           <div className="save-toast" style={{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:8,background:saveMsg.ok?"rgba(41,212,168,.12)":"rgba(255,107,107,.12)",border:`1px solid ${saveMsg.ok?"#29d4a888":"#ff6b6b88"}`,color:saveMsg.ok?"#29d4a8":"#ff6b6b",marginLeft:4}}>
             {saveMsg.text}
           </div>
         )}
 
-        <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,border:"1px solid #3a4060",background:"#181c28",fontSize:11,fontWeight:600,color:"#8890aa",marginLeft:"auto"}}>
+        <div className="lang-badge" style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,border:"1px solid #3a4060",background:"#181c28",fontSize:11,fontWeight:600,color:"#8890aa",marginLeft:"auto"}}>
           <div style={{width:7,height:7,borderRadius:"50%",background:langColor}}/>
           {lang}
         </div>
 
-        <div style={{display:"flex",gap:16}}>
+
+        <div className="top-bar-stats" style={{display:"flex",gap:16}}>
           {[["Nodes",stats.nodes],["Edges",stats.edges],["Errors",stats.errors]].map(([k,v])=>(
             <div key={k} style={{fontSize:11,color:"#5a6080"}}>
               <b style={{color:"#e8eaf2",fontWeight:600,marginRight:3}}>{showEmpty?"—":v}</b>{k.toLowerCase()}
@@ -749,9 +806,11 @@ ${trimmed}`;
           ))}
         </div>
 
+
         {/* Save Graph Button */}
         <button
           onClick={saveGraph}
+          className="save-graph-btn"
           disabled={!canSave}
           title={isSaved ? "Already saved" : !currentGraph ? "Analyze code first" : "Save graph to Neo4j"}
           style={{
@@ -767,14 +826,16 @@ ${trimmed}`;
           onMouseLeave={e=>{ if(canSave){ e.currentTarget.style.background="rgba(124,111,247,.12)"; e.currentTarget.style.borderColor="#7c6ff777"; }}}
         >
           {saving
-            ? <><div style={{width:10,height:10,border:"1.5px solid #7c6ff744",borderTopColor:"#7c6ff7",borderRadius:"50%",animation:"spin .7s linear infinite"}}/>Saving...</>
-            : isSaved ? "✓ Saved" : "⬆ Save Graph"
+            ? <><div style={{width:10,height:10,border:"1.5px solid #7c6ff744",borderTopColor:"#7c6ff7",borderRadius:"50%",animation:"spin .7s linear infinite"}}/><span>Saving...</span></>
+            : <>{isSaved ? "✓" : "⬆"} <span>{isSaved ? "Saved" : "Save Graph"}</span></>
           }
         </button>
+
 
         {/* Saved Graphs Button */}
         <button
           onClick={()=>setDrawerOpen(true)}
+          className="saved-graphs-btn"
           style={{
             padding:"5px 13px", borderRadius:8, border:"1px solid #2a2f45",
             background:"transparent", color:"#8890aa", fontFamily:"'Syne',sans-serif",
@@ -784,12 +845,15 @@ ${trimmed}`;
           onMouseEnter={e=>{e.currentTarget.style.borderColor="#7c6ff7";e.currentTarget.style.color="#7c6ff7";e.currentTarget.style.background="rgba(124,111,247,.07)";}}
           onMouseLeave={e=>{e.currentTarget.style.borderColor="#2a2f45";e.currentTarget.style.color="#8890aa";e.currentTarget.style.background="transparent";}}
         >
-          ◫ Saved Graphs
+          ◫ <span>Saved Graphs</span>
         </button>
+
       </div>
+      )}
 
       {/* LEFT PANEL */}
-      <div style={{background:"#10121a",borderRight:"1px solid #2a2f45",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div className="left-panel" style={{background:"#10121a",borderRight:"1px solid #2a2f45",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+
         <div style={{padding:"14px 16px 10px",fontSize:11,fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",color:"#5a6080",borderBottom:"1px solid #2a2f45"}}>Input Code</div>
 
         <div style={{display:"flex",gap:4,padding:"10px 12px 0",flexWrap:"wrap"}}>
@@ -833,7 +897,8 @@ ${trimmed}`;
       </div>
 
       {/* GRAPH AREA */}
-      <div ref={graphAreaRef} style={{position:"relative",overflow:"hidden",background:"#0a0b0f"}}>
+      <div className="graph-area" ref={graphAreaRef} style={{position:"relative",overflow:"hidden",background:"#0a0b0f"}}>
+
         <canvas ref={canvasRef} style={{position:"absolute",top:0,left:0}}
           onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp} onClick={handleClick}

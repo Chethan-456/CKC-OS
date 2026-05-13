@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, forwardRef, memo } fro
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase.js";
 import { useAuth } from "./auth.jsx";
+import KnowledgeGraphEngine from "./knowledge.jsx";
 
 // ═══════════ AUTH STORE (LEGACY) ═══════════
 export const authStore = {
@@ -16,6 +17,15 @@ export function initials(n) {
 }
 function nowTs() {
   return new Date().toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function applyOpToString(str, op) {
+  if (op.type === "insert") {
+    return str.slice(0, op.pos) + op.chars + str.slice(op.pos);
+  } else if (op.type === "delete") {
+    return str.slice(0, op.pos) + str.slice(op.pos + op.len);
+  }
+  return str;
 }
 
 // ═══════════ CONSTANTS ═══════════
@@ -151,9 +161,10 @@ WHERE s.ops_count > 0 ORDER BY s.ops_count DESC LIMIT 20;`,
 
 // ═══════════ HELPERS ═══════════
 export function genSid() {
-  const c = "abcdefghjkmnpqrstuvwxyz0123456789";
-  const s = () => Array.from({ length: 4 }, () => c[Math.floor(Math.random() * c.length)]).join("");
-  return s() + "-" + s();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -172,13 +183,10 @@ function validateCode(lang, code) {
       const ch = code[i], prev = code[i - 1];
       if (ch === "\n") { inLineComment = false; continue; }
       if (inLineComment) continue;
-      
-      // Handle language-specific line comments
       if (!inStr) {
         if (ch === "/" && code[i + 1] === "/") { inLineComment = true; i++; continue; }
         if (lang === "py" && ch === "#") { inLineComment = true; continue; }
       }
-      
       if (!inStr && (ch === '"' || ch === "'" || ch === "`")) { inStr = true; strChar = ch; continue; }
       if (inStr && ch === strChar && prev !== "\\") { inStr = false; continue; }
       if (inStr) continue;
@@ -252,7 +260,7 @@ function validateCode(lang, code) {
     }
     const tripleDouble = (code.match(/"""/g) || []).length;
     const tripleSingle = (code.match(/'''/g) || []).length;
-    if (tripleDouble % 2 !== 0) errors.push(`SyntaxError: Unterminated triple-quoted string (\"\"\")`);
+    if (tripleDouble % 2 !== 0) errors.push(`SyntaxError: Unterminated triple-quoted string (""")`);
     if (tripleSingle % 2 !== 0) errors.push(`SyntaxError: Unterminated triple-quoted string (''')`);
     const pyParen = countBalance("(", ")");
     if (pyParen > 0) errors.push(`SyntaxError: ${pyParen} unclosed parenthesis '(' — missing ')'`);
@@ -442,6 +450,9 @@ function validateCode(lang, code) {
         errors.push(`SQL Error: UPDATE statement #${i + 1} missing SET clause`);
       }
     });
+    if (/\bUPDATE\b/i.test(sqlNoComments) && /\bWHERE\b/i.test(sqlNoComments)) {
+      // (logic unchanged)
+    }
     if (/\bUPDATE\b/i.test(sqlNoComments) && !/\bWHERE\b/i.test(sqlNoComments)) {
       warnings.push(`SQL Warning: UPDATE without WHERE clause will modify all rows`);
     }
@@ -513,8 +524,8 @@ async function runPython(code) {
   py.runPython("sys.stdout=sys.__stdout__;sys.stderr=sys.__stderr__");
   let output = "";
   if (stdout) output += stdout;
-  if (stderr && !hasError) output += (output ? "\n" : "") + stderr;
-  if (hasError) output += (output ? "\n" : "") + errorMsg;
+  if (stderr && !hasError) output += (output ? "\\n" : "") + stderr;
+  if (hasError) output += (output ? "\\n" : "") + errorMsg;
   return { output: output.trim(), hasError, errorMsg: hasError ? errorMsg : "" };
 }
 
@@ -546,7 +557,7 @@ function runJS(code, isTS) {
     try { win.eval(src); } catch (e) { hasError = true; errorMsg = e.stack || e.message || String(e); }
     document.body.removeChild(iframe);
     const out = [...logs]; if (hasError) out.push(errorMsg);
-    resolve({ output: out.join("\n") || (hasError ? "" : "(no output)"), hasError, errorMsg });
+    resolve({ output: out.join("\\n") || (hasError ? "" : "(no output)"), hasError, errorMsg });
   });
 }
 
@@ -594,7 +605,7 @@ function simulateCompiled(lang, code) {
     printlns.forEach(p => {
       const m = p.match(/println!\s*\("([^"]+)"/);
       if (m) {
-        outputs.push(m[1].replace(/\{\}/g, "[value]").replace(/\{:\??\}/g, "[debug]"));
+        outputs.push(m[1].replace(/{}/g, "[value]").replace(/{:\??}/g, "[debug]"));
       }
     });
     if (printlns.length === 0) outputs.push("(no output)");
@@ -625,10 +636,10 @@ function simulateCompiled(lang, code) {
     const stmts = code.split(";").map(s => s.trim()).filter(Boolean);
     stmts.forEach(stmt => {
       const upper = stmt.toUpperCase();
-      if (/^\s*--/.test(stmt)) return;
+      if (/^\\s*--/.test(stmt)) return;
       if (/CREATE DATABASE/i.test(upper)) outputs.push(`Query OK, 1 row affected`);
       else if (/CREATE TABLE/i.test(upper)) {
-        const m = stmt.match(/CREATE TABLE\s+(\w+)/i);
+        const m = stmt.match(/CREATE TABLE\\s+(\\w+)/i);
         outputs.push(`Query OK, 0 rows affected — Table '${m ? m[1] : "table"}' created`);
       }
       else if (/INSERT/i.test(upper)) outputs.push(`Query OK, ${Math.floor(Math.random() * 5) + 1} row(s) affected`);
@@ -643,7 +654,7 @@ function simulateCompiled(lang, code) {
     });
   }
 
-  return { output: outputs.join("\n"), hasError: false };
+  return { output: outputs.join("\\n"), hasError: false };
 }
 
 // ═══════════ UNIFIED RUNNER ═══════════
@@ -662,13 +673,13 @@ export async function validateAndRun(lang, code, pyReady, setPyReady) {
   } else if (lang === "js" || lang === "ts") {
     result = await runJS(code, lang === "ts");
     if (validation.hasWarning && result.output) {
-      result = { ...result, output: validation.output + "\n\n" + result.output };
+      result = { ...result, output: validation.output + "\\n\\n" + result.output };
     }
   } else {
     await new Promise(r => setTimeout(r, 350));
     result = simulateCompiled(lang, code);
     if (validation.hasWarning) {
-      result = { ...result, output: validation.output + "\n\n" + result.output };
+      result = { ...result, output: validation.output + "\\n\\n" + result.output };
     }
   }
   return result;
@@ -705,16 +716,6 @@ class WSManager {
   constructor() { this.engines = new Map(); }
   eng(lang) { if (!this.engines.has(lang)) this.engines.set(lang, new OTEngine(STARTERS[lang] || "")); return this.engines.get(lang); }
   send(uid, msg) { console.log(`[WS] Send to ${uid}:`, msg); }
-  apply(lk, op) {
-    const e = this.eng(lk);
-    if (!e) return null;
-    try {
-      const x = OTEngine.apply(e.text, e.history, op, e.version);
-      e.text = x.text; e.version = x.version; e.history = x.history;
-      return x.op;
-    } catch (err) { console.error("OT Apply Error:", err); return null; }
-  }
-  _log() {}
 }
 const WS = new WSManager();
 
@@ -724,16 +725,7 @@ const BOTS = [
   { name: "Sam T.", color: "#4EC9B0", bg: "rgba(78,201,176,0.15)", inits: "ST" },
 ];
 
-
-// ═══════════ BOTS ═══════════
-
-
-// ═══════════════════════════════════════════════════════
-// ══════ 5.2 REAL-TIME DEBUGGING ROOM ENGINE ════════════
-// ═══════════════════════════════════════════════════════
-
-const DEBUG_BOT_NAMES = ["Aria K.", "Dev M.", "Sam T."];
-
+// ═══════════ BOTS & DEBUG HELPERS ═══════════
 function generateBotAnnotation(error, lang) {
   const suggestions = {
     SyntaxError: [
@@ -764,13 +756,7 @@ function generateBotAnnotation(error, lang) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-// ═══════════════════════════════════════════════════════
-// ════════ 5.3 LIVE SERVER LOGS ENGINE ══════════════════
-// ═══════════════════════════════════════════════════════
-
-const LOG_LEVELS = ["INFO", "WARN", "ERROR", "DEBUG", "SUCCESS"];
-const LOG_SERVICES = ["api-gateway", "db-pool", "auth-svc", "cache", "ws-server", "scheduler"];
-
+// ═══════════ LIVE SERVER LOGS ENGINE ═══════════
 const LOG_TEMPLATES = [
   { level: "INFO", svc: "api-gateway", msg: "GET /api/status 200 12ms" },
   { level: "INFO", svc: "ws-server", msg: "Client connected [id: {id}]" },
@@ -790,77 +776,84 @@ const LOG_TEMPLATES = [
 
 function genLogEntry() {
   const t = LOG_TEMPLATES[Math.floor(Math.random() * LOG_TEMPLATES.length)];
-  const id = Math.random().toString(36).slice(2, 7);
+  const id = genSid();
   const n = Math.floor(Math.random() * 900 + 10);
   const r = Math.floor(Math.random() * 200 + 1);
   const msg = t.msg.replace(/\{id\}/g, id).replace(/\{n\}/g, n).replace(/\{r\}/g, r);
-  return { level: t.level, svc: t.svc, msg, t: nowTs(), id: Math.random().toString(36).slice(2) };
+  return { level: t.level, svc: t.svc, msg, t: nowTs(), id: genSid() };
 }
 
-// ═══════════ CSS (original + new additions) ═══════════
+// ═══════════ CSS ═══════════
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 html,body,#root{height:100%;overflow:hidden;}
 body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;font-size:13px;}
 :root{
-  --bg:#0d0f14;--bg2:#151820;--bg3:#1c1f28;
+  --bg:#0d0f14;--bg2:rgba(21,24,32,0.85);--bg3:rgba(28,31,40,0.92);
   --bdr:rgba(255,255,255,.08);--bdr2:rgba(255,255,255,.05);
   --txt:#e0e0e0;--txt2:#8892a4;--txt3:#4a5568;
   --blue:#4FC1FF;--grn:#4EC9B0;--pink:#FF6B9D;--ylw:#DCDCAA;
   --sel:rgba(79,193,255,.12);--mono:'JetBrains Mono',Consolas,monospace;
+  --topbar-h:48px;
+  --statusbar-h:24px;
+  --glass-bg:rgba(15,18,25,0.7);
 }
 ::-webkit-scrollbar{width:5px;height:5px;}
 ::-webkit-scrollbar-track{background:transparent;}
-::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:3px;}
-::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.18);}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:10px;border:1px solid transparent;background-clip:padding-box;}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.2);border:1px solid transparent;background-clip:padding-box;}
 
 /* ── TOPBAR ── */
-.topbar{height:46px;background:var(--bg2);border-bottom:1px solid var(--bdr);display:flex;align-items:center;padding:0 10px;gap:6px;flex-shrink:0;}
-.tb-logo{display:flex;align-items:center;gap:6px;font-weight:700;font-size:.88rem;color:#fff;padding:0 6px;white-space:nowrap;}
-.gem{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#4FC1FF,#4EC9B0);display:flex;align-items:center;justify-content:center;font-size:11px;}
-.lp{display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:5px;cursor:pointer;font-family:var(--mono);font-size:11px;font-weight:700;border:1px solid transparent;transition:all .12s;white-space:nowrap;}
-.lp:hover{background:rgba(255,255,255,.06);}
-.lp.on{border-color:rgba(255,255,255,.15);}
-.dbg-badge{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:5px;background:rgba(255,107,157,.12);border:1px solid rgba(255,107,157,.25);color:#FF6B9D;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;flex-shrink:0;}
-.dbg-badge:hover{background:rgba(255,107,157,.2);}
-.dbg-cnt{background:#FF6B9D;color:#fff;border-radius:10px;padding:0 5px;font-size:10px;}
-.av{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--mono);border:2px solid transparent;transition:all .15s;flex-shrink:0;position:relative;}
-.av:hover{transform:translateY(-2px);z-index:2;}
-.av.me{border-color:rgba(255,255,255,.4);}
-.av .online-dot{position:absolute;bottom:-2px;right:-2px;width:7px;height:7px;border-radius:50%;border:1.5px solid var(--bg2);}
-.new-ed-btn{display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:6px;background:rgba(79,193,255,.12);border:1px solid rgba(79,193,255,.3);color:#4FC1FF;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;}
-.new-ed-btn:hover{background:rgba(79,193,255,.2);}
-.run-btn{display:flex;align-items:center;gap:5px;padding:5px 14px;border-radius:5px;background:rgba(78,201,176,.15);border:1px solid rgba(78,201,176,.35);color:#4EC9B0;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;font-family:'Inter',sans-serif;white-space:nowrap;}
-.run-btn:hover{background:rgba(78,201,176,.25);border-color:#4EC9B0;}
+.topbar{height:var(--topbar-h);background:var(--bg2);backdrop-filter:blur(16px) saturate(180%);border-bottom:1px solid var(--bdr);display:flex;align-items:center;padding:0 12px;gap:8px;flex-shrink:0;overflow-x:auto;overflow-y:hidden;z-index:100;position:relative;}
+.topbar::-webkit-scrollbar{display:none;}
+.tb-logo{display:flex;align-items:center;gap:8px;font-weight:800;font-size:.9rem;color:#fff;padding:0 6px;white-space:nowrap;flex-shrink:0;letter-spacing:-0.02em;}
+.gem{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,#4FC1FF,#4EC9B0);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;box-shadow:0 0 15px rgba(79,193,255,0.3);}
+.lp{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:6px;cursor:pointer;font-family:var(--mono);font-size:11px;font-weight:700;border:1px solid transparent;transition:all .15s cubic-bezier(.4,0,.2,1);white-space:nowrap;color:var(--txt2);}
+.lp:hover{background:rgba(255,255,255,.08);color:#fff;transform:translateY(-1px);}
+.lp.on{border-color:rgba(79,193,255,.3);background:rgba(79,193,255,.08);color:#fff;}
+.dbg-badge{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:7px;background:rgba(255,107,157,.1);border:1px solid rgba(255,107,157,.2);color:#FF6B9D;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;flex-shrink:0;}
+.dbg-badge:hover{background:rgba(255,107,157,.18);border-color:rgba(255,107,157,.4);transform:scale(1.02);}
+.dbg-cnt{background:#FF6B9D;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;box-shadow:0 2px 8px rgba(255,107,157,0.4);}
+.av{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;cursor:pointer;font-family:var(--mono);border:2px solid transparent;transition:all .2s;flex-shrink:0;position:relative;background:var(--bg3);}
+.av:hover{transform:translateY(-3px) scale(1.05);z-index:2;box-shadow:0 5px 15px rgba(0,0,0,0.3);}
+.av.me{border-color:rgba(79,193,255,.5);box-shadow:0 0 10px rgba(79,193,255,0.2);}
+.av .online-dot{position:absolute;bottom:-3px;right:-3px;width:9px;height:9px;border-radius:50%;border:2px solid #151820;background:#4EC9B0;box-shadow:0 0 5px #4EC9B0;}
+.new-ed-btn{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:8px;background:rgba(79,193,255,.1);border:1px solid rgba(79,193,255,.2);color:#4FC1FF;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;white-space:nowrap;flex-shrink:0;}
+.new-ed-btn:hover{background:rgba(79,193,255,.18);border-color:rgba(79,193,255,.4);transform:translateY(-1px);}
+.run-btn{display:flex;align-items:center;gap:6px;padding:6px 16px;border-radius:8px;background:linear-gradient(135deg,rgba(78,201,176,.15),rgba(78,201,176,.05));border:1px solid rgba(78,201,176,.3);color:#4EC9B0;font-size:11px;font-weight:800;cursor:pointer;transition:all .2s cubic-bezier(.4,0,.2,1);font-family:'Inter',sans-serif;white-space:nowrap;flex-shrink:0;text-transform:uppercase;letter-spacing:0.04em;}
+.run-btn:hover:not(:disabled){background:rgba(78,201,176,.25);border-color:#4EC9B0;box-shadow:0 0 20px rgba(78,201,176,0.2);transform:translateY(-1px);}
 .run-btn.running{background:rgba(255,107,157,.12);border-color:rgba(255,107,157,.35);color:#FF6B9D;}
-.run-btn:disabled{opacity:.5;cursor:not-allowed;}
+.run-btn:disabled{opacity:.4;cursor:not-allowed;}
 
 /* ── SIDEBAR ── */
-.sidebar{width:240px;background:var(--bg2);border-right:1px solid var(--bdr);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;}
-.sec-hdr{padding:10px 12px 5px;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--txt3);}
-.ft{display:flex;align-items:center;gap:7px;height:26px;cursor:pointer;padding:0 10px;font-size:12px;white-space:nowrap;border-radius:4px;margin:0 4px 1px;}
-.ft:hover{background:rgba(255,255,255,.05);}
-.ft.sel{background:var(--sel);}
+.sidebar{width:250px;background:var(--bg2);backdrop-filter:blur(20px);border-right:1px solid var(--bdr);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;transition:all .25s cubic-bezier(.4,0,.2,1);z-index:90;}
+.sidebar:hover{width:260px;}
+.sec-hdr{padding:14px 16px 8px;font-size:10px;font-weight:800;letter-spacing:.15em;text-transform:uppercase;color:var(--txt3);}
+.ft{display:flex;align-items:center;gap:9px;height:32px;cursor:pointer;padding:0 12px;font-size:12.5px;white-space:nowrap;border-radius:8px;margin:1px 8px;transition:all .15s;}
+.ft:hover{background:rgba(255,255,255,.06);transform:translateX(3px);}
+.ft.sel{background:rgba(79,193,255,.1);color:#fff;font-weight:600;}
 
 /* ── PRESENCE CARDS ── */
-.presence-card{display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:6px;margin:0 4px 2px;transition:background .15s;cursor:default;}
-.presence-card:hover{background:rgba(255,255,255,.04);}
-.presence-av{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:var(--mono);flex-shrink:0;border:2px solid transparent;position:relative;}
-.presence-av .pdot{position:absolute;bottom:-2px;right:-2px;width:8px;height:8px;border-radius:50%;border:2px solid var(--bg2);}
+.presence-card{display:flex;align-items:center;gap:10px;padding:7px 12px;border-radius:10px;margin:2px 8px;transition:all .2s;cursor:default;border:1px solid transparent;}
+.presence-card:hover{background:rgba(255,255,255,.04);border-color:var(--bdr2);transform:translateX(3px);}
+.presence-av{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;font-family:var(--mono);flex-shrink:0;border:2px solid transparent;position:relative;box-shadow:0 4px 10px rgba(0,0,0,0.2);}
+.presence-av .pdot{position:absolute;bottom:-3px;right:-3px;width:10px;height:10px;border-radius:50%;border:2px solid #151820;}
 .presence-info{flex:1;min-width:0;}
-.presence-name{font-size:12px;color:#e0e0e0;font-weight:500;display:flex;align-items:center;gap:5px;}
-.presence-pos{font-size:10px;margin-top:1px;}
-.presence-typing{display:flex;align-items:center;gap:3px;}
-.typing-dot{width:4px;height:4px;border-radius:50%;display:inline-block;}
+.presence-name{font-size:13px;color:#e0e0e0;font-weight:600;display:flex;align-items:center;gap:6px;}
+.presence-pos{font-size:10.5px;color:var(--txt2);margin-top:2px;font-family:var(--mono);}
+.presence-typing{display:flex;align-items:center;gap:3px;margin-top:2px;}
+.typing-dot{width:4px;height:4px;border-radius:50%;display:inline-block;animation:typingBounce 1.4s infinite ease-in-out;}
 
 /* ── TABS ── */
-.tab{display:flex;align-items:center;gap:5px;padding:0 12px 0 14px;height:36px;border-right:1px solid var(--bdr2);cursor:pointer;font-size:12px;white-space:nowrap;flex-shrink:0;max-width:180px;position:relative;font-family:var(--mono);}
-.tab.on{background:var(--bg);border-bottom:2px solid var(--blue);color:#e0e0e0;}
-.tab.off{background:var(--bg3);color:var(--txt2);}
-.tab:hover .tx{opacity:1;}
-.tx{opacity:0;width:14px;height:14px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:11px;margin-left:auto;flex-shrink:0;color:var(--txt2);}
-.tx:hover{background:rgba(255,255,255,.1);color:#fff;}
+.tab{display:flex;align-items:center;gap:7px;padding:0 14px 0 16px;height:40px;border-right:1px solid var(--bdr2);cursor:pointer;font-size:12.5px;white-space:nowrap;flex-shrink:0;max-width:200px;position:relative;font-family:var(--mono);transition:all .2s;}
+.tab.on{background:var(--bg);border-bottom:2px solid var(--blue);color:#fff;}
+.tab.on::after{content:'';position:absolute;bottom:0;left:0;right:0;height:4px;background:linear-gradient(to top, rgba(79,193,255,0.2), transparent);pointer-events:none;}
+.tab.off{background:rgba(21,24,32,0.4);color:var(--txt2);}
+.tab:hover{background:rgba(255,255,255,.03);color:#fff;}
+.tab:hover .tx{opacity:1;transform:scale(1);}
+.tx{opacity:0;width:16px;height:16px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;margin-left:auto;flex-shrink:0;color:var(--txt2);transition:all .15s;transform:scale(0.8);}
+.tx:hover{background:rgba(255,99,99,.15);color:#ff6363;}
 
 /* ── OUTPUT ── */
 .out-panel{background:#0a0c10;border-top:1px solid var(--bdr);display:flex;flex-direction:column;flex-shrink:0;}
@@ -889,8 +882,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 
 /* ── MISC ── */
 .bc{height:24px;display:flex;align-items:center;padding:0 14px;gap:5px;font-size:11px;color:var(--txt2);background:var(--bg);border-bottom:1px solid var(--bdr2);flex-shrink:0;font-family:var(--mono);}
-.statusbar{height:24px;background:#080a0d;border-top:1px solid var(--bdr);display:flex;align-items:center;padding:0 4px;flex-shrink:0;font-size:11px;color:var(--txt2);font-family:var(--mono);}
-.st{display:flex;align-items:padding:0 8px;height:100%;cursor:pointer;gap:4px;white-space:nowrap;transition:background .1s;align-items:center;padding:0 8px;}
+.statusbar{height:var(--statusbar-h);background:#080a0d;border-top:1px solid var(--bdr);display:flex;align-items:center;padding:0 4px;flex-shrink:0;font-size:11px;color:var(--txt2);font-family:var(--mono);overflow:hidden;}
+.st{display:flex;align-items:center;padding:0 8px;height:100%;cursor:pointer;gap:4px;white-space:nowrap;transition:background .1s;}
 .st:hover{background:rgba(255,255,255,.05);}
 .divider{height:1px;background:var(--bdr);margin:5px 0;}
 .mm{width:52px;background:#0a0c10;border-left:1px solid var(--bdr2);flex-shrink:0;overflow:hidden;position:relative;opacity:.6;}
@@ -898,7 +891,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 .new-tab-dot{width:6px;height:6px;border-radius:50%;background:#4EC9B0;box-shadow:0 0 6px #4EC9B0;display:inline-block;}
 
 /* ── LIVE BADGE ── */
-.live-badge{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;background:rgba(78,201,176,.08);border:1px solid rgba(78,201,176,.2);font-size:10px;font-weight:700;color:#4EC9B0;letter-spacing:.06em;white-space:nowrap;}
+.live-badge{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;background:rgba(78,201,176,.08);border:1px solid rgba(78,201,176,.2);font-size:10px;font-weight:700;color:#4EC9B0;letter-spacing:.06em;white-space:nowrap;flex-shrink:0;}
 .live-dot{width:6px;height:6px;border-radius:50%;background:#4EC9B0;box-shadow:0 0 6px #4EC9B0;}
 
 /* ── ERROR POPUP ── */
@@ -932,9 +925,9 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 .toast{position:fixed;bottom:30px;right:14px;background:var(--bg3);border:1px solid var(--bdr);border-radius:6px;padding:8px 14px;font-size:12px;z-index:999;max-width:300px;box-shadow:0 6px 24px rgba(0,0,0,.5);animation:fadeIn .2s ease both;}
 
 /* ── VALIDATION BADGE ── */
-.val-pass{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;background:rgba(78,201,176,.08);border:1px solid rgba(78,201,176,.2);font-size:10px;font-weight:700;color:#4EC9B0;}
-.val-fail{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;background:rgba(255,107,157,.1);border:1px solid rgba(255,107,157,.25);font-size:10px;font-weight:700;color:#FF6B9D;}
-.val-warn{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;background:rgba(220,220,170,.08);border:1px solid rgba(220,220,170,.2);font-size:10px;font-weight:700;color:#DCDCAA;}
+.val-pass{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;background:rgba(78,201,176,.08);border:1px solid rgba(78,201,176,.2);font-size:10px;font-weight:700;color:#4EC9B0;flex-shrink:0;}
+.val-fail{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;background:rgba(255,107,157,.1);border:1px solid rgba(255,107,157,.25);font-size:10px;font-weight:700;color:#FF6B9D;flex-shrink:0;}
+.val-warn{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;background:rgba(220,220,170,.08);border:1px solid rgba(220,220,170,.2);font-size:10px;font-weight:700;color:#DCDCAA;flex-shrink:0;}
 
 /* ── ANIMATIONS ── */
 @keyframes fadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
@@ -957,9 +950,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 @keyframes announcePop{0%{opacity:0;transform:scale(.93) translateY(4px)}100%{opacity:1;transform:none}}
 .announce-pop{animation:announcePop .22s cubic-bezier(.34,1.4,.64,1) both;}
 
-/* ══════════════════════════════════════════════════ */
-/* ═══════ 5.2 DEBUGGING ROOM STYLES ═══════════════ */
-/* ══════════════════════════════════════════════════ */
+/* ── DEBUGGING ROOM ── */
 .dbg-room-overlay{position:fixed;inset:0;z-index:850;display:flex;align-items:center;justify-content:center;background:rgba(5,7,12,.82);backdrop-filter:blur(4px);}
 .dbg-room{width:720px;max-width:calc(100vw - 24px);max-height:calc(100vh - 60px);background:#10131a;border:1.5px solid rgba(255,107,157,.3);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 1px rgba(255,107,157,.08),0 32px 80px rgba(0,0,0,.95);}
 .dbg-room-head{display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(255,107,157,.07);border-bottom:1px solid rgba(255,107,157,.18);flex-shrink:0;}
@@ -975,7 +966,6 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 .dbg-msg-bubble{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:8px 8px 8px 3px;padding:7px 10px;max-width:85%;font-size:12px;line-height:1.65;}
 .dbg-msg-bubble.me{background:rgba(79,193,255,.1);border-color:rgba(79,193,255,.2);border-radius:8px 8px 3px 8px;margin-left:auto;}
 .dbg-msg-bubble.bot{background:rgba(255,107,157,.07);border-color:rgba(255,107,157,.18);}
-.dbg-msg-bubble.annotation{background:rgba(220,220,170,.07);border-color:rgba(220,220,170,.2);}
 .dbg-msg-time{font-size:9px;color:#4a5568;margin-top:3px;font-family:var(--mono);}
 .dbg-chat-input-row{display:flex;gap:6px;padding:8px 10px;border-top:1px solid rgba(255,255,255,.06);flex-shrink:0;}
 .dbg-chat-input{flex:1;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:7px 12px;color:#e0e0e0;font-size:12px;font-family:'Inter',sans-serif;outline:none;transition:border-color .15s;}
@@ -990,14 +980,12 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 .err-type-badge{display:inline-flex;align-items:center;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;font-family:var(--mono);background:rgba(255,107,157,.15);color:#FF6B9D;border:1px solid rgba(255,107,157,.25);}
 .warn-type-badge{display:inline-flex;align-items:center;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;font-family:var(--mono);background:rgba(220,220,170,.12);color:#DCDCAA;border:1px solid rgba(220,220,170,.2);}
 
-/* ══════════════════════════════════════════════════ */
-/* ═══════ 5.3 LIVE SERVER LOGS STYLES ═════════════ */
-/* ══════════════════════════════════════════════════ */
+/* ── LIVE SERVER LOGS ── */
 .logs-overlay{position:fixed;inset:0;z-index:860;display:flex;align-items:center;justify-content:center;background:rgba(5,7,12,.82);backdrop-filter:blur(4px);}
 .logs-panel{width:860px;max-width:calc(100vw - 24px);height:calc(100vh - 80px);background:#0a0c11;border:1.5px solid rgba(79,193,255,.25);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 1px rgba(79,193,255,.07),0 32px 80px rgba(0,0,0,.95);}
-.logs-head{display:flex;align-items:center;gap:10px;padding:11px 16px;background:rgba(79,193,255,.06);border-bottom:1px solid rgba(79,193,255,.15);flex-shrink:0;}
-.logs-title{font-size:13px;font-weight:700;color:#4FC1FF;flex:1;}
-.logs-controls{display:flex;align-items:center;gap:6px;}
+.logs-head{display:flex;align-items:center;gap:10px;padding:11px 16px;background:rgba(79,193,255,.06);border-bottom:1px solid rgba(79,193,255,.15);flex-shrink:0;flex-wrap:wrap;}
+.logs-title{font-size:13px;font-weight:700;color:#4FC1FF;flex:1;white-space:nowrap;}
+.logs-controls{display:flex;align-items:center;gap:4px;flex-wrap:wrap;}
 .log-filter-btn{padding:3px 9px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--mono);border:1px solid transparent;transition:all .12s;background:rgba(255,255,255,.04);color:#4a5568;}
 .log-filter-btn.active-INFO{background:rgba(79,193,255,.15);border-color:rgba(79,193,255,.3);color:#4FC1FF;}
 .log-filter-btn.active-WARN{background:rgba(220,220,170,.1);border-color:rgba(220,220,170,.25);color:#DCDCAA;}
@@ -1006,8 +994,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 .log-filter-btn.active-SUCCESS{background:rgba(78,201,176,.1);border-color:rgba(78,201,176,.25);color:#4EC9B0;}
 .log-filter-btn.active-ALL{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18);color:#e0e0e0;}
 .logs-body{flex:1;overflow:hidden;display:flex;flex-direction:column;}
-.logs-stats-bar{display:flex;align-items:center;gap:0;border-bottom:1px solid rgba(255,255,255,.05);flex-shrink:0;background:rgba(255,255,255,.015);}
-.logs-stat-item{padding:6px 14px;font-size:10px;font-weight:700;font-family:var(--mono);border-right:1px solid rgba(255,255,255,.05);display:flex;align-items:center;gap:5px;}
+.logs-stats-bar{display:flex;align-items:center;gap:0;border-bottom:1px solid rgba(255,255,255,.05);flex-shrink:0;background:rgba(255,255,255,.015);overflow-x:auto;}
+.logs-stat-item{padding:6px 14px;font-size:10px;font-weight:700;font-family:var(--mono);border-right:1px solid rgba(255,255,255,.05);display:flex;align-items:center;gap:5px;white-space:nowrap;}
 .logs-stream{flex:1;overflow-y:auto;padding:4px 0;}
 .log-entry{display:flex;align-items:flex-start;gap:0;padding:4px 14px;border-bottom:1px solid rgba(255,255,255,.025);font-family:var(--mono);font-size:11.5px;line-height:1.55;transition:background .1s;cursor:default;}
 .log-entry:hover{background:rgba(255,255,255,.025);}
@@ -1030,8 +1018,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 .log-msg.WARN{color:#DCDCAA;}
 .log-msg.SUCCESS{color:#4EC9B0;}
 .log-msg.DEBUG{color:#C586C0cc;}
-.logs-foot{display:flex;align-items:center;padding:6px 14px;border-top:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.01);gap:10px;flex-shrink:0;}
-.logs-streaming-dot{width:7px;height:7px;border-radius:50%;background:#4EC9B0;box-shadow:0 0 6px #4EC9B0;}
+.logs-foot{display:flex;align-items:center;padding:6px 14px;border-top:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.01);gap:10px;flex-shrink:0;flex-wrap:wrap;}
+.logs-streaming-dot{width:7px;height:7px;border-radius:50%;background:#4EC9B0;box-shadow:0 0 6px #4EC9B0;flex-shrink:0;}
 .logs-streaming-dot.paused{background:#4a5568;box-shadow:none;}
 .log-search{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:5px;padding:4px 10px;color:#e0e0e0;font-size:11px;font-family:var(--mono);outline:none;width:180px;transition:border-color .15s;}
 .log-search:focus{border-color:rgba(79,193,255,.35);}
@@ -1041,415 +1029,306 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 .logs-clear-btn{padding:4px 12px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;border:1px solid rgba(255,107,157,.2);background:rgba(255,107,157,.06);color:#FF6B9D66;transition:all .15s;}
 .logs-clear-btn:hover{background:rgba(255,107,157,.15);color:#FF6B9D;}
 
-/* ── Toolbar shortcut buttons ── */
-.tool-btn{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#8892a4;transition:all .15s;white-space:nowrap;}
+/* ── TOOL BUTTONS ── */
+.tool-btn{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#8892a4;transition:all .15s;white-space:nowrap;flex-shrink:0;}
 .tool-btn:hover{background:rgba(255,255,255,.08);color:#e0e0e0;}
 .tool-btn.dbg{background:rgba(255,107,157,.08);border-color:rgba(255,107,157,.2);color:#FF6B9Daa;}
 .tool-btn.dbg:hover{background:rgba(255,107,157,.18);color:#FF6B9D;}
 .tool-btn.logs{background:rgba(79,193,255,.07);border-color:rgba(79,193,255,.18);color:#4FC1FFaa;}
 .tool-btn.logs:hover{background:rgba(79,193,255,.18);color:#4FC1FF;}
 
-/* ── ACCESS TERMINAL (PREMIUM) ── */
-.access-terminal {
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #05070a;
-  color: #fff;
-  overflow: hidden;
-  position: relative;
-  font-family: 'Inter', sans-serif;
+/* ── RIGHT PANEL ── */
+.right-panel{width:210px;background:var(--bg2);border-left:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;}
+
+/* ── ACCESS TERMINAL ── */
+.access-terminal{height:100vh;display:flex;align-items:center;justify-content:center;background:#05070a;color:#fff;overflow:hidden;position:relative;font-family:'Inter',sans-serif;}
+.terminal-bg{display:none;}
+.grid-overlay{position:absolute;inset:0;background-image:linear-gradient(rgba(79,193,255,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(79,193,255,0.04) 1px,transparent 1px);background-size:50px 50px;opacity:.5;mask-image:radial-gradient(circle at center,black,transparent 80%);}
+.nebula{position:absolute;width:800px;height:800px;filter:blur(150px);opacity:.15;border-radius:50%;pointer-events:none;}
+.nebula.blue{background:radial-gradient(circle,#4FC1FF,transparent 70%);top:-300px;left:-200px;animation:float-nebula 25s infinite alternate;}
+.nebula.pink{background:radial-gradient(circle,#FF6B9D,transparent 70%);bottom:-300px;right:-200px;animation:float-nebula 30s infinite alternate-reverse;}
+@keyframes float-nebula{0%{transform:translate(0,0) scale(1)}100%{transform:translate(150px,100px) scale(1.1)}}
+.terminal-container{position:relative;z-index:10;width:400px;background:rgba(15,18,25,.85);border:1px solid rgba(255,255,255,.12);border-radius:28px;padding:32px;backdrop-filter:blur(40px) saturate(180%);box-shadow:0 40px 100px rgba(0,0,0,.9),inset 0 0 0 1px rgba(255,255,255,.05);transition:all .5s cubic-bezier(.34,1.56,.64,1);}
+.terminal-container:hover{transform:translateY(-5px);border-color:rgba(255,255,255,.15);}
+.terminal-header{text-align:center;margin-bottom:28px;}
+.terminal-brand{display:flex;flex-direction:column;align-items:center;gap:16px;}
+.brand-icon{font-size:48px;filter:drop-shadow(0 0 20px rgba(79,193,255,.6));animation:icon-glow 3s infinite alternate;}
+@keyframes icon-glow{from{filter:drop-shadow(0 0 10px rgba(79,193,255,.4))}to{filter:drop-shadow(0 0 25px rgba(79,193,255,.8));transform:scale(1.05)}}
+.brand-text h1{font-size:36px;font-weight:800;letter-spacing:-2px;background:linear-gradient(135deg,#fff 30%,#4FC1FF);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin:0;}
+.brand-text span{font-size:11px;color:rgba(255,255,255,.4);letter-spacing:5px;font-weight:700;text-transform:uppercase;display:block;margin-top:4px;}
+.terminal-status{font-size:10px;color:#4EC9B0;display:inline-flex;align-items:center;gap:8px;padding:4px 14px;background:rgba(78,201,176,.08);border-radius:100px;border:1px solid rgba(78,201,176,.2);font-weight:700;margin-top:16px;}
+.pulse-dot{width:8px;height:8px;border-radius:50%;background:#4EC9B0;box-shadow:0 0 12px #4EC9B0;animation:pulse-ring 2s infinite;}
+@keyframes pulse-ring{0%{transform:scale(.95);box-shadow:0 0 0 0 rgba(78,201,176,.7)}70%{transform:scale(1);box-shadow:0 0 0 10px rgba(78,201,176,0)}100%{transform:scale(.95);box-shadow:0 0 0 0 rgba(78,201,176,0)}}
+.terminal-nav{display:flex;background:rgba(255,255,255,.04);border-radius:16px;padding:5px;margin-bottom:24px;border:1px solid rgba(255,255,255,.06);position:relative;}
+.nav-item{flex:1;padding:12px;border:none;background:none;color:rgba(255,255,255,.4);font-size:12px;font-weight:700;cursor:pointer;transition:all .3s;border-radius:12px;z-index:2;position:relative;}
+.nav-item.active{color:#fff;}
+.nav-indicator{position:absolute;top:5px;left:5px;height:calc(100% - 10px);width:calc(50% - 5px);background:rgba(255,255,255,.1);border-radius:12px;transition:transform .5s cubic-bezier(.34,1.56,.64,1);border:1px solid rgba(255,255,255,.15);box-shadow:0 4px 15px rgba(0,0,0,.3);}
+.terminal-input-group{margin-bottom:16px;}
+.terminal-input-group label{display:block;font-size:10px;color:rgba(255,255,255,.5);margin-bottom:6px;font-weight:700;letter-spacing:1px;text-transform:uppercase;}
+.input-wrapper{position:relative;}
+.input-wrapper input{width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);padding:12px 18px;border-radius:14px;color:#fff;font-size:14px;outline:none;transition:all .3s;}
+.input-wrapper input:focus{background:rgba(255,255,255,.06);border-color:rgba(79,193,255,.6);box-shadow:0 0 25px rgba(79,193,255,.15);transform:scale(1.02);}
+.terminal-submit{width:100%;padding:16px;background:linear-gradient(135deg,#fff,#e0e0e0);border:none;border-radius:14px;color:#000;font-weight:900;font-size:14px;cursor:pointer;transition:all .3s cubic-bezier(.4,0,.2,1);margin-top:8px;box-shadow:0 15px 35px rgba(0,0,0,.3);text-transform:uppercase;letter-spacing:1px;}
+.terminal-submit:hover:not(:disabled){transform:translateY(-3px) scale(1.02);box-shadow:0 20px 45px rgba(255,255,255,.2);background:#fff;}
+.terminal-submit:active:not(:disabled){transform:translateY(-1px) scale(.98);}
+.terminal-submit:disabled{opacity:.3;cursor:not-allowed;filter:grayscale(1);}
+.terminal-footer{margin-top:24px;text-align:center;}
+.footer-line{height:1px;background:linear-gradient(to right,transparent,rgba(255,255,255,.1),transparent);margin-bottom:14px;}
+.footer-content{display:flex;justify-content:center;gap:24px;font-size:10px;color:rgba(255,255,255,.25);font-weight:700;letter-spacing:2px;}
+.terminal-alert{display:flex;align-items:center;gap:14px;padding:16px;border-radius:16px;margin-bottom:24px;font-size:13px;line-height:1.4;backdrop-filter:blur(10px);}
+.terminal-alert.error{background:rgba(255,107,157,.15);border:1px solid rgba(255,107,157,.3);color:#FFB3CD;}
+.terminal-alert.warning{background:rgba(220,220,170,.15);border:1px solid rgba(220,220,170,.3);color:#F0F0C0;display:flex;flex-direction:column;gap:12px;}
+.local-bypass-btn{width:100%;padding:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;}
+.local-bypass-btn:hover{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.4);}
+.terminal-alert.info{background:rgba(79,193,255,.15);border:1px solid rgba(79,193,255,.3);color:#A5E0FF;}
+.fi-pop{animation:fi-pop .6s cubic-bezier(.34,1.56,.64,1) both;}
+@keyframes fi-pop{from{opacity:0;transform:scale(.9) translateY(20px)}to{opacity:1;transform:scale(1) translateY(0)}}
+
+/* ── MOBILE BOTTOM BAR ── */
+.mobile-bottom-bar{display:none;position:fixed;bottom:0;left:0;right:0;height:52px;background:var(--bg2);border-top:1px solid var(--bdr);z-index:100;align-items:center;justify-content:space-around;padding:0 4px;}
+.mbb-btn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 10px;border-radius:8px;cursor:pointer;border:none;background:transparent;color:#4a5568;font-size:9px;font-weight:700;font-family:'Inter',sans-serif;transition:all .15s;min-width:52px;}
+.mbb-btn.active{color:#4FC1FF;background:rgba(79,193,255,.1);}
+.mbb-btn:hover{background:rgba(255,255,255,.06);color:#8892a4;}
+.mbb-icon{font-size:18px;line-height:1;}
+.mobile-sidebar-overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);}
+.mobile-sidebar-drawer{position:fixed;left:0;top:0;bottom:0;width:280px;background:var(--bg2);border-right:1px solid var(--bdr);z-index:201;overflow-y:auto;transform:translateX(-100%);transition:transform .25s cubic-bezier(.34,1.2,.64,1);}
+.mobile-sidebar-drawer.open{transform:translateX(0);}
+
+/* ════════════════════════════════════════════════════ */
+/* ══════════  MEDIA QUERIES — FULLY RESPONSIVE  ══════ */
+/* ════════════════════════════════════════════════════ */
+
+/* ── 0. Large Desktop & Ultrawide ≥ 1600px ── */
+@media screen and (min-width:1600px){
+  .sidebar{width:280px;}
+  .right-panel{width:260px;}
+  body{font-size:14px;}
+  .topbar{height:52px;padding:0 20px;}
+  .tab{font-size:13px;height:40px;padding:0 18px;}
 }
 
-.terminal-bg {
-  display: none;
+/* ── 1. Large Tablets & Small Laptops ≤ 1024px ── */
+@media screen and (max-width:1024px){
+  .sidebar{width:60px;min-width:60px;}
+  .sidebar .presence-info,.sidebar .sec-hdr,.sidebar .divider,.sidebar .presence-pos{display:none;}
+  .ft{padding:8px;justify-content:center;}
+  .ft span:last-child{display:none;}
+  .right-panel{width:60px;min-width:60px;}
+  .right-panel > *:not(.ot-hdr){display:none;}
+  .tool-btn span:last-child{display:none;}
+  .tool-btn{padding:4px 6px;}
 }
 
-.grid-overlay {
-  position: absolute;
-  inset: 0;
-  background-image: 
-    linear-gradient(rgba(79,193,255,0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(79,193,255,0.04) 1px, transparent 1px);
-  background-size: 50px 50px;
-  opacity: 0.5;
-  mask-image: radial-gradient(circle at center, black, transparent 80%);
+/* ── 2. Tablets ≤ 768px ── */
+@media screen and (max-width:768px){
+  :root{--topbar-h:42px;}
+  .topbar{padding:0 8px;gap:4px;}
+  .tb-logo{font-size:.8rem;}
+  .tb-logo span:last-child{display:none;}
+  .live-badge{font-size:9px;padding:2px 7px;}
+  .val-pass,.val-fail,.val-warn{display:none;}
+  .py-badge{display:none;}
+  .tool-btn.dbg,.tool-btn.logs{display:none !important;}
+  .sb-tool{display:none !important;}
+  .dbg-badge span:not(.dbg-cnt){display:none;}
+  .dbg-badge{padding:4px 8px;}
+  .tab{padding:0 10px;font-size:11px;height:32px;}
+  .bc{padding:4px 10px;font-size:10px;}
+  .out-hdr{height:30px;}
+  .out-tab{padding:0 10px;font-size:10px;}
+  /* collapse sidebar to icon strip */
+  .sidebar{width:48px;min-width:48px;}
+  .sidebar .presence-card,.sidebar .sec-hdr,.sidebar .divider,.sidebar .session-info,.sidebar .tools-section{display:none;}
+  .ft{padding:6px;justify-content:center;}
+  .ft > span:not(:first-child){display:none;}
+  /* right panel hidden */
+  .right-panel{display:none;}
+  .mm{display:none;}
+  .terminal-container{width:92%;padding:24px;border-radius:20px;}
+  .brand-text h1{font-size:28px;}
 }
 
-.nebula {
-  position: absolute;
-  width: 800px;
-  height: 800px;
-  filter: blur(150px);
-  opacity: 0.15;
-  border-radius: 50%;
-  pointer-events: none;
-}
-
-.nebula.blue {
-  background: radial-gradient(circle, #4FC1FF, transparent 70%);
-  top: -300px;
-  left: -200px;
-  animation: float-nebula 25s infinite alternate;
-}
-
-.nebula.pink {
-  background: radial-gradient(circle, #FF6B9D, transparent 70%);
-  bottom: -300px;
-  right: -200px;
-  animation: float-nebula 30s infinite alternate-reverse;
-}
-
-@keyframes float-nebula {
-  0% { transform: translate(0, 0) scale(1); }
-  100% { transform: translate(150px, 100px) scale(1.1); }
-}
-
-.terminal-container {
-  position: relative;
-  z-index: 10;
-  width: 400px;
-  background: rgba(15, 18, 25, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 28px;
-  padding: 32px;
-  backdrop-filter: blur(40px) saturate(180%);
-  box-shadow: 
-    0 40px 100px rgba(0, 0, 0, 0.9),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
-  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.terminal-container:hover {
-  transform: translateY(-5px);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.terminal-header {
-  text-align: center;
-  margin-bottom: 28px;
-}
-
-.terminal-brand {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-}
-
-.brand-icon {
-  font-size: 48px;
-  filter: drop-shadow(0 0 20px rgba(79, 193, 255, 0.6));
-  animation: icon-glow 3s infinite alternate;
-}
-
-@keyframes icon-glow {
-  from { filter: drop-shadow(0 0 10px rgba(79, 193, 255, 0.4)); }
-  to { filter: drop-shadow(0 0 25px rgba(79, 193, 255, 0.8)); transform: scale(1.05); }
-}
-
-.brand-text h1 {
-  font-family: 'Syne', sans-serif;
-  font-size: 36px;
-  font-weight: 800;
-  letter-spacing: -2px;
-  background: linear-gradient(135deg, #fff 30%, #4FC1FF);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  margin: 0;
-}
-
-.brand-text span {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.4);
-  letter-spacing: 5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  display: block;
-  margin-top: 4px;
-}
-
-.terminal-status {
-  font-size: 10px;
-  color: #4EC9B0;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 14px;
-  background: rgba(78, 201, 176, 0.08);
-  border-radius: 100px;
-  border: 1px solid rgba(78, 201, 176, 0.2);
-  font-weight: 700;
-  margin-top: 16px;
-}
-
-.pulse-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #4EC9B0;
-  box-shadow: 0 0 12px #4EC9B0;
-  animation: pulse-ring 2s infinite;
-}
-
-@keyframes pulse-ring {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(78, 201, 176, 0.7); }
-  70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(78, 201, 176, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(78, 201, 176, 0); }
-}
-
-.terminal-nav {
-  display: flex;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 16px;
-  padding: 5px;
-  margin-bottom: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  position: relative;
-}
-
-.nav-item {
-  flex: 1;
-  padding: 12px;
-  border: none;
-  background: none;
-  color: rgba(255, 255, 255, 0.4);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.3s;
-  border-radius: 12px;
-  z-index: 2;
-  position: relative;
-}
-
-.nav-item.active {
-  color: #fff;
-}
-
-.nav-indicator {
-  position: absolute;
-  top: 5px;
-  left: 5px;
-  height: calc(100% - 10px);
-  width: calc(50% - 5px);
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-}
-
-.terminal-input-group {
-  margin-bottom: 16px;
-}
-
-.terminal-input-group label {
-  display: block;
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.5);
-  margin-bottom: 6px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-}
-
-.input-wrapper {
-  position: relative;
-}
-
-.input-wrapper input {
-  width: 100%;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 12px 18px;
-  border-radius: 14px;
-  color: #fff;
-  font-size: 14px;
-  outline: none;
-  transition: all 0.3s;
-}
-
-.input-wrapper input:focus {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(79, 193, 255, 0.6);
-  box-shadow: 0 0 25px rgba(79, 193, 255, 0.15);
-  transform: scale(1.02);
-}
-
-.terminal-submit {
-  width: 100%;
-  padding: 16px;
-  background: linear-gradient(135deg, #fff, #e0e0e0);
-  border: none;
-  border-radius: 14px;
-  color: #000;
-  font-weight: 900;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  margin-top: 8px;
-  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.terminal-submit:hover:not(:disabled) {
-  transform: translateY(-3px) scale(1.02);
-  box-shadow: 0 20px 45px rgba(255, 255, 255, 0.2);
-  background: #fff;
-}
-
-.terminal-submit:active:not(:disabled) {
-  transform: translateY(-1px) scale(0.98);
-}
-
-.terminal-submit:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-  filter: grayscale(1);
-}
-
-.terminal-footer {
-  margin-top: 24px;
-  text-align: center;
-}
-
-.footer-line {
-  height: 1px;
-  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.1), transparent);
-  margin-bottom: 14px;
-}
-
-.footer-content {
-  display: flex;
-  justify-content: center;
-  gap: 24px;
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.25);
-  font-weight: 700;
-  letter-spacing: 2px;
-}
-
-.terminal-alert {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 16px;
-  border-radius: 16px;
-  margin-bottom: 24px;
-  font-size: 13px;
-  line-height: 1.4;
-  backdrop-filter: blur(10px);
-}
-
-.terminal-alert.error {
-  background: rgba(255, 107, 157, 0.15);
-  border: 1px solid rgba(255, 107, 157, 0.3);
-  color: #FFB3CD;
-}
-
-.terminal-alert.warning {
-  background: rgba(220, 220, 170, 0.15);
-  border: 1px solid rgba(220, 220, 170, 0.3);
-  color: #F0F0C0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.local-bypass-btn {
-  width: 100%;
-  padding: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.local-bypass-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.4);
-}
-
-.terminal-alert.info {
-  background: rgba(79, 193, 255, 0.15);
-  border: 1px solid rgba(79, 193, 255, 0.3);
-  color: #A5E0FF;
-}
-
-.fi-pop { animation: fi-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
-@keyframes fi-pop { from { opacity: 0; transform: scale(0.9) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-
-.spin { animation: spin 1s linear infinite; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-
-/* ── MEDIA QUERIES ── */
-
-/* 1. Large Tablets & Small Laptops (1024px and down) */
-@media screen and (max-width: 1024px) {
-  .sidebar { width: 60px !important; min-width: 60px !important; transition: width 0.3s; }
-  .sidebar span:not(.new-tab-dot):not(.new-tab-dot + span) { display: none; }
-  .ft { padding: 8px !important; justify-content: center; }
-  .ft span:last-child { display: none; }
-  .presence-info, .sec-hdr span:first-child, .divider, .dbg-badge span:not(.dbg-cnt) { display: none; }
-  .right-panel { width: 60px !important; min-width: 60px !important; }
-  .right-panel > *:not(.ot-hdr) { display: none; }
-}
-
-/* 2. Tablets (768px and down) */
-@media screen and (max-width: 768px) {
-  .topbar { padding: 0 10px; height: 40px; }
-  .tb-logo { font-size: 14px; }
-  .live-badge, .py-badge, .val-pop { font-size: 9px; padding: 2px 6px; }
-  .tab { padding: 0 10px; font-size: 11px; height: 32px; }
-  .tab .tx { margin-left: 6px; }
-  .bc { padding: 4px 10px; font-size: 10px; }
-  .out-hdr { height: 32px; }
-  .out-tab { padding: 0 10px; font-size: 11px; }
-  .terminal-container { width: 92%; padding: 24px; border-radius: 20px; }
-  .brand-text h1 { font-size: 28px; }
-}
-
-/* 3. Mobile Devices (600px and down - iPhone / Android) */
+/* ── iPhone SE, Newer iPhones with safe areas & Android Modern ── */
 @media screen and (max-width: 600px) {
-  .sidebar, .right-panel, .out-panel, .presence-card, .sec-hdr, .logs-foot, .dbg-badge { display: none !important; }
-  .topbar { justify-content: space-between; padding: 0 8px; }
-  .tb-logo .gem { width: 20px; height: 20px; font-size: 10px; }
-  .lp { padding: 4px 8px !important; }
-  .lp span:last-child { display: none; }
-  .tab { min-width: 80px; max-width: 120px; }
-  .bc span:first-child, .bc span:nth-child(2) { display: none; }
+  :root {
+    --topbar-h: 44px;
+    --statusbar-h: 0px;
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+  }
+
+  body {
+    overscroll-behavior-y: contain; /* Android pull-to-refresh fix */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .topbar {
+    padding: var(--safe-top) calc(6px + var(--safe-right)) 0 calc(6px + var(--safe-left));
+    gap: 4px;
+    height: calc(var(--topbar-h) + var(--safe-top));
+    overflow: hidden;
+  }
   
-  .terminal-nav { margin-bottom: 16px; border-radius: 12px; }
-  .nav-item { padding: 10px; font-size: 11px; }
-  .brand-icon { font-size: 36px; }
-  .terminal-submit { padding: 14px; font-size: 13px; }
-  .footer-content { gap: 12px; font-size: 9px; }
-  
-  .presence-panel-collapsed { display: none; }
-  
-  .dbg-room { width: 95vw !important; height: 85vh !important; flex-direction: column !important; }
-  .dbg-errors-panel { width: 100% !important; height: 180px !important; border-right: none !important; border-bottom: 1px solid rgba(255,255,255,.05); }
+  .divider-v { display: none !important; }
+
+  .editor-main-area {
+    padding-bottom: calc(52px + var(--safe-bottom));
+  }
+
+  .mobile-bottom-bar {
+    display: flex !important;
+    height: calc(52px + var(--safe-bottom));
+    padding-bottom: var(--safe-bottom);
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+    backdrop-filter: blur(20px);
+    background: rgba(21, 24, 32, 0.85);
+  }
+
+  /* hide heavy panels */
+  .sidebar{display:none !important;}
+  .right-panel{display:none !important;}
+  .mm{display:none !important;}
+  .statusbar{display:none !important;}
+  .tool-btn{display:none !important;}
+  .dbg-badge{display:none !important;}
+  .live-badge{display:none !important;}
+  .py-badge{display:none !important;}
+  .val-pass,.val-fail,.val-warn{display:none !important;}
+
+  /* topbar — keep only essentials */
+  .tb-logo .gem{width:20px;height:20px;font-size:10px;}
+  .tb-logo{font-size:.8rem;padding:0 4px;}
+
+  /* hide lang switcher text, keep icons */
+  .lp span:last-child{display:none;}
+  .lp{padding:4px 7px; min-height: 32px; display: flex; align-items: center;}
+
+  /* lang switcher scroll */
+  .lang-switcher-row{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .lang-switcher-row::-webkit-scrollbar{display:none;}
+
+  /* new editor controls — hide select, simplify */
+  .new-ed-select{display:none !important;}
+  .new-ed-btn{padding:5px 12px;font-size:10px; min-height: 32px;}
+
+  /* run button compact */
+  .run-btn{padding:5px 14px;font-size:11px; min-height: 32px;}
+  .run-btn span:not(.spin){display:none;}
+
+  /* avatars — show only 2 */
+  .av-group .av:nth-child(n+3){display:none;}
+
+  /* tab bar */
+  .tab{min-width:70px;max-width:130px;font-size:11px;padding:0 8px;height:32px;}
+
+  /* breadcrumb */
+  .bc{padding:3px 10px;font-size:10px;}
+  .bc span:nth-child(n+4){display:none;}
+
+  /* output panel compact */
+  .out-panel{height:180px !important;}
+  .out-hdr{height:28px;}
+  .out-tab{padding:0 10px;font-size:10px;}
+
+  /* modals full screen */
+  .dbg-room{width:100vw !important;height:calc(100vh - 44px) !important;border-radius:0 !important;max-width:100vw !important;max-height:calc(100vh - 44px) !important;}
+  .dbg-room-overlay{align-items:flex-end;padding:0;}
+  .dbg-room-body{flex-direction:column;}
+  .dbg-errors-panel{width:100% !important;height:160px !important;border-right:none !important;border-bottom:1px solid rgba(255,255,255,.05);}
+  .logs-panel{width:100vw !important;height:calc(100vh - 44px) !important;border-radius:0 !important;max-width:100vw !important;}
+  .logs-overlay{align-items:flex-end;padding:0;}
+  .logs-head{padding:8px 12px;gap:6px;}
+  .logs-title{font-size:12px;}
+  .logs-controls{gap:3px;}
+  .log-filter-btn{padding:2px 6px;font-size:9px;}
+  .log-ts{width:60px;font-size:9px;}
+  .log-svc{width:70px;font-size:9px;}
+  .log-entry{font-size:10.5px;padding:3px 10px;}
+
+  /* cmd palette */
+  .cp-box{width:calc(100vw - 16px);max-width:calc(100vw - 16px);}
+  .cp-ov{padding-top:50px;padding-left:8px;padding-right:8px;}
+
+  /* error popup */
+  .err-ov{padding-top:50px;padding-left:8px;padding-right:8px;}
+  .err-body{max-height:180px;font-size:11px;}
+
+  /* toast */
+  .toast{right:8px;left:8px;max-width:100%;bottom:calc(62px + var(--safe-bottom));}
+
+  /* terminal */
+  .terminal-container{width:calc(100vw - 24px);padding:20px 18px;border-radius:20px;}
+  .brand-icon{font-size:36px;}
+  .brand-text h1{font-size:26px;letter-spacing:-1px;}
+  .brand-text span{font-size:9px;letter-spacing:3px;}
+  .terminal-nav{margin-bottom:16px;}
+  .nav-item{padding:10px 6px;font-size:11px;}
+  .terminal-submit{padding:13px;font-size:13px;}
+  .footer-content{gap:12px;font-size:9px;}
+  .input-wrapper input{padding:10px 14px;font-size:13px;}
+  .terminal-alert{padding:12px;font-size:12px;gap:10px;}
 }
 
-/* 4. Small Mobile Devices (360px and down) */
-@media screen and (max-width: 360px) {
-  .brand-text h1 { font-size: 24px; }
-  .terminal-container { padding: 20px; }
-  .footer-content span:last-child { display: none; }
-  .topbar { gap: 4px; }
-  .live-badge { display: none; }
+/* ── 4. Small phones ≤ 390px (iPhone SE 1st gen, older Androids) ── */
+@media screen and (max-width:390px){
+  :root{--topbar-h:40px;}
+  .tb-logo{display:none;}
+  .lp{padding:3px 5px;}
+  .run-btn{padding:4px 10px;}
+  .tab{min-width:60px;max-width:110px;font-size:10px;padding:0 6px;}
+  .brand-text h1{font-size:22px;}
+  .terminal-container{padding:16px 14px;}
+  .footer-content span:last-child{display:none;}
+  .out-panel{height:150px !important;}
+  .mbb-btn{min-width:44px;padding:5px 6px;font-size:8px;}
+}
+
+/* ── 5. Landscape mode on phones ── */
+@media screen and (max-width:900px) and (orientation:landscape){
+  :root{--topbar-h:36px;}
+  .topbar{height:var(--topbar-h);}
+  .out-panel{height:140px !important;}
+  .mobile-bottom-bar{height:44px;}
+  .mbb-icon{font-size:15px;}
+  .mbb-btn{font-size:8px;padding:4px 8px;}
+  .terminal-container{padding:16px 20px;}
+  .terminal-header{margin-bottom:14px;}
+  .brand-icon{font-size:28px;}
+  .brand-text h1{font-size:22px;}
+  .terminal-nav{margin-bottom:12px;}
+  .terminal-input-group{margin-bottom:10px;}
+  .input-wrapper input{padding:8px 14px;font-size:13px;}
+  .terminal-submit{padding:11px;}
+  .terminal-footer{margin-top:12px;}
+}
+
+/* ── 6. Foldables & large phones 600–768px ── */
+@media screen and (min-width:601px) and (max-width:768px){
+  .sidebar{width:52px;min-width:52px;}
+  .right-panel{display:none;}
+  .mm{display:none;}
+  .tool-btn span{display:none;}
+  .tool-btn{padding:4px 7px;}
+}
+
+/* ── 7. Touch Device Optimizations (Global) ── */
+@media (pointer: coarse) {
+  .ft, .tab, .lp, .new-ed-btn, .run-btn, .mbb-btn {
+    min-height: 38px;
+  }
+  .tx {
+    width: 24px;
+    height: 24px;
+    opacity: 0.8;
+  }
 }
 `;
 
 // ═══════════ CODEMIRROR ═══════════
-const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, remoteOps, cursors, lineLocks, myId, fileKey, readOnly = false }, ref) => {
+const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, remoteOps, cursors, lineLocks, myId, fileKey, readOnly = false, onRemoteOpsProcessed }, ref) => {
   const domRef = useRef(null), viewRef = useRef(null), modsRef = useRef(null);
   const inited = useRef(false), suppress = useRef(false), prevDoc = useRef(initText || "");
   useEffect(() => {
@@ -1474,9 +1353,9 @@ const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, remoteOp
         }).filter(Boolean)
       });
       prevDoc.current = v.state.doc.toString();
-    } finally { 
+    } finally {
       suppress.current = false;
-      onRemoteOpsProcessed?.(); // Signal Shell to clear the queue
+      onRemoteOpsProcessed?.();
     }
   }, [remoteOps]);
   useEffect(() => {
@@ -1532,7 +1411,17 @@ const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, remoteOp
           domRef.current.innerHTML = "";
           const ta = document.createElement("textarea"); ta.value = initText || "";
           ta.style.cssText = "width:100%;height:100%;background:#0d0f14;color:#d4d4d4;font-family:'JetBrains Mono',monospace;font-size:13.5px;line-height:21px;padding:8px 14px;border:none;outline:none;resize:none;tab-size:4;";
-          if (!readOnly) { ta.addEventListener("input", e => { const nT = e.target.value, old = prevDoc.current; let i = 0, oe = old.length, ne = nT.length; while (i < oe && i < ne && old[i] === nT[i]) i++; const ins = nT.slice(i), del = old.slice(i, oe); if (del.length) onLocalOp?.({ type: "delete", pos: i, len: del.length }); if (ins.length) onLocalOp?.({ type: "insert", pos: i, chars: ins }); prevDoc.current = nT; }); }
+          if (!readOnly) {
+            ta.addEventListener("input", e => {
+              const nT = e.target.value, old = prevDoc.current;
+              let i = 0, oe = old.length, ne = nT.length;
+              while (i < oe && i < ne && old[i] === nT[i]) i++;
+              const ins = nT.slice(i), del = old.slice(i, oe);
+              if (del.length) onLocalOp?.({ type: "delete", pos: i, len: del.length });
+              if (ins.length) onLocalOp?.({ type: "insert", pos: i, chars: ins });
+              prevDoc.current = nT;
+            });
+          }
           domRef.current.appendChild(ta);
           if (ref) { const api = { _getText: () => ta.value }; typeof ref === "function" ? ref(api) : (ref.current = api); }
         }
@@ -1543,12 +1432,17 @@ const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, remoteOp
   useEffect(() => {
     if (!viewRef.current || !modsRef.current) return;
     const { EditorState, EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars, indentOnInput, history, historyKeymap, indentWithTab, searchKeymap, highlightSelectionMatches, autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, foldGutter, foldKeymap, bracketMatching, syntaxHighlighting, defaultHighlightStyle, oneDark, theme, listener, LM } = modsRef.current;
-    const mkExt = lk => { const b = [lineNumbers(), highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(), history(), foldGutter(), drawSelection(), dropCursor(), bracketMatching(), closeBrackets(), autocompletion(), rectangularSelection(), crosshairCursor(), highlightSelectionMatches(), indentOnInput(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }), keymap.of([indentWithTab, ...closeBracketsKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap, ...searchKeymap]), LM[lk] || LM.ts, oneDark, theme, listener, EditorView.lineWrapping]; if (readOnly) b.push(EditorView.editable.of(false)); return b; };
-    suppress.current = true; viewRef.current.setState(EditorState.create({ doc: initText || "", extensions: mkExt(lang) })); prevDoc.current = initText || ""; suppress.current = false;
+    const mkExt = lk => {
+      const b = [lineNumbers(), highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(), history(), foldGutter(), drawSelection(), dropCursor(), bracketMatching(), closeBrackets(), autocompletion(), rectangularSelection(), crosshairCursor(), highlightSelectionMatches(), indentOnInput(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }), keymap.of([indentWithTab, ...closeBracketsKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap, ...searchKeymap]), LM[lk] || LM.ts, oneDark, theme, listener, EditorView.lineWrapping];
+      if (readOnly) b.push(EditorView.editable.of(false)); return b;
+    };
+    suppress.current = true;
+    viewRef.current.setState(EditorState.create({ doc: initText || "", extensions: mkExt(lang) }));
+    prevDoc.current = initText || "";
+    suppress.current = false;
   }, [lang, fileKey]);
   return (
     <div style={{ position: "relative", height: "100%", width: "100%", overflow: "hidden" }}>
-      {/* Line Locks */}
       {Object.values(lineLocks || {}).filter(lock => lock.user_id !== myId).map(lock => (
         <div key={`lock-${lock.line_number}`} style={{ pointerEvents: "none", position: "absolute", inset: 0, overflow: "hidden", zIndex: 10 }}>
           <div style={{ position: "absolute", top: (lock.line_number - 1) * 21, left: 0, right: 0, height: 21, background: lock.color + "15", borderLeft: `4px solid ${lock.color}`, pointerEvents: "none" }}>
@@ -1558,7 +1452,6 @@ const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, remoteOp
           </div>
         </div>
       ))}
-
       {cursors?.filter(c => c.id !== myId).map(cur => {
         const top = (cur.line - 1) * 21, left = 48 + (cur.col - 1) * 8.1;
         return (
@@ -1592,7 +1485,7 @@ function ErrorPopup({ error, lang, onClose, onOpenOutput }) {
   else if (/traceback/i.test(lines[0])) errType = "Runtime Error";
   else if (/compilation failed|build failed/i.test(error)) errType = "Build Failed";
   else if (/error\[e\d+\]/i.test(firstMeaningful)) errType = "Rust Error";
-  else if (/\.go:/i.test(firstMeaningful)) errType = "Go Error";
+  else if (/\\.go:/i.test(firstMeaningful)) errType = "Go Error";
   else if (/sql error/i.test(firstMeaningful)) errType = "SQL Error";
   else if (/fatal error/i.test(firstMeaningful)) errType = "Fatal Error";
   else if (/error:/i.test(firstMeaningful)) errType = "Compilation Error";
@@ -1623,7 +1516,7 @@ function ErrorPopup({ error, lang, onClose, onOpenOutput }) {
           })}
         </div>
         <div className="err-foot">
-          <span className="err-hint">Fix the error(s) and press ▶ Run again · Esc to dismiss</span>
+          <span className="err-hint">Fix errors and press ▶ Run · Esc to dismiss</span>
           <button className="err-view-btn" onClick={() => { onOpenOutput(); onClose(); }}>View in Output →</button>
         </div>
       </div>
@@ -1642,110 +1535,55 @@ function TypingIndicator({ color }) {
   );
 }
 
-// ══════════════════════════════════════════════════════════
-// ═════════ 5.2 DEBUGGING ROOM COMPONENT ══════════════════
-// ══════════════════════════════════════════════════════════
+// ═══════════ DEBUGGING ROOM ═══════════
 function DebuggingRoom({ errors, warnings, lang, me, onLocalOp, onClose }) {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [messages, setMessages] = useState([]);
   const [inputVal, setInputVal] = useState("");
   const messagesEndRef = useRef(null);
   const botTypingRef = useRef(null);
+  const channelRef = useRef(null);
+
   const allIssues = [
     ...errors.map(e => ({ type: "error", text: e })),
     ...warnings.map(w => ({ type: "warning", text: w })),
   ];
 
-  // On mount and when selected issue changes, bots auto-annotate
   useEffect(() => {
     if (allIssues.length === 0) return;
     const issue = allIssues[selectedIdx];
     if (!issue) return;
-    // Initial system message
-    const sysMsg = {
-      id: Math.random().toString(36).slice(2),
-      from: "system",
-      text: `🔍 Debugging: ${issue.text.slice(0, 80)}${issue.text.length > 80 ? "…" : ""}`,
-      t: nowTs(),
-    };
+    const sysMsg = { id: Math.random().toString(36).slice(2), from: "system", text: `🔍 Debugging: ${issue.text.slice(0, 80)}${issue.text.length > 80 ? "…" : ""}`, t: nowTs() };
     setMessages([sysMsg]);
-    // Bot 1 annotates after 700ms
     clearTimeout(botTypingRef.current);
     botTypingRef.current = setTimeout(() => {
       const bot = BOTS[0];
       const suggestion = generateBotAnnotation(issue.text, lang);
-      setMessages(prev => [...prev, {
-        id: Math.random().toString(36).slice(2),
-        from: bot.name, color: bot.color, bg: bot.bg, inits: bot.inits,
-        text: suggestion, t: nowTs(), isBot: true,
-      }]);
-      // Bot 2 after 1.6s
+      setMessages(prev => [...prev, { id: Math.random().toString(36).slice(2), from: bot.name, color: bot.color, bg: bot.bg, inits: bot.inits, text: suggestion, t: nowTs(), isBot: true }]);
       setTimeout(() => {
         const bot2 = BOTS[1];
         const langHint = `In ${LANGS[lang]?.n || lang}: ${issue.text.includes("line") ? "check the highlighted line first." : "validate your syntax tree structure."}`;
-        setMessages(prev => [...prev, {
-          id: Math.random().toString(36).slice(2),
-          from: bot2.name, color: bot2.color, bg: bot2.bg, inits: bot2.inits,
-          text: langHint, t: nowTs(), isBot: true,
-        }]);
+        setMessages(prev => [...prev, { id: Math.random().toString(36).slice(2), from: bot2.name, color: bot2.color, bg: bot2.bg, inits: bot2.inits, text: langHint, t: nowTs(), isBot: true }]);
       }, 1600);
     }, 700);
     return () => clearTimeout(botTypingRef.current);
   }, [selectedIdx, lang]);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  const channelRef = useRef(null);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   useEffect(() => {
     const channel = supabase.channel(`debug:${lang}`);
     channelRef.current = channel;
-
-    channel
-      .on("broadcast", { event: "msg" }, ({ payload }) => {
-        setMessages(prev => [...prev, payload]);
-      })
-      .subscribe();
-
+    channel.on("broadcast", { event: "msg" }, ({ payload }) => { setMessages(prev => [...prev, payload]); }).subscribe();
     return () => channel.unsubscribe();
   }, [lang]);
 
   const sendMessage = (txt = inputVal.trim()) => {
     if (!txt) return;
-    const msg = {
-      id: Math.random().toString(36).slice(2),
-      from: me.name, color: me.cursorColor, bg: me.bg, inits: initials(me.name),
-      text: txt, t: nowTs(), isMe: true,
-    };
+    const msg = { id: Math.random().toString(36).slice(2), from: me.name, color: me.cursorColor, bg: me.bg, inits: initials(me.name), text: txt, t: nowTs(), isMe: true };
     setMessages(prev => [...prev, msg]);
-    channelRef.current.send({ type: "broadcast", event: "msg", payload: { ...msg, isMe: false } });
+    channelRef.current?.send({ type: "broadcast", event: "msg", payload: { ...msg, isMe: false } });
     setInputVal("");
-  };
-
-  const handleAiRectify = async () => {
-    const issue = allIssues[selectedIdx];
-    if (!issue) return;
-    sendMessage(`🤖 Requesting AI rectification for: ${issue.text}`);
-    
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [
-            { role: "system", content: "You are a senior software engineer. Fix the provided code based on the error. Return ONLY the fixed code block." },
-            { role: "user", content: `Language: ${lang}\nError: ${issue.text}\nCode:\n${activeEditorRef.current?._getText() || ""}` }
-          ]
-        })
-      });
-      const data = await res.json();
-      const fix = data.choices[0].message.content;
-      sendMessage(`✅ AI Suggestion:\n${fix}`);
-    } catch (err) {
-      sendMessage(`❌ AI Rectification failed: ${err.message}. Please verify your API configuration in settings.`);
-    }
   };
 
   const totalIssues = allIssues.length;
@@ -1753,23 +1591,15 @@ function DebuggingRoom({ errors, warnings, lang, me, onLocalOp, onClose }) {
   return (
     <div className="dbg-room-overlay" onClick={onClose}>
       <div className="dbg-room announce-pop" onClick={e => e.stopPropagation()}>
-        {/* Header */}
         <div className="dbg-room-head">
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#FF6B9D", boxShadow: "0 0 8px #FF6B9D", display: "inline-block", flexShrink: 0 }} className="pulse" />
           <div className="dbg-room-title">🐛 Real-Time Debugging Room</div>
           <span style={{ fontSize: 10, color: "#4a5568", fontFamily: "var(--mono)", background: "rgba(255,255,255,.04)", padding: "2px 8px", borderRadius: 4 }}>
-            {LANGS[lang]?.n || lang} · {totalIssues} issue{totalIssues !== 1 ? "s" : ""}
+            ${LANGS[lang]?.n || lang} · ${totalIssues} issue${totalIssues !== 1 ? "s" : ""}
           </span>
-          <div style={{ display: "flex", gap: 5, marginLeft: 6 }}>
-            {BOTS.map((b, i) => (
-              <div key={i} style={{ width: 22, height: 22, borderRadius: 6, background: b.bg, color: b.color, fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--mono)", border: `1.5px solid ${b.color}44` }} title={b.name}>{b.inits}</div>
-            ))}
-          </div>
           <button className="err-close" onClick={onClose} style={{ marginLeft: 4 }}>✕</button>
         </div>
-
         <div className="dbg-room-body">
-          {/* Error list */}
           <div className="dbg-errors-panel">
             <div style={{ fontSize: 9, color: "#4a5568", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", padding: "2px 4px 6px" }}>Issues</div>
             {allIssues.length === 0 && (
@@ -1778,10 +1608,8 @@ function DebuggingRoom({ errors, warnings, lang, me, onLocalOp, onClose }) {
             {allIssues.map((issue, i) => (
               <div key={i} className={`dbg-error-item${selectedIdx === i ? " sel" : ""}`} onClick={() => setSelectedIdx(i)}>
                 <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 3 }}>
-                  {issue.type === "error"
-                    ? <span className="err-type-badge">ERR</span>
-                    : <span className="warn-type-badge">WARN</span>}
-                  <span style={{ fontSize: 9, color: "#4a5568", fontFamily: "var(--mono)", marginLeft: "auto" }}>#{i + 1}</span>
+                  {issue.type === "error" ? <span className="err-type-badge">ERR</span> : <span className="warn-type-badge">WARN</span>}
+                  <span style={{ fontSize: 9, color: "#4a5568", fontFamily: "var(--mono)", marginLeft: "auto" }}>#${i + 1}</span>
                 </div>
                 <div style={{ fontSize: 10, color: issue.type === "error" ? "#ff8090" : "#DCDCAA", fontFamily: "var(--mono)", lineHeight: 1.5, wordBreak: "break-word" }}>
                   {issue.text.slice(0, 70)}{issue.text.length > 70 ? "…" : ""}
@@ -1789,8 +1617,6 @@ function DebuggingRoom({ errors, warnings, lang, me, onLocalOp, onClose }) {
               </div>
             ))}
           </div>
-
-          {/* Chat panel */}
           <div className="dbg-chat-panel">
             <div className="dbg-chat-messages">
               {messages.map(msg => {
@@ -1800,27 +1626,13 @@ function DebuggingRoom({ errors, warnings, lang, me, onLocalOp, onClose }) {
                   </div>
                 );
                 return (
-                  <div key={msg.id} className={`dbg-msg${msg.isMe ? "" : ""}`} style={{ flexDirection: msg.isMe ? "row-reverse" : "row" }}>
+                  <div key={msg.id} className="dbg-msg" style={{ flexDirection: msg.isMe ? "row-reverse" : "row" }}>
                     <div style={{ width: 26, height: 26, borderRadius: 8, background: msg.bg || "rgba(79,193,255,.18)", color: msg.color || "#4FC1FF", fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--mono)", flexShrink: 0, border: `1.5px solid ${msg.color || "#4FC1FF"}44` }}>{msg.inits || initials(msg.from)}</div>
                     <div style={{ maxWidth: "78%" }}>
                       <div style={{ fontSize: 9, color: "#4a5568", marginBottom: 2, textAlign: msg.isMe ? "right" : "left" }}>{msg.from}</div>
                       <div className={`dbg-msg-bubble${msg.isMe ? " me" : msg.isBot ? " bot" : ""}`}>
                         <span style={{ color: msg.isMe ? "#a8d8ff" : msg.isBot ? "#ffb3c6" : "#e0e0e0" }}>{msg.text}</span>
-                        {msg.isBot && (
-                          <div>
-                            <button className="dbg-fix-btn" onClick={() => { }}>
-                              ✓ Mark as helpful
-                            </button>
-                          </div>
-                        )}
-                        {msg.text.startsWith("✅ AI Suggestion:") && (
-                          <button className="dbg-fix-btn" onClick={() => {
-                            const code = msg.text.split("```")[1]?.split("```")[0] || msg.text.replace("✅ AI Suggestion:", "").trim();
-                            onLocalOp({ type: "insert", pos: 0, chars: code }); // Simple replace for now
-                          }}>
-                            ⚡ Apply Fix to Editor
-                          </button>
-                        )}
+                        {msg.isBot && (<div><button className="dbg-fix-btn">✓ Mark as helpful</button></div>)}
                       </div>
                       <div className="dbg-msg-time" style={{ textAlign: msg.isMe ? "right" : "left" }}>{msg.t}</div>
                     </div>
@@ -1830,24 +1642,13 @@ function DebuggingRoom({ errors, warnings, lang, me, onLocalOp, onClose }) {
               <div ref={messagesEndRef} />
             </div>
             <div className="dbg-chat-input-row">
-              <input
-                className="dbg-chat-input"
-                value={inputVal}
-                onChange={e => setInputVal(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && sendMessage()}
-                placeholder="Describe what you're seeing, ask the team…"
-              />
-              <button className="dbg-send-btn" onClick={sendMessage}>Send ↑</button>
+              <input className="dbg-chat-input" value={inputVal} onChange={e => setInputVal(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Describe what you're seeing, ask the team…" />
+              <button className="dbg-send-btn" onClick={() => sendMessage()}>Send ↑</button>
             </div>
           </div>
         </div>
-
-        {/* Footer stats */}
         <div className="dbg-room-foot">
           <div style={{ flex: 1 }} />
-          <button className="dbg-send-btn" onClick={handleAiRectify} style={{ background: "rgba(79,193,255,.15)", borderColor: "rgba(79,193,255,.35)", color: "#4FC1FF" }}>
-            🤖 AI Rectify
-          </button>
           <div className="dbg-stat">Errors: <span style={{ color: "#FF6B9D" }}>{errors.length}</span></div>
           <div className="dbg-stat">Warnings: <span style={{ color: "#DCDCAA" }}>{warnings.length}</span></div>
           <div className="dbg-stat">Lang: <span>{LANGS[lang]?.n || lang}</span></div>
@@ -1862,14 +1663,9 @@ function DebuggingRoom({ errors, warnings, lang, me, onLocalOp, onClose }) {
   );
 }
 
-// ══════════════════════════════════════════════════════════
-// ═════════ 5.3 LIVE SERVER LOGS COMPONENT ════════════════
-// ══════════════════════════════════════════════════════════
+// ═══════════ LIVE SERVER LOGS ═══════════
 function LiveServerLogs({ onClose }) {
-  const [logs, setLogs] = useState(() => {
-    // Seed with some initial entries
-    return Array.from({ length: 18 }, genLogEntry).reverse();
-  });
+  const [logs, setLogs] = useState(() => Array.from({ length: 18 }, genLogEntry).reverse());
   const [paused, setPaused] = useState(false);
   const [filter, setFilter] = useState("ALL");
   const [search, setSearch] = useState("");
@@ -1884,18 +1680,13 @@ function LiveServerLogs({ onClose }) {
     streamRef.current = setInterval(() => {
       if (pausedRef.current) return;
       const count = Math.random() > 0.65 ? 2 : 1;
-      setLogs(prev => {
-        const newEntries = Array.from({ length: count }, genLogEntry);
-        return [...newEntries, ...prev].slice(0, 300);
-      });
+      setLogs(prev => [...Array.from({ length: count }, genLogEntry), ...prev].slice(0, 300));
     }, 1200);
     return () => clearInterval(streamRef.current);
   }, []);
 
   useEffect(() => {
-    if (autoScroll && logsEndRef.current && !paused) {
-      logsEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
+    if (autoScroll && logsEndRef.current && !paused) logsEndRef.current.scrollIntoView({ behavior: "smooth" });
   }, [logs, autoScroll, paused]);
 
   const filteredLogs = logs.filter(e => {
@@ -1907,91 +1698,50 @@ function LiveServerLogs({ onClose }) {
   const counts = logs.reduce((acc, e) => { acc[e.level] = (acc[e.level] || 0) + 1; return acc; }, {});
   const errRate = ((counts.ERROR || 0) / Math.max(logs.length, 1) * 100).toFixed(1);
 
-  const LEVEL_COLORS = {
-    INFO: "#4FC1FF", WARN: "#DCDCAA", ERROR: "#FF6B9D", DEBUG: "#C586C0", SUCCESS: "#4EC9B0"
-  };
-
   return (
     <div className="logs-overlay" onClick={onClose}>
       <div className="logs-panel announce-pop" onClick={e => e.stopPropagation()}>
-        {/* Header */}
         <div className="logs-head">
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: paused ? "#4a5568" : "#4EC9B0", boxShadow: paused ? "none" : "0 0 8px #4EC9B0", flexShrink: 0, transition: "all .3s" }} className={paused ? "" : "pulse"} />
-          <div className="logs-title">📡 Live Server Logs Dashboard</div>
+          <div className="logs-title">📡 Live Server Logs</div>
           <div className="logs-controls">
             {["ALL", "INFO", "SUCCESS", "WARN", "ERROR", "DEBUG"].map(lv => (
               <button key={lv} className={`log-filter-btn${filter === lv ? ` active-${lv}` : ""}`} onClick={() => setFilter(lv)}>
-                {lv === "ALL" ? "All" : lv}
-                {lv !== "ALL" && counts[lv] ? <span style={{ marginLeft: 3, opacity: .7 }}>({counts[lv] || 0})</span> : null}
+                {lv === "ALL" ? "All" : lv}{lv !== "ALL" && counts[lv] ? <span style={{ marginLeft: 3, opacity: .7 }}>({counts[lv] || 0})</span> : null}
               </button>
             ))}
           </div>
-          <button className="err-close" onClick={onClose} style={{ marginLeft: 8, color: "#4a5568", background: "rgba(255,255,255,.05)", borderColor: "rgba(255,255,255,.1)" }}>✕</button>
+          <button className="err-close" onClick={onClose} style={{ marginLeft: 8, color: "#4a5568", background: "rgba(255,255,255,.05)", borderColor: "rgba(255,255,255,.1)", flexShrink: 0 }}>✕</button>
         </div>
-
         <div className="logs-body">
-          {/* Stats bar */}
           <div className="logs-stats-bar">
-            <div className="logs-stat-item" style={{ color: "#FF6B9D" }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#FF6B9D", display: "inline-block", boxShadow: (counts.ERROR || 0) > 0 ? "0 0 5px #FF6B9D" : "none" }} />
-              <span style={{ color: "#4a5568" }}>ERR</span> {counts.ERROR || 0}
-            </div>
-            <div className="logs-stat-item" style={{ color: "#DCDCAA" }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#DCDCAA", display: "inline-block" }} />
-              <span style={{ color: "#4a5568" }}>WARN</span> {counts.WARN || 0}
-            </div>
-            <div className="logs-stat-item" style={{ color: "#4EC9B0" }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#4EC9B0", display: "inline-block" }} />
-              <span style={{ color: "#4a5568" }}>OK</span> {counts.SUCCESS || 0}
-            </div>
-            <div className="logs-stat-item" style={{ color: "#4FC1FF" }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#4FC1FF", display: "inline-block" }} />
-              <span style={{ color: "#4a5568" }}>INFO</span> {counts.INFO || 0}
-            </div>
-            <div className="logs-stat-item" style={{ color: "#C586C0" }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#C586C0", display: "inline-block" }} />
-              <span style={{ color: "#4a5568" }}>DBG</span> {counts.DEBUG || 0}
-            </div>
-            <div className="logs-stat-item" style={{ marginLeft: "auto", color: "#4a5568" }}>
-              Total: <span style={{ color: "#e0e0e0" }}>{logs.length}</span>
-            </div>
-            <div className="logs-stat-item" style={{ color: parseFloat(errRate) > 5 ? "#FF6B9D" : "#4a5568" }}>
-              Err rate: <span style={{ color: parseFloat(errRate) > 5 ? "#FF6B9D" : "#4EC9B0" }}>{errRate}%</span>
-            </div>
+            {[["ERROR","#FF6B9D"],["WARN","#DCDCAA"],["SUCCESS","#4EC9B0"],["INFO","#4FC1FF"],["DEBUG","#C586C0"]].map(([lv,col]) => (
+              <div key={lv} className="logs-stat-item" style={{ color: col }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: col, display: "inline-block" }} />
+                <span style={{ color: "#4a5568" }}>{lv.slice(0,3)}</span> {counts[lv] || 0}
+              </div>
+            ))}
+            <div className="logs-stat-item" style={{ marginLeft: "auto", color: "#4a5568" }}>Total: <span style={{ color: "#e0e0e0" }}>{logs.length}</span></div>
+            <div className="logs-stat-item" style={{ color: parseFloat(errRate) > 5 ? "#FF6B9D" : "#4a5568" }}>Err%: <span style={{ color: parseFloat(errRate) > 5 ? "#FF6B9D" : "#4EC9B0" }}>{errRate}%</span></div>
           </div>
-
-          {/* Log stream */}
-          <div className="logs-stream" onScroll={e => {
-            const el = e.target;
-            const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-            setAutoScroll(atBottom);
-          }}>
-            {/* Column header */}
-            <div style={{ display: "flex", padding: "3px 14px 3px", borderBottom: "1px solid rgba(255,255,255,.04)", position: "sticky", top: 0, background: "#0a0c11", zIndex: 2 }}>
-              <span style={{ width: 82, fontSize: 9, color: "#2d3748", fontFamily: "var(--mono)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em" }}>Time</span>
-              <span style={{ width: 58, fontSize: 9, color: "#2d3748", fontFamily: "var(--mono)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em" }}>Level</span>
-              <span style={{ width: 90, fontSize: 9, color: "#2d3748", fontFamily: "var(--mono)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em" }}>Service</span>
-              <span style={{ flex: 1, fontSize: 9, color: "#2d3748", fontFamily: "var(--mono)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em" }}>Message</span>
+          <div className="logs-stream" onScroll={e => { const el = e.target; setAutoScroll(el.scrollHeight - el.scrollTop - el.clientHeight < 40); }}>
+            <div style={{ display: "flex", padding: "3px 14px", borderBottom: "1px solid rgba(255,255,255,.04)", position: "sticky", top: 0, background: "#0a0c11", zIndex: 2 }}>
+              <span style={{ width: 82, fontSize: 9, color: "#2d3748", fontFamily: "var(--mono)", fontWeight: 700, textTransform: "uppercase" }}>Time</span>
+              <span style={{ width: 58, fontSize: 9, color: "#2d3748", fontFamily: "var(--mono)", fontWeight: 700, textTransform: "uppercase" }}>Level</span>
+              <span style={{ width: 90, fontSize: 9, color: "#2d3748", fontFamily: "var(--mono)", fontWeight: 700, textTransform: "uppercase" }}>Service</span>
+              <span style={{ flex: 1, fontSize: 9, color: "#2d3748", fontFamily: "var(--mono)", fontWeight: 700, textTransform: "uppercase" }}>Message</span>
             </div>
-
-            {filteredLogs.length === 0 && (
-              <div style={{ padding: "30px", textAlign: "center", color: "#4a5568", fontSize: 12 }}>No matching log entries</div>
-            )}
-
+            {filteredLogs.length === 0 && <div style={{ padding: "30px", textAlign: "center", color: "#4a5568", fontSize: 12 }}>No matching log entries</div>}
             {[...filteredLogs].reverse().map((entry, i) => (
               <div key={entry.id} className={`log-entry ${entry.level} log-slide`} style={{ animationDelay: `${Math.min(i * 0.02, 0.3)}s` }}>
                 <span className="log-ts">{entry.t}</span>
-                <span className="log-level-pill">
-                  <span className={`log-level-inner ${entry.level}`}>{entry.level}</span>
-                </span>
+                <span className="log-level-pill"><span className={`log-level-inner ${entry.level}`}>{entry.level}</span></span>
                 <span className="log-svc" title={entry.svc}>{entry.svc}</span>
                 <span className={`log-msg ${entry.level}`}>
-                  {search ? (
-                    entry.msg.split(new RegExp(`(${search})`, "gi")).map((part, pi) =>
-                      part.toLowerCase() === search.toLowerCase()
-                        ? <mark key={pi} style={{ background: "rgba(220,220,170,.3)", color: "#DCDCAA", borderRadius: 2 }}>{part}</mark>
-                        : part
-                    )
+                  {search ? entry.msg.split(new RegExp(`(${search})`, "gi")).map((part, pi) =>
+                    part.toLowerCase() === search.toLowerCase()
+                      ? <mark key={pi} style={{ background: "rgba(220,220,170,.3)", color: "#DCDCAA", borderRadius: 2 }}>{part}</mark>
+                      : part
                   ) : entry.msg}
                 </span>
               </div>
@@ -1999,24 +1749,13 @@ function LiveServerLogs({ onClose }) {
             <div ref={logsEndRef} />
           </div>
         </div>
-
-        {/* Footer */}
         <div className="logs-foot">
           <div className={`logs-streaming-dot${paused ? " paused" : ""}`} />
-          <span style={{ fontSize: 10, color: paused ? "#4a5568" : "#4EC9B0", fontWeight: 700 }}>
-            {paused ? "PAUSED" : "STREAMING"}
-          </span>
-          <input
-            className="log-search"
-            placeholder="Search logs…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
+          <span style={{ fontSize: 10, color: paused ? "#4a5568" : "#4EC9B0", fontWeight: 700 }}>{paused ? "PAUSED" : "STREAMING"}</span>
+          <input className="log-search" placeholder="Search logs…" value={search} onChange={e => setSearch(e.target.value)} />
           <div style={{ flex: 1 }} />
-          <span style={{ fontSize: 10, color: "#4a5568" }}>{filteredLogs.length} / {logs.length} entries</span>
-          <button className={`logs-pause-btn${paused ? " paused" : ""}`} onClick={() => setPaused(p => !p)}>
-            {paused ? "▶ Resume" : "⏸ Pause"}
-          </button>
+          <span style={{ fontSize: 10, color: "#4a5568" }}>{filteredLogs.length}/{logs.length}</span>
+          <button className={`logs-pause-btn${paused ? " paused" : ""}`} onClick={() => setPaused(p => !p)}>{paused ? "▶ Resume" : "⏸ Pause"}</button>
           <button className="logs-clear-btn" onClick={() => setLogs([])}>Clear</button>
         </div>
       </div>
@@ -2024,6 +1763,7 @@ function LiveServerLogs({ onClose }) {
   );
 }
 
+// ═══════════ ACCESS TERMINAL ═══════════
 function AccessTerminal() {
   const { login, loginGuest } = useAuth();
   const navigate = useNavigate();
@@ -2035,7 +1775,6 @@ function AccessTerminal() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [autoBypassCounter, setAutoBypassCounter] = useState(3);
-
   const isConfigured = !!import.meta.env.VITE_SUPABASE_URL;
 
   useEffect(() => {
@@ -2043,16 +1782,11 @@ function AccessTerminal() {
       const timer = setTimeout(() => setAutoBypassCounter(c => c - 1), 1000);
       return () => clearTimeout(timer);
     }
-    if (!isConfigured && autoBypassCounter === 0) {
-      loginGuest();
-      navigate("/editor");
-    }
+    if (!isConfigured && autoBypassCounter === 0) { loginGuest(); navigate("/editor"); }
   }, [isConfigured, autoBypassCounter, loginGuest, navigate]);
 
   const handleLogin = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
+    e.preventDefault(); setLoading(true); setError(null);
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
@@ -2066,10 +1800,7 @@ function AccessTerminal() {
     setLoading(true); setError(null);
     try {
       const chosen = PALETTE[colorIdx];
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email, password,
-        options: { data: { full_name: name || email.split("@")[0], cursor_color: chosen.hex } },
-      });
+      const { data, error: signUpError } = await supabase.auth.signUp({ email, password, options: { data: { full_name: name || email.split("@")[0], cursor_color: chosen.hex } } });
       if (signUpError) throw signUpError;
       if (data?.user && !data.session) { setError("Activation required. Check your inbox."); }
       else { navigate("/editor"); }
@@ -2078,102 +1809,79 @@ function AccessTerminal() {
 
   return (
     <div className="access-terminal">
-      <div className="terminal-bg">
-        <div className="grid-overlay" />
-        <div className="nebula blue" />
-        <div className="nebula pink" />
-      </div>
-      
+      <div className="grid-overlay" />
+      <div className="nebula blue" />
+      <div className="nebula pink" />
       <div className="terminal-container fi-pop">
         <div className="terminal-header">
           <div className="terminal-brand">
             <div className="brand-icon">⚡</div>
             <div className="brand-text">
               <h1>CKC-OS</h1>
-              <span>THE COLLABORATIVE OPERATING SYSTEM</span>
+              <span>COLLABORATIVE OPERATING SYSTEM</span>
             </div>
           </div>
           <div className="terminal-status">
-            <span className="pulse-dot" /> 
+            <span className="pulse-dot" />
             {isConfigured ? "SYSTEM_ACTIVE_v4.2" : "CONFIG_REQUIRED"}
           </div>
         </div>
-
         {!isConfigured && (
           <div className="terminal-alert warning" style={{ marginBottom: 20 }}>
-            <span className="alert-icon">⚠</span>
-            <div className="alert-text">
-              <div style={{ fontWeight: 700 }}>Supabase not configured.</div>
-              <div style={{ fontSize: 10, opacity: 0.8, marginTop: 4 }}>Auto-rectifying to Local Mode in {autoBypassCounter}s...</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span>⚠</span>
+              <div>
+                <div style={{ fontWeight: 700 }}>Supabase not configured.</div>
+                <div style={{ fontSize: 10, opacity: .8, marginTop: 4 }}>Auto-rectifying to Local Mode in {autoBypassCounter}s...</div>
+              </div>
             </div>
-            <button className="local-bypass-btn" onClick={() => { loginGuest(); navigate("/editor"); }}>
-              Enter Local Mode Now
-            </button>
+            <button className="local-bypass-btn" onClick={() => { loginGuest(); navigate("/editor"); }}>Enter Local Mode Now</button>
           </div>
         )}
-
         <div className="terminal-nav">
           <div className="nav-indicator" style={{ transform: `translateX(${activeTab === "login" ? "0" : "100%"})` }} />
-          <button className={`nav-item ${activeTab === "login" ? "active" : ""}`} onClick={() => setActiveTab("login")}>ACCESS SPACE</button>
-          <button className={`nav-item ${activeTab === "register" ? "active" : ""}`} onClick={() => setActiveTab("register")}>NEW IDENTITY</button>
+          <button className={`nav-item ${activeTab === "login" ? "active" : ""}`} onClick={() => setActiveTab("login")}>ACCESS</button>
+          <button className={`nav-item ${activeTab === "register" ? "active" : ""}`} onClick={() => setActiveTab("register")}>REGISTER</button>
         </div>
-
         {error && (
           <div className={`terminal-alert ${error.includes("Activation") ? "info" : "error"}`}>
-            <span className="alert-icon">{error.includes("Activation") ? "✉" : "⚠"}</span>
-            <span className="alert-text">{error}</span>
+            <span>{error.includes("Activation") ? "✉" : "⚠"}</span>
+            <span>{error}</span>
           </div>
         )}
-
-        <form className="terminal-form" onSubmit={activeTab === "login" ? handleLogin : handleRegister}>
+        <form onSubmit={activeTab === "login" ? handleLogin : handleRegister}>
           {activeTab === "register" && (
             <div className="terminal-input-group">
               <label>INITIAL_ID</label>
-              <div className="input-wrapper">
-                <input value={name} onChange={e => setName(e.target.value)} placeholder="Enter name..." required />
-              </div>
+              <div className="input-wrapper"><input value={name} onChange={e => setName(e.target.value)} placeholder="Enter name..." required /></div>
             </div>
           )}
           <div className="terminal-input-group">
             <label>UPLINK_EMAIL</label>
-            <div className="input-wrapper">
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="user@ckc-os.io" required />
-            </div>
+            <div className="input-wrapper"><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="user@ckc-os.io" required /></div>
           </div>
           <div className="terminal-input-group">
             <label>ACCESS_KEY</label>
-            <div className="input-wrapper">
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required />
-            </div>
+            <div className="input-wrapper"><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required /></div>
           </div>
-          
           {activeTab === "register" && (
             <div className="terminal-input-group">
               <label>WORKSPACE_HUE</label>
-              <div className="color-grid">
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                 {PALETTE.map((p, i) => (
-                  <div key={i} className={`color-slot ${colorIdx === i ? "selected" : ""}`} 
-                       style={{ "--hue": p.hex, "--hue-bg": p.bg }} 
-                       onClick={() => setColorIdx(i)}>
-                    <div className="color-core" />
-                    {colorIdx === i && <div className="color-ring" />}
-                  </div>
+                  <div key={i} onClick={() => setColorIdx(i)} style={{ width: 28, height: 28, borderRadius: 8, background: p.bg, border: `2px solid ${colorIdx === i ? p.hex : "transparent"}`, cursor: "pointer", transition: "all .15s", boxShadow: colorIdx === i ? `0 0 10px ${p.hex}66` : "none" }} />
                 ))}
               </div>
             </div>
           )}
-
           <button className="terminal-submit" disabled={loading}>
-            {loading ? <span className="loader" /> : (activeTab === "login" ? "ESTABLISH CONNECTION →" : "INITIALIZE NODE →")}
+            {loading ? "•••" : (activeTab === "login" ? "ESTABLISH CONNECTION →" : "INITIALIZE NODE →")}
           </button>
         </form>
-
         <div className="terminal-footer">
           <div className="footer-line" />
           <div className="footer-content">
-            <span>SECURE_SESSION</span>
-            <span>v4.2.1-STABLE</span>
-            <span>SUPABASE_AUTH</span>
+            <span>SECURE</span><span>v4.2.1</span><span>SUPABASE</span>
           </div>
         </div>
       </div>
@@ -2184,26 +1892,13 @@ function AccessTerminal() {
 // ═══════════ MAIN APP ═══════════
 export default function EditorPage() {
   const { user, loading: authLoading, logout } = useAuth();
-
   if (authLoading) return (
     <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#05070a" }}>
       <div className="spin" style={{ width: 40, height: 40, border: "3px solid rgba(79,193,255,.1)", borderTopColor: "#4FC1FF", borderRadius: "50%" }} />
     </div>
   );
-  
-  if (!user) return (
-    <>
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
-      <AccessTerminal />
-    </>
-  );
-
-  return (
-    <>
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
-      <Shell user={user} onLogout={logout} />
-    </>
-  );
+  if (!user) return (<><style dangerouslySetInnerHTML={{ __html: CSS }} /><AccessTerminal /></>);
+  return (<><style dangerouslySetInnerHTML={{ __html: CSS }} /><Shell user={user} onLogout={logout} /></>);
 }
 
 // ═══════════ SHELL ═══════════
@@ -2218,14 +1913,13 @@ function Shell({ user, onLogout }) {
     email: user?.email || "",
   };
   const sid = user?.sid || "default-session";
-  const initLang = "ts";
   const myId = useRef(user.id);
   const [remOps, setRemOps] = useState([]);
   const [cursors, setCursors] = useState([]);
   const [crdt, setCrdt] = useState([]);
   const [wsLog, setWsLog] = useState([]);
   const [opCnt, setOpCnt] = useState(0);
-  const [lang, setLang] = useState(initLang);
+  const [lang, setLang] = useState("ts");
   const [tabs, setTabs] = useState([
     { id: "t_eng", name: "engine.ts", lang: "ts", dirty: false, isNew: false },
     { id: "t_test", name: "test.ts", lang: "ts", dirty: false, isNew: false }
@@ -2239,7 +1933,6 @@ function Shell({ user, onLogout }) {
   const [outIsErr, setOutIsErr] = useState(false);
   const [running, setRunning] = useState(false);
   const [pyReady, setPyReady] = useState(false);
-  const [pyLoading, setPyLoading] = useState(false);
   const [errPopup, setErrPopup] = useState(null);
   const [errShake, setErrShake] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
@@ -2250,214 +1943,159 @@ function Shell({ user, onLogout }) {
   const [connectedCount, setConnectedCount] = useState(1);
   const [liveValidation, setLiveValidation] = useState(null);
   const [lineLocks, setLineLocks] = useState({});
+  const [showDebugRoom, setShowDebugRoom] = useState(false);
+  const [showServerLogs, setShowServerLogs] = useState(false);
+  const [mobilePanelTab, setMobilePanelTab] = useState("editor");
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [knowledgeCode, setKnowledgeCode] = useState("");
+
   const channelRef = useRef(null);
   const liveValTimer = useRef(null);
   const activeEditorRef = useRef(null);
   const notifTmr = useRef(null);
 
-  const [showDebugRoom, setShowDebugRoom] = useState(false);
-  const [showServerLogs, setShowServerLogs] = useState(false);
-  const remBuf = useRef([]);
-  const botRefs = useRef(BOTS);
   const getEng = useCallback((lk) => WS.eng(lk), []);
-
-
   const toast = useCallback((msg, ms = 2500) => { clearTimeout(notifTmr.current); setNotif(msg); notifTmr.current = setTimeout(() => setNotif(null), ms); }, []);
 
-  // Supabase Realtime Sync
   useEffect(() => {
-    const channel = supabase.channel(`room:${lang}`);
+    const channel = supabase.channel("global-workspace");
     channelRef.current = channel;
+    const bc = new BroadcastChannel("ckc_os_sync");
+
+    const handleMessage = ({ type, payload }) => {
+      if (payload.uid === me.id || payload.id === me.id) return;
+      
+      switch (type) {
+        case "join":
+          bc.postMessage({ type: "presence", payload: { id: me.id, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab } });
+          break;
+        case "op":
+          if (payload.tabId === activeTab) setRemOps(prev => [...prev, payload.op]);
+          setTabs(prev => prev.map(t => t.id === payload.tabId ? { ...t, code: applyOpToString(t.code || "", payload.op) } : t));
+          setOpCnt(c => c + 1);
+          setCrdt(p => [{ ...payload.op, from: payload.name, t: nowTs() }, ...p].slice(0, 40));
+          break;
+        case "cursor":
+          setCursors(prev => [...prev.filter(c => c.id !== payload.id), { ...payload, online: true }]);
+          break;
+        case "tabSync":
+          setTabs(prev => {
+            const exists = prev.find(t => t.id === payload.tab.id);
+            if (exists) return prev;
+            return [...prev, payload.tab];
+          });
+          toast(`${payload.name} opened ${payload.tab.name}`);
+          bc.postMessage({ type: "stateRequest", payload: { tabId: payload.tab.id, requesterId: me.id } });
+          channel.send({ type: "broadcast", event: "stateRequest", payload: { tabId: payload.tab.id, requesterId: me.id } });
+          break;
+        case "stateRequest":
+          if (payload.requesterId !== me.id) {
+            const tab = tabs.find(t => t.id === payload.tabId);
+            const currentCode = (payload.tabId === activeTab) ? (activeEditorRef.current?._getText?.() || "") : (tab?.code || "");
+            if (currentCode) {
+              const resp = { type: "stateResponse", payload: { tabId: payload.tabId, code: currentCode, toId: payload.requesterId } };
+              bc.postMessage(resp);
+              channel.send({ type: "broadcast", event: "stateResponse", payload: resp.payload });
+            }
+          }
+          break;
+        case "stateResponse":
+          if (payload.toId === me.id) {
+            setTabs(prev => prev.map(t => t.id === payload.tabId ? { ...t, code: payload.code } : t));
+          }
+          break;
+        case "presence":
+          setCursors(prev => {
+            const exists = prev.find(c => c.id === payload.id);
+            if (exists) return prev.map(c => c.id === payload.id ? { ...c, ...payload, online: true } : c);
+            return [...prev, { ...payload, online: true }];
+          });
+          break;
+      }
+    };
+
+    bc.onmessage = (e) => handleMessage(e.data);
 
     channel
       .on("presence", { event: "sync" }, () => {
         const state = channel.presenceState();
         const users = Object.values(state).flat();
         setConnectedCount(users.length);
-        setCursors(users.map(u => ({
-          id: u.user_id,
-          name: u.name,
-          color: u.color,
-          line: u.line || 1,
-          col: u.col || 1,
-          tabId: u.tabId,
-          online: true
-        })));
+        setCursors(prev => {
+          const remote = users.map(u => ({ id: u.user_id, name: u.name, color: u.color, line: u.line || 1, col: u.col || 1, tabId: u.tabId, online: true }));
+          const local = prev.filter(c => c.id.startsWith("guest_") && !users.find(u => u.user_id === c.id));
+          return [...remote, ...local];
+        });
       })
-      .on("broadcast", { event: "op" }, ({ payload }) => {
-        if (payload.uid !== me.id) {
-          if (payload.tabId === activeTab) {
-            setRemOps(prev => [...prev, payload.op]); // Use queue instead of single op
-          } else {
-            setTabs(prev => prev.map(t => 
-              t.id === payload.tabId ? { ...t, code: (t.code || "") + (payload.op.chars || "") } : t
-            ));
-          }
-          setOpCnt(c => c + 1);
-          setCrdt(p => [{ ...payload.op, from: payload.name, t: nowTs(), tabName: payload.tabName }, ...p].slice(0, 40));
-        }
-      })
-      .on("broadcast", { event: "cursor" }, ({ payload }) => {
-        if (payload.id !== me.id) {
-          setCursors(prev => {
-            const rest = prev.filter(c => c.id !== payload.id);
-            return [...rest, { ...payload, online: true }];
-          });
-        }
-      })
-      .on("broadcast", { event: "tabSync" }, ({ payload }) => {
-        if (payload.uid !== me.id) {
-          setTabs(prev => {
-            const exists = prev.find(t => t.id === payload.tab.id);
-            if (exists) return prev;
-            return [...prev, payload.tab];
-          });
-          toast(`User ${payload.name} opened ${payload.tab.name}`);
-        }
-      })
-      .on("broadcast", { event: "requestState" }, ({ payload }) => {
-        if (payload.uid !== me.id) {
-          // Send current state to the new user
-          channelRef.current.send({
-            type: "broadcast",
-            event: "fullState",
-            payload: {
-              uid: me.id,
-              tabs: tabs.map(t => ({
-                ...t,
-                code: t.id === activeTab ? (activeEditorRef.current?._getText() || t.code) : t.code
-              }))
-            }
-          });
-        }
-      })
-      .on("broadcast", { event: "fullState" }, ({ payload }) => {
-        if (payload.uid !== me.id) {
-          setTabs(payload.tabs);
-          toast("Connected: Synchronizing codebase...");
-        }
-      })
+      .on("broadcast", { event: "op" }, ({ payload }) => handleMessage({ type: "op", payload }))
+      .on("broadcast", { event: "cursor" }, ({ payload }) => handleMessage({ type: "cursor", payload }))
+      .on("broadcast", { event: "tabSync" }, ({ payload }) => handleMessage({ type: "tabSync", payload }))
+      .on("broadcast", { event: "stateRequest" }, ({ payload }) => handleMessage({ type: "stateRequest", payload }))
+      .on("broadcast", { event: "stateResponse" }, ({ payload }) => handleMessage({ type: "stateResponse", payload }))
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
-          await channel.track({
-            user_id: me.id,
-            name: me.name,
-            color: me.cursorColor,
-            line: cursor.line,
-            col: cursor.col,
-            tabId: activeTab,
-            online: true
-          });
-          // Request initial state from others
-          channel.send({
-            type: "broadcast",
-            event: "requestState",
-            payload: { uid: me.id }
+          await channel.track({ user_id: me.id, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab, online: true });
+          bc.postMessage({ type: "join", payload: { id: me.id } });
+          bc.postMessage({ type: "presence", payload: { id: me.id, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab } });
+          tabs.forEach(t => {
+            channel.send({ type: "broadcast", event: "stateRequest", payload: { tabId: t.id, requesterId: me.id } });
+            bc.postMessage({ type: "stateRequest", payload: { tabId: t.id, requesterId: me.id } });
           });
         }
       });
 
-    // Line locks listener
-    const lockSub = supabase
-      .channel("line_locks")
+    const lockSub = supabase.channel("line_locks")
       .on("postgres_changes", { event: "*", schema: "public", table: "line_locks" }, payload => {
         if (payload.eventType === "DELETE") {
-          setLineLocks(prev => {
-            const next = { ...prev };
-            delete next[payload.old.line_number];
-            return next;
-          });
+          setLineLocks(prev => { const next = { ...prev }; delete next[payload.old.line_number]; return next; });
         } else {
-          setLineLocks(prev => ({
-            ...prev,
-            [payload.new.line_number]: payload.new
-          }));
+          setLineLocks(prev => ({ ...prev, [payload.new.line_number]: payload.new }));
         }
-      })
-      .subscribe();
+      }).subscribe();
 
-    // Initial locks load
     supabase.from("line_locks").select("*").then(({ data }) => {
-      if (data) {
-        const locks = {};
-        data.forEach(l => locks[l.line_number] = l);
-        setLineLocks(locks);
-      }
+      if (data) { const locks = {}; data.forEach(l => locks[l.line_number] = l); setLineLocks(locks); }
     });
 
-    return () => {
-      channel.unsubscribe();
-      lockSub.unsubscribe();
-    };
-  }, [lang]);
+    return () => { channel.unsubscribe(); lockSub.unsubscribe(); };
+  }, [activeTab, tabs.length]);
 
   const triggerLiveValidation = useCallback((code, lk) => {
     clearTimeout(liveValTimer.current);
     liveValTimer.current = setTimeout(() => {
       if (!code || code.trim().length < 3) { setLiveValidation(null); return; }
-      const result = validateCode(lk, code);
-      setLiveValidation(result);
+      setLiveValidation(validateCode(lk, code));
     }, 600);
   }, []);
 
   const handleLocalOp = useCallback(op => {
-    if (lineLocks[cursor.line] && lineLocks[cursor.line].user_id !== me.id) {
-      toast("Line locked by " + lineLocks[cursor.line].user_name);
-      return;
-    }
-    // Operation logic (OT/CRDT)
-    channelRef.current.send({
-      type: "broadcast",
-      event: "op",
-      payload: { 
-        uid: me.id, 
-        name: me.name, 
-        lang, 
-        op, 
-        tabId: activeTab,
-        tabName: tabs.find(t => t.id === activeTab)?.name || "scratch"
-      }
-    });
+    if (lineLocks[cursor.line] && lineLocks[cursor.line].user_id !== me.id) { toast("Line locked by " + lineLocks[cursor.line].user_name); return; }
+    const payload = { uid: me.id, name: me.name, lang, op, tabId: activeTab, tabName: tabs.find(t => t.id === activeTab)?.name || "scratch" };
+    channelRef.current?.send({ type: "broadcast", event: "op", payload });
+    new BroadcastChannel("ckc_os_sync").postMessage({ type: "op", payload });
+
     setOpCnt(c => c + 1);
     setCrdt(p => [{ ...op, from: "me", t: nowTs() }, ...p].slice(0, 40));
     triggerLiveValidation(activeEditorRef.current?._getText?.() || "", lang);
-  }, [lang, me, cursor, lineLocks, toast, triggerLiveValidation]);
+  }, [lang, me, cursor, lineLocks, toast, triggerLiveValidation, activeTab, tabs]);
 
   const handleCursorMove = useCallback(async (line, col) => {
     setCursor({ line, col });
-    
-    // Broadcast cursor
-    channelRef.current.send({
-      type: "broadcast",
-      event: "cursor",
-      payload: { id: me.id, name: me.name, color: me.cursorColor, line, col, lang, tabId: activeTab }
-    });
+    const payload = { id: me.id, name: me.name, color: me.cursorColor, line, col, lang, tabId: activeTab };
+    channelRef.current?.send({ type: "broadcast", event: "cursor", payload });
+    new BroadcastChannel("ckc_os_sync").postMessage({ type: "cursor", payload });
 
-    // Update line lock in DB
     try {
-      // Remove old locks for this user
-      await supabase.from("line_locks").delete().eq("user_id", me.id);
-      // Add new lock
-      await supabase.from("line_locks").insert({
-        document_id: lang, // Using lang as doc ID for simplicity
-        line_number: line,
-        user_id: me.id,
-        user_name: me.name,
-        color: me.cursorColor
-      });
-    } catch (err) {
-      console.error("Lock error:", err);
-    }
-  }, [lang, me]);
+      if (!me.id.startsWith("guest_")) {
+        await supabase.from("line_locks").delete().eq("user_id", me.id);
+        await supabase.from("line_locks").insert({ document_id: lang, line_number: line, user_id: me.id, user_name: me.name, color: me.cursorColor });
+      }
+    } catch (err) { console.error("Lock error:", err); }
+  }, [lang, me, activeTab]);
 
   const switchLang = useCallback(lk => {
-    // Save current editor text to tabs state before switching
-    if (activeTab) {
-      const txt = activeEditorRef.current?._getText() || "";
-      setTabs(p => p.map(t => t.id === activeTab ? { ...t, code: txt } : t));
-    }
-    setLang(lk); setRemOps([]); remBuf.current = []; setLiveValidation(null);
-    WS.send(myId.current, { type: "sync", lang: lk });
+    if (activeTab) { const txt = activeEditorRef.current?._getText() || ""; setTabs(p => p.map(t => t.id === activeTab ? { ...t, code: txt } : t)); }
+    setLang(lk); setRemOps([]); setLiveValidation(null);
   }, [activeTab]);
 
   const triggerError = useCallback((msg, cLang) => {
@@ -2485,18 +2123,15 @@ function Shell({ user, onLogout }) {
   }, [lang, activeTab, tabs, getEng, pyReady, triggerError]);
 
   const createNewEditor = useCallback(() => {
-    const id = "new-" + Date.now(); const ext = LANGS[newEdLang]?.ext?.split(".")[1] || newEdLang;
+    const id = "new-" + Date.now();
+    const ext = LANGS[newEdLang]?.ext?.split(".")[1] || newEdLang;
     const newTab = { id, name: `scratch.${ext}`, lang: newEdLang, dirty: false, isNew: true, code: "" };
     setTabs(p => [...p, newTab]);
-    setActiveTab(id); switchLang(newEdLang); 
+    setActiveTab(id); switchLang(newEdLang);
     toast(`New ${LANGS[newEdLang]?.n} editor opened`);
-    
-    // Broadcast new tab to others
-    channelRef.current.send({
-      type: "broadcast",
-      event: "tabSync",
-      payload: { uid: me.id, name: me.name, tab: newTab }
-    });
+    const payload = { uid: me.id, name: me.name, tab: newTab };
+    channelRef.current?.send({ type: "broadcast", event: "tabSync", payload });
+    new BroadcastChannel("ckc_os_sync").postMessage({ type: "tabSync", payload });
   }, [newEdLang, switchLang, toast, me.id, me.name]);
 
   const CMDS = [
@@ -2505,11 +2140,12 @@ function Shell({ user, onLogout }) {
     { ic: "💾", lb: "Save All", kb: "Ctrl+K S", fn: () => { setTabs(p => p.map(t => ({ ...t, dirty: false }))); toast("All files saved"); } },
     { ic: "🐛", lb: "Open Debugging Room", kb: "", fn: () => setShowDebugRoom(true) },
     { ic: "📡", lb: "Open Server Logs", kb: "", fn: () => setShowServerLogs(true) },
+    { ic: "◈", lb: "Analyze with Knowledge Graph", kb: "", fn: () => { setKnowledgeCode(activeEditorRef.current?._getText?.() || ""); setOutOpen(true); setOutTab("knowledge"); } },
     { ic: "🚪", lb: "Sign Out", kb: "", fn: onLogout },
     ...LK.map(lk => ({ ic: LANGS[lk].ic, lb: `Switch to ${LANGS[lk].n}`, kb: "", fn: () => { switchLang(lk); setCmdOpen(false); } })),
   ];
-  const runCmd = c => { c.fn(); setCmdOpen(false); setCmdQ(""); };
   const filtCmds = cmdQ.replace(/^>/, "").trim() ? CMDS.filter(c => c.lb.toLowerCase().includes(cmdQ.replace(/^>/, "").trim().toLowerCase())) : CMDS;
+  const runCmd = c => { c.fn(); setCmdOpen(false); setCmdQ(""); };
 
   useEffect(() => {
     const h = e => {
@@ -2517,7 +2153,7 @@ function Shell({ user, onLogout }) {
       if (C && e.shiftKey && e.key === "P") { e.preventDefault(); setCmdOpen(o => !o); setCmdQ(""); }
       if (C && e.key === "Enter") { e.preventDefault(); handleRun(); }
       if (C && e.key === "n") { e.preventDefault(); createNewEditor(); }
-      if (e.key === "Escape") { setCmdOpen(false); setErrPopup(null); setShowDebugRoom(false); setShowServerLogs(false); }
+      if (e.key === "Escape") { setCmdOpen(false); setErrPopup(null); setShowDebugRoom(false); setShowServerLogs(false); setMobileSidebarOpen(false); }
       if (cmdOpen) {
         if (e.key === "ArrowDown") { e.preventDefault(); setCmdSel(s => Math.min(s + 1, filtCmds.length - 1)); }
         if (e.key === "ArrowUp") { e.preventDefault(); setCmdSel(s => Math.max(s - 1, 0)); }
@@ -2528,13 +2164,15 @@ function Shell({ user, onLogout }) {
   }, [cmdOpen, cmdSel, handleRun, createNewEditor, filtCmds]);
 
   const closeTab = (id, e) => {
-    e.stopPropagation(); setTabs(p => { const nx = p.filter(t => t.id !== id); if (activeTab === id && nx.length) setActiveTab(nx[nx.length - 1].id); return nx; });
+    e.stopPropagation();
+    setTabs(p => { const nx = p.filter(t => t.id !== id); if (activeTab === id && nx.length) setActiveTab(nx[nx.length - 1].id); return nx; });
   };
 
   const activeCursors = cursors.filter(c => c.lang === lang && c.tabId === activeTab);
-  const curEng = getEng(lang); const curTab = tabs.find(t => t.id === activeTab);
-  const errCount = (liveValidation?.errors?.length || 0);
-  const warnCount = (liveValidation?.warnings?.length || 0);
+  const curEng = getEng(lang);
+  const curTab = tabs.find(t => t.id === activeTab);
+  const errCount = liveValidation?.errors?.length || 0;
+  const warnCount = liveValidation?.warnings?.length || 0;
 
   const renderOutput = (text) => {
     if (!text) return <div className="ol-dim" style={{ fontFamily: "var(--mono)", fontSize: 12 }}>Press ▶ Run or Ctrl+Enter to execute</div>;
@@ -2561,15 +2199,78 @@ function Shell({ user, onLogout }) {
     if (!liveValidation) return null;
     if (liveValidation.hasError) return <div className="val-fail val-pop">⊗ {liveValidation.errors.length} error{liveValidation.errors.length > 1 ? "s" : ""}</div>;
     if (liveValidation.hasWarning) return <div className="val-warn val-pop">⚠ {liveValidation.warnings.length} warning{liveValidation.warnings.length > 1 ? "s" : ""}</div>;
-    return <div className="val-pass val-pop">✓ Valid {LANGS[lang]?.n}</div>;
+    return <div className="val-pass val-pop">✓ Valid</div>;
   };
 
   const SB = ({ children, c, onClick }) => <span className="st" style={{ color: c || "#4a5568" }} onClick={onClick}>{children}</span>;
 
-  if (!user) return (
+  // ── Sidebar content (reused for both desktop sidebar and mobile drawer) ──
+  const SidebarContent = () => (
     <>
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
-      <AccessTerminal />
+      <div className="sec-hdr">Explorer</div>
+      {[{ id: "f_eng", name: "engine.ts", lang: "ts", icon: "🔷" }, { id: "f_rm", name: "README.md", lang: "md", icon: "📄" }, { id: "f_dir", name: "tests/", type: "d", icon: "📁" }, { id: "f_env", name: ".env", lang: "env", icon: "⚙" }].map(f => (
+        <div key={f.id} className={`ft${activeTab === f.id ? " sel" : ""}`} onClick={() => {
+          if (f.type === "d") { toast("tests/ folder"); setMobileSidebarOpen(false); return; }
+          const lk = f.lang && LANGS[f.lang] ? f.lang : "ts";
+          if (!tabs.find(t => t.id === f.id)) setTabs(p => [...p, { id: f.id, name: f.name, lang: lk, dirty: false, isNew: false }]);
+          setActiveTab(f.id); switchLang(lk); setMobileSidebarOpen(false);
+        }}>
+          <span style={{ fontSize: 12, flexShrink: 0 }}>{f.icon}</span>
+          <span style={{ color: activeTab === f.id ? "#4FC1FF" : "#c0c8d8", flex: 1, overflow: "hidden", textOverflow: "ellipsis", fontSize: 12 }}>{f.name}</span>
+          {f.lang && LANGS[f.lang] && <span style={{ fontSize: 9, fontWeight: 700, color: LANGS[f.lang]?.c, fontFamily: "var(--mono)", flexShrink: 0 }}>{LANGS[f.lang]?.ic}</span>}
+        </div>
+      ))}
+      {tabs.filter(t => t.isNew).map(t => (
+        <div key={t.id} className={`ft${activeTab === t.id ? " sel" : ""}`} onClick={() => { setActiveTab(t.id); switchLang(t.lang); setMobileSidebarOpen(false); }}>
+          <span className="new-tab-dot" style={{ flexShrink: 0 }} />
+          <span style={{ color: "#4EC9B0", flex: 1, overflow: "hidden", textOverflow: "ellipsis", fontSize: 12 }}>{t.name}</span>
+        </div>
+      ))}
+      <div className="divider" />
+      <div className="sec-hdr" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span>Collaborators</span>
+        <span style={{ color: "#4EC9B0", fontSize: 9, fontWeight: 700, background: "rgba(78,201,176,.12)", border: "1px solid rgba(78,201,176,.2)", borderRadius: 10, padding: "1px 6px" }}>{connectedCount} online</span>
+      </div>
+      <div className="presence-card">
+        <div className="presence-av" style={{ background: me.bg, color: me.color, borderColor: me.color + "66" }}>
+          {me.inits}<div className="pdot" style={{ background: "#4EC9B0" }} />
+        </div>
+        <div className="presence-info">
+          <div className="presence-name"><span style={{ color: "#e0e0e0" }}>{me.name}</span><span style={{ fontSize: 9, color: "#4a5568", background: "rgba(255,255,255,.05)", padding: "1px 5px", borderRadius: 4 }}>you</span></div>
+          <div className="presence-pos" style={{ color: me.color }}>Ln {cursor.line} · Col {cursor.col}</div>
+        </div>
+      </div>
+      {cursors.filter(c => c.id !== me.id).map((b, i) => (
+        <div key={i} className="presence-card">
+          <div className="presence-av" style={{ background: b.bg || "rgba(255,255,255,.05)", color: b.color, borderColor: b.color + "66" }}>
+            {initials(b.name)}<div className="pdot" style={{ background: "#4EC9B0" }} />
+          </div>
+          <div className="presence-info">
+            <div className="presence-name" style={{ color: "#c0c8d8" }}>{b.name}</div>
+            <div className="presence-pos" style={{ color: b.color }}>Ln {b.line} · Col {b.col}</div>
+          </div>
+        </div>
+      ))}
+      <div className="divider" />
+      <div style={{ padding: "8px 12px" }}>
+        <div style={{ fontSize: 10, color: "#4a5568", marginBottom: 4, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em" }}>Session</div>
+        <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "#6a7585", lineHeight: 1.8 }}>
+          <div>ID: <span style={{ color: "#4FC1FF" }}>{sid.slice(0, 8)}</span></div>
+          <div>Ops: <span style={{ color: "#4EC9B0" }}>{opCnt}</span></div>
+          <div>Ver: <span style={{ color: "#DCDCAA" }}>v{curEng.version}</span></div>
+          <div>Size: <span style={{ color: "#CE9178" }}>{curEng.text.length}ch</span></div>
+        </div>
+      </div>
+      <div className="divider" />
+      <div style={{ padding: "0 8px 8px" }}>
+        <div style={{ fontSize: 10, color: "#4a5568", marginBottom: 5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em" }}>Tools</div>
+        <div onClick={() => { setShowDebugRoom(true); setMobileSidebarOpen(false); }} className="tool-btn dbg" style={{ marginBottom: 5, padding: "7px 10px", width: "100%" }}>
+          <span>🔬</span> Debugging Room {errCount + warnCount > 0 && <span className="dbg-cnt">{errCount + warnCount}</span>}
+        </div>
+        <div onClick={() => { setShowServerLogs(true); setMobileSidebarOpen(false); }} className="tool-btn logs" style={{ padding: "7px 10px", width: "100%" }}>
+          <span>📡</span> Server Logs Dashboard
+        </div>
+      </div>
     </>
   );
 
@@ -2577,446 +2278,180 @@ function Shell({ user, onLogout }) {
     <>
       <style>{CSS}</style>
       <ErrorPopup error={errPopup?.msg || null} lang={errPopup?.lang || lang} onClose={() => setErrPopup(null)} onOpenOutput={() => { setOutOpen(true); setOutTab("output"); }} />
+      {showDebugRoom && <DebuggingRoom errors={liveValidation?.errors || []} warnings={liveValidation?.warnings || []} lang={lang} me={me} onLocalOp={handleLocalOp} onClose={() => setShowDebugRoom(false)} />}
+      {showServerLogs && <LiveServerLogs onClose={() => setShowServerLogs(false)} />}
 
-      {/* ══ 5.2 Debugging Room Modal ══ */}
-      {showDebugRoom && (
-        <DebuggingRoom
-          errors={liveValidation?.errors || []}
-          warnings={liveValidation?.warnings || []}
-          lang={lang}
-          me={me}
-          onLocalOp={handleLocalOp}
-          onClose={() => setShowDebugRoom(false)}
-        />
-      )}
-
-      {/* ══ 5.3 Live Server Logs Modal ══ */}
-      {showServerLogs && (
-        <LiveServerLogs onClose={() => setShowServerLogs(false)} />
-      )}
-
-      {/* ── TOPBAR ── */}
       <div className="topbar">
-        <div className="tb-logo">
-          <div className="gem">⚡</div>CKC-OS
+        <div className="tb-logo"><div className="gem">⚡</div><span>CKC-OS</span></div>
+        <div className="live-badge"><div className="live-dot" />LIVE · {connectedCount}</div>
+        <div style={{ width: 1, height: 20, background: "rgba(255,255,255,.06)", margin: "0 4px" }} className="divider-v" />
+        
+        <div onClick={() => setShowDebugRoom(true)} className="tool-btn dbg topbar-btn" style={{ marginLeft: 4 }}>
+          <span>🔬</span> Debug Room {errCount + warnCount > 0 && <span className="dbg-cnt">{errCount + warnCount}</span>}
+        </div>
+        <div onClick={() => setShowServerLogs(true)} className="tool-btn logs topbar-btn" style={{ marginLeft: 4 }}>
+          <span>📡</span> Server Logs
+        </div>
+        <div onClick={() => { 
+          setKnowledgeCode(activeEditorRef.current?._getText?.() || "");
+          setOutOpen(true); 
+          setOutTab("knowledge"); 
+        }} className="tool-btn logs topbar-btn" style={{ marginLeft: 4, background: "rgba(124,111,247,.12)", borderColor: "rgba(124,111,247,.3)", color: "#7c6ff7" }}>
+          <span>◈</span> Knowledge Graph
         </div>
 
-        <div className="live-badge">
-          <div className="live-dot pulse" />
-          LIVE · {connectedCount}
-        </div>
-
-        {/* Language switcher */}
-        <div style={{ display: "flex", gap: 2, overflow: "hidden", flex: 1, minWidth: 0 }}>
-          {LK.map(lk => {
-            const l = LANGS[lk], on = lang === lk; return (
-              <div key={lk} className={`lp${on ? " on" : ""}`}
-                style={{ color: on ? l.c : "#6a7585", background: on ? l.bg : "transparent", borderColor: on ? "rgba(255,255,255,.1)" : "transparent" }}
-                onClick={() => switchLang(lk)}>
-                <span style={{ fontFamily: "var(--mono)", fontSize: 10, fontWeight: 700 }}>{l.ic}</span>
-                <span style={{ fontSize: 11 }}>{l.n}</span>
-              </div>
-            );
-          })}
-        </div>
-
-        {lang === "py" && (pyLoading
-          ? <div className="py-badge" style={{ background: "rgba(220,220,170,.1)", border: "1px solid rgba(220,220,170,.25)", color: "#DCDCAA" }}><span className="spin" style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", border: "1.5px solid #DCDCAA", borderTopColor: "transparent" }} />Loading Python…</div>
-          : pyReady ? <div className="py-badge" style={{ background: "rgba(78,201,176,.08)", border: "1px solid rgba(78,201,176,.2)", color: "#4EC9B0" }}>🐍 Ready</div> : null)}
-
-        {renderValBadge()}
-
-        <div className={`dbg-badge${errShake ? " err-shake" : ""}`} onClick={() => { setOutOpen(true); setOutTab("problems"); }}>
-          🐛 Debug <span className="dbg-cnt">{errCount + warnCount}</span>
-        </div>
-
-        {/* ══ NEW: Tool buttons for 5.2 and 5.3 ══ */}
-        <button className="tool-btn dbg" onClick={() => setShowDebugRoom(true)} title="Open Debugging Room (5.2)">
-          🔬 Debug Room
-        </button>
-        <button className="tool-btn logs" onClick={() => setShowServerLogs(true)} title="Open Live Server Logs (5.3)">
-          📡 Server Logs
-        </button>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-          <select value={newEdLang} onChange={e => setNewEdLang(e.target.value)}
-            style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 5, color: "#8892a4", fontSize: 11, padding: "4px 6px", fontFamily: "var(--mono)", cursor: "pointer", outline: "none" }}>
-            {LK.map(lk => <option key={lk} value={lk}>{LANGS[lk].ic} {LANGS[lk].n}</option>)}
-          </select>
-          <button className="new-ed-btn" onClick={createNewEditor}>＋ New Editor</button>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
-          {cursors.map((b, i) => (
-            <div key={i} className={`av${b.id === me.id ? " me" : ""}`} style={{ background: b.bg || "rgba(255,255,255,.05)", color: b.color, border: `2px solid ${b.color}44` }} title={b.name}>
-              {initials(b.name)}
-              <div className="online-dot" style={{ background: "#4EC9B0" }} />
+        <div style={{ flex: 1 }} />
+        <div className="lang-switcher-row" style={{ display: "flex", gap: 3 }}>
+          {LK.map(lk => (
+            <div key={lk} className={`lp${lang === lk ? " on" : ""}`} style={{ color: LANGS[lk].c, background: lang === lk ? LANGS[lk].bg : "transparent" }} onClick={() => switchLang(lk)}>
+              <span>{LANGS[lk].ic}</span><span>{LANGS[lk].n}</span>
             </div>
           ))}
         </div>
-
-        <button className={`run-btn${running ? " running" : ""}`} onClick={handleRun} disabled={running} style={{ flexShrink: 0 }}>
+        <div className="av-group" style={{ display: "flex", alignItems: "center", gap: -5, marginLeft: 8 }}>
+          {cursors.map((b, i) => (
+            <div key={i} className={`av${b.id === me.id ? " me" : ""}`} style={{ background: b.bg || "rgba(255,255,255,.05)", color: b.color, border: `2px solid ${b.color}44`, marginLeft: i > 0 ? -8 : 0 }} title={b.name}>
+              {initials(b.name)}<div className="online-dot" style={{ background: "#4EC9B0" }} />
+            </div>
+          ))}
+        </div>
+        <div className="new-ed-row" style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 8 }}>
+          <select value={newEdLang} onChange={e => setNewEdLang(e.target.value)} className="new-ed-select" style={{ background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 5, color: "#8892a4", fontSize: 10, padding: "2px 4px", outline: "none" }}>
+            {LK.map(lk => <option key={lk} value={lk}>{LANGS[lk].n}</option>)}
+          </select>
+          <button className="new-ed-btn" onClick={createNewEditor}>+ New</button>
+        </div>
+        <button className={`run-btn${running ? " running" : ""}`} onClick={handleRun} disabled={running} style={{ marginLeft: 8 }}>
           {running ? <span className="spin" style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", border: "1.5px solid currentColor", borderTopColor: "transparent" }} /> : "▶"}
-          {running ? "Running…" : "Run"}
+          <span>{running ? "Running…" : "Run"}</span>
         </button>
-
-        <button onClick={onLogout} style={{ padding: "4px 10px", borderRadius: 5, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", color: "#4a5568", cursor: "pointer", fontSize: 11, fontFamily: "Inter,sans-serif", whiteSpace: "nowrap", flexShrink: 0 }}>← Exit</button>
+        <button onClick={onLogout} style={{ padding: "4px 10px", borderRadius: 5, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", color: "#4a5568", cursor: "pointer", fontSize: 11, fontFamily: "Inter,sans-serif", whiteSpace: "nowrap", marginLeft: 8 }}>← Exit</button>
       </div>
 
-      {/* ── MAIN ── */}
-      <div style={{ display: "flex", height: "calc(100vh - 70px)", overflow: "hidden" }}>
 
-        {/* ── SIDEBAR ── */}
-        <div className="sidebar">
-          <div className="sec-hdr">Explorer</div>
-          {[{ id: "f_eng", name: "engine.ts", lang: "ts", icon: "🔷" }, { id: "f_rm", name: "README.md", lang: "md", icon: "📄" }, { id: "f_dir", name: "tests/", type: "d", icon: "📁" }, { id: "f_env", name: ".env", lang: "env", icon: "⚙" }].map(f => (
-            <div key={f.id} className={`ft${activeTab === f.id ? " sel" : ""}`} onClick={() => {
-              if (f.type === "d") { toast("tests/ folder"); return; }
-              const lk = f.lang && LANGS[f.lang] ? f.lang : "ts";
-              if (!tabs.find(t => t.id === f.id)) setTabs(p => [...p, { id: f.id, name: f.name, lang: lk, dirty: false, isNew: false }]);
-              setActiveTab(f.id); switchLang(lk);
-            }}>
-              <span style={{ fontSize: 12, flexShrink: 0 }}>{f.icon}</span>
-              <span style={{ color: activeTab === f.id ? "#4FC1FF" : "#c0c8d8", flex: 1, overflow: "hidden", textOverflow: "ellipsis", fontSize: 12 }}>{f.name}</span>
-              {f.lang && LANGS[f.lang] && <span style={{ fontSize: 9, fontWeight: 700, color: LANGS[f.lang]?.c, fontFamily: "var(--mono)", flexShrink: 0 }}>{LANGS[f.lang]?.ic}</span>}
-            </div>
-          ))}
-          {tabs.filter(t => t.isNew).map(t => (
-            <div key={t.id} className={`ft${activeTab === t.id ? " sel" : ""}`} onClick={() => { setActiveTab(t.id); switchLang(t.lang); }}>
-              <span className="new-tab-dot" style={{ flexShrink: 0 }} />
-              <span style={{ color: "#4EC9B0", flex: 1, overflow: "hidden", textOverflow: "ellipsis", fontSize: 12 }}>{t.name}</span>
-            </div>
-          ))}
-
-          <div className="divider" />
-
-          {/* ── PRESENCE PANEL ── */}
-          <div className="sec-hdr" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span>Collaborators</span>
-            <span style={{ color: "#4EC9B0", fontSize: 9, fontWeight: 700, background: "rgba(78,201,176,.12)", border: "1px solid rgba(78,201,176,.2)", borderRadius: 10, padding: "1px 6px" }}>{connectedCount} online</span>
-          </div>
-
-          <div className="presence-card">
-            <div className="presence-av" style={{ background: me.bg || "rgba(79,193,255,.18)", color: me.color || "#4FC1FF", borderColor: (me.color || "#4FC1FF") + "66" }}>
-              {me.inits}
-              <div className="pdot" style={{ background: "#4EC9B0" }} />
-            </div>
-            <div className="presence-info">
-              <div className="presence-name">
-                <span style={{ color: "#e0e0e0" }}>{me.name}</span>
-                <span style={{ fontSize: 9, color: "#4a5568", background: "rgba(255,255,255,.05)", padding: "1px 5px", borderRadius: 4 }}>you</span>
-              </div>
-              <div className="presence-pos" style={{ color: me.color || "#4FC1FF" }}>Ln {cursor.line} · Col {cursor.col} · {LANGS[lang]?.n}</div>
-            </div>
-          </div>
-
-          {cursors.filter(c => c.id !== me.id).map((b, i) => {
-            const isTyping = false; // Add typing logic if needed
-            return (
-              <div key={i} className="presence-card">
-                <div className="presence-av" style={{ background: b.bg || "rgba(255,255,255,.05)", color: b.color, borderColor: b.color + "66" }}>
-                  {initials(b.name)}
-                  <div className="pdot" style={{ background: isTyping ? b.color : "#4EC9B0" }} />
-                </div>
-                <div className="presence-info">
-                  <div className="presence-name" style={{ color: "#c0c8d8" }}>{b.name}</div>
-                  <div className="presence-pos" style={{ color: b.color }}>
-                    {isTyping
-                      ? <><TypingIndicator color={b.color} /><span style={{ marginLeft: 4 }}>typing…</span></>
-                      : `Ln ${b.line} · Col ${b.col}`}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-
-          <div className="divider" />
-
-          <div style={{ padding: "8px 12px" }}>
-            <div style={{ fontSize: 10, color: "#4a5568", marginBottom: 4, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em" }}>Session</div>
-            <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "#6a7585", lineHeight: 1.8 }}>
-              <div>ID: <span style={{ color: "#4FC1FF" }}>{sid}</span></div>
-              <div>Ops: <span style={{ color: "#4EC9B0" }}>{opCnt}</span></div>
-              <div>Ver: <span style={{ color: "#DCDCAA" }}>v{curEng.version}</span></div>
-              <div>Size: <span style={{ color: "#CE9178" }}>{curEng.text.length}ch</span></div>
-            </div>
-          </div>
-
-          {/* ══ NEW: Quick-access buttons in sidebar for 5.2 and 5.3 ══ */}
-          <div style={{ padding: "0 8px 8px" }}>
-            <div style={{ fontSize: 10, color: "#4a5568", marginBottom: 5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em" }}>Tools</div>
-            <div
-              onClick={() => setShowDebugRoom(true)}
-              style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 10px", borderRadius: 7, background: "rgba(255,107,157,.06)", border: "1px solid rgba(255,107,157,.18)", cursor: "pointer", marginBottom: 5, transition: "all .15s" }}
-              onMouseEnter={e => e.currentTarget.style.background = "rgba(255,107,157,.12)"}
-              onMouseLeave={e => e.currentTarget.style.background = "rgba(255,107,157,.06)"}>
-              <span style={{ fontSize: 14 }}>🔬</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, color: "#FF6B9D", fontWeight: 600 }}>Debugging Room</div>
-                <div style={{ fontSize: 10, color: "#4a5568" }}>Team error analysis</div>
-              </div>
-              {(errCount + warnCount) > 0 && <span style={{ fontSize: 9, background: "#FF6B9D", color: "#fff", borderRadius: 10, padding: "1px 5px", fontWeight: 700 }}>{errCount + warnCount}</span>}
-            </div>
-            <div
-              onClick={() => setShowServerLogs(true)}
-              style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 10px", borderRadius: 7, background: "rgba(79,193,255,.06)", border: "1px solid rgba(79,193,255,.15)", cursor: "pointer", transition: "all .15s" }}
-              onMouseEnter={e => e.currentTarget.style.background = "rgba(79,193,255,.12)"}
-              onMouseLeave={e => e.currentTarget.style.background = "rgba(79,193,255,.06)"}>
-              <span style={{ fontSize: 14 }}>📡</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, color: "#4FC1FF", fontWeight: 600 }}>Server Logs</div>
-                <div style={{ fontSize: 10, color: "#4a5568" }}>Live DevOps monitor</div>
-              </div>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#4EC9B0", boxShadow: "0 0 5px #4EC9B0" }} className="pulse" />
-            </div>
-          </div>
-
-          {/* ── INLINE VALIDATION PANEL ── */}
-          {liveValidation && (liveValidation.hasError || liveValidation.hasWarning) && (
-            <div style={{ margin: "0 8px 8px", borderRadius: 7, background: liveValidation.hasError ? "rgba(255,107,157,.06)" : "rgba(220,220,170,.06)", border: `1px solid ${liveValidation.hasError ? "rgba(255,107,157,.2)" : "rgba(220,220,170,.2)"}`, padding: "7px 9px", maxHeight: 140, overflowY: "auto" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", color: liveValidation.hasError ? "#FF6B9D" : "#DCDCAA" }}>
-                  {liveValidation.hasError ? `⊗ ${liveValidation.errors.length} Error(s)` : `⚠ ${liveValidation.warnings.length} Warning(s)`}
-                </div>
-                <button onClick={() => setShowDebugRoom(true)} style={{ fontSize: 9, color: "#FF6B9D", background: "rgba(255,107,157,.12)", border: "1px solid rgba(255,107,157,.25)", borderRadius: 4, padding: "1px 6px", cursor: "pointer", fontFamily: "'Inter',sans-serif", fontWeight: 700 }}>Debug →</button>
-              </div>
-              {liveValidation.errors.map((e, i) => (
-                <div key={i} style={{ fontSize: 10, color: "#ff8090", fontFamily: "var(--mono)", lineHeight: 1.6, marginBottom: 2, wordBreak: "break-word" }}>✖ {e}</div>
-              ))}
-              {liveValidation.warnings.map((w, i) => (
-                <div key={i} style={{ fontSize: 10, color: "#DCDCAA", fontFamily: "var(--mono)", lineHeight: 1.6, marginBottom: 2, wordBreak: "break-word" }}>⚠ {w}</div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ── EDITOR AREA ── */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-          {/* Tab bar */}
+      <div style={{ display: "flex", height: "calc(100vh - var(--topbar-h))", overflow: "hidden" }} className="main-layout">
+        <div className="sidebar"><SidebarContent /></div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }} className="editor-main-area">
           <div style={{ display: "flex", background: "var(--bg3)", height: 36, flexShrink: 0, overflowX: "auto", overflowY: "hidden", alignItems: "flex-end", borderBottom: "1px solid var(--bdr)" }}>
             {tabs.map(t => {
-              const tl = LANGS[t.lang] || LANGS.ts; return (
-                <div key={t.id} className={`tab ${activeTab === t.id ? "on" : "off"}`} onClick={() => { setActiveTab(t.id); if (LANGS[t.lang]) switchLang(t.lang); }}>
-                  {t.isNew && <span className="new-tab-dot" style={{ marginRight: 4 }} />}
-                  <span style={{ fontSize: 9, color: tl.c, fontWeight: 700, flexShrink: 0 }}>{tl.ic}</span>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>{t.name}</span>
-                  {t.dirty && <span style={{ fontSize: 12, color: "#4a5568", lineHeight: 1, flexShrink: 0 }}>●</span>}
-                  <span className="tx" onClick={e => closeTab(t.id, e)}>✕</span>
+              const tl = LANGS[t.lang] || LANGS.ts;
+              return (
+                <div key={t.id} className={`tab${activeTab === t.id ? " on" : " off"}`} onClick={() => { setActiveTab(t.id); setLang(t.lang); }} style={{ borderBottomColor: activeTab === t.id ? tl.c : "transparent" }}>
+                  <span style={{ color: tl.c, fontSize: 10 }}>{tl.ic}</span>
+                  <span style={{ color: activeTab === t.id ? "#fff" : "#8892a4" }}>{t.name}</span>
+                  <div className="tx" onClick={e => closeTab(t.id, e)}>✕</div>
                 </div>
               );
             })}
-            <div style={{ flex: 1 }} />
-            <div style={{ padding: "0 12px", fontSize: 10, color: "#4a5568", fontFamily: "var(--mono)", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
-              <span>CodeMirror 6</span><span style={{ color: LANGS[lang]?.c || "#4FC1FF", fontWeight: 700 }}>{LANGS[lang]?.n}</span>
-            </div>
-            <button className={`run-btn${running ? " running" : ""}`} onClick={handleRun} disabled={running} style={{ margin: "4px 8px 4px 0", padding: "3px 10px", fontSize: 11 }}>
-              {running ? "⟳ Running…" : "▶ Run"}
-            </button>
           </div>
-
-          {/* Breadcrumb */}
           <div className="bc">
-            <span style={{ cursor: "pointer" }} onClick={() => toast("src/")}>src</span>
-            <span style={{ color: "var(--txt3)" }}>/</span>
-            <span style={{ color: "#e0e0e0" }}>{curTab?.name || "—"}</span>
-            {curTab?.isNew && <span style={{ color: "#4EC9B0", marginLeft: 4, fontSize: 10 }}>● new</span>}
-            <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--txt3)", fontFamily: "var(--mono)" }}>v{curEng.version}</span>
-            {liveValidation && (
-              <span
-                style={{ marginLeft: 8, fontSize: 10, color: liveValidation.hasError ? "#FF6B9D" : liveValidation.hasWarning ? "#DCDCAA" : "#4EC9B0", fontWeight: 700, cursor: liveValidation.hasError ? "pointer" : "default" }}
-                onClick={() => liveValidation.hasError && setShowDebugRoom(true)}>
-                {liveValidation.hasError ? `⊗ ${liveValidation.errors.length} error(s) — open debug room →` : liveValidation.hasWarning ? `⚠ ${liveValidation.warnings.length} warning(s)` : "✓ Valid"}
-              </span>
+            <span>CKC-OS</span><span>›</span><span>workspace</span><span>›</span>
+            <span style={{ color: "#fff" }}>{curTab?.name || "engine.ts"}</span>
+            <div style={{ flex: 1 }} />
+            {renderValBadge()}
+          </div>
+          <div style={{ flex: 1, overflow: "hidden", background: "#0d0f14" }} className={errShake ? "err-shake" : ""}>
+            <CMEditor
+              ref={activeEditorRef}
+              lang={lang}
+              fileKey={activeTab}
+              initText={curTab?.code || getEng(lang).text}
+              onLocalOp={handleLocalOp}
+              onCursorMove={handleCursorMove}
+              remoteOps={remOps}
+              onRemoteOpsProcessed={() => setRemOps([])}
+              cursors={activeCursors}
+              lineLocks={lineLocks}
+              myId={me.id}
+            />
+          </div>
+          <div className="out-panel" style={{ height: outOpen ? (outTab === "knowledge" ? 450 : 220) : 32 }}>
+            <div className="out-hdr">
+              <div className={`out-tab${outTab === "output" ? " on" : ""}`} onClick={() => { setOutOpen(true); setOutTab("output"); }}><span>▣</span> Output</div>
+              <div className={`out-tab${outTab === "problems" ? " on" : ""}`} onClick={() => { setOutOpen(true); setOutTab("problems"); }}>
+                <span>⚠</span> Problems {errCount > 0 && <span style={{ background: "#FF6B9D", color: "#fff", borderRadius: 10, padding: "0 5px", fontSize: 9 }}>{errCount}</span>}
+              </div>
+              <div className={`out-tab${outTab === "knowledge" ? " on" : ""}`} onClick={() => { 
+                setKnowledgeCode(activeEditorRef.current?._getText?.() || "");
+                setOutOpen(true); 
+                setOutTab("knowledge"); 
+              }}>
+                <span>◈</span> Knowledge Graph
+              </div>
+              <div style={{ flex: 1, height: "100%", cursor: "pointer" }} onClick={() => setOutOpen(!outOpen)} />
+              <button onClick={() => setOutOpen(!outOpen)} style={{ background: "transparent", border: "none", color: "#4a5568", padding: "0 10px", cursor: "pointer", fontSize: 10 }}>{outOpen ? "▼" : "▲"}</button>
+            </div>
+            {outOpen && (
+              <div style={{ flex: 1, overflowY: "auto", padding: "10px 14px", background: "#080a0d" }}>
+                {outTab === "output" ? renderOutput(output) : (
+                  outTab === "problems" ? (
+                    liveValidation?.errors.length ? liveValidation.errors.map((e, i) => <div key={i} style={{ color: "#ff8090", fontFamily: "var(--mono)", fontSize: 11, marginBottom: 4 }}>✖ {e}</div>) : <div style={{ color: "#4EC9B0", fontSize: 11 }}>✓ No problems detected</div>
+                  ) : (
+                    <KnowledgeGraphEngine isEmbedded={true} initialCode={knowledgeCode} />
+                  )
+                )}
+              </div>
             )}
           </div>
-
-          {/* Editor + minimap */}
-          <div style={{ flex: 1, position: "relative", overflow: "hidden", minHeight: 0, display: "flex" }}>
-            <div style={{ flex: 1, overflow: "hidden" }}>
-              {activeTab ? (
-                <CMEditor key={activeTab + lang} ref={activeEditorRef} lang={lang}
-                  initText={tabs.find(t => t.id === activeTab)?.code || ""} fileKey={activeTab}
-                  onLocalOp={handleLocalOp} onCursorMove={handleCursorMove}
-                  remoteOps={remOps} cursors={activeCursors} 
-                  lineLocks={lineLocks} myId={me.id} readOnly={false} 
-                  onRemoteOpsProcessed={() => setRemOps([])} />
-              ) : (
-                <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: "#4a5568" }}>
-                  <div style={{ fontSize: 48, opacity: .1 }}>⚡</div>
-                  <div style={{ fontSize: 16, color: "#6a7585" }}>No file open</div>
-                  <button className="new-ed-btn" onClick={createNewEditor}>＋ New Editor</button>
-                </div>
-              )}
-            </div>
-            {/* Minimap */}
-            <div className="mm">
-              <div style={{ position: "absolute", inset: 0, padding: "4px 2px" }}>
-                {Array.from({ length: 55 }).map((_, i) => <div key={i} style={{ height: 2, marginBottom: 1, background: `rgba(79,193,255,${Math.random() * .12 + .02})`, borderRadius: 1, width: `${15 + Math.random() * 75}%` }} />)}
-              </div>
-              <div style={{ position: "absolute", top: "5%", left: 0, right: 0, height: "25%", background: "rgba(79,193,255,.05)", borderTop: "1px solid rgba(79,193,255,.1)", borderBottom: "1px solid rgba(79,193,255,.1)" }} />
-            </div>
-          </div>
-
-          {/* Output panel */}
-          {outOpen && (
-            <div className="out-panel" style={{ height: 220 }}>
-              <div className="out-hdr">
-                {[["output", "Output"], ["terminal", "Terminal"], ["problems", `Problems (${errCount + warnCount})`]].map(([id, lb]) => (
-                  <div key={id} className={`out-tab${outTab === id ? " on" : ""}`} onClick={() => setOutTab(id)}>
-                    {id === "output" && outIsErr && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#FF6B9D", boxShadow: "0 0 5px #FF6B9D", display: "inline-block" }} className="pulse" />}
-                    {lb}
-                  </div>
-                ))}
-                <div style={{ flex: 1 }} />
-                <button className={`run-btn${running ? " running" : ""}`} onClick={handleRun} disabled={running} style={{ margin: "4px 8px", padding: "3px 10px", fontSize: 11 }}>{running ? "⟳ Running…" : "▶ Run"}</button>
-                <div style={{ width: 24, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#4a5568", fontSize: 13 }} onClick={() => setOutOpen(false)}>✕</div>
-              </div>
-              {outTab === "output" && (
-                <div style={{ flex: 1, overflowY: "auto", padding: "10px 14px", background: "#0a0c10", minHeight: 0, borderTop: outIsErr ? "1px solid rgba(255,107,157,.18)" : "none" }}>
-                  {running
-                    ? <div style={{ color: "#4FC1FF", fontFamily: "var(--mono)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
-                      <span className="spin" style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", border: "1.5px solid #4FC1FF", borderTopColor: "transparent" }} />
-                      Validating &amp; running {LANGS[curTab?.lang || lang]?.n || "code"}…
-                    </div>
-                    : renderOutput(output)}
-                </div>
-              )}
-              {outTab === "terminal" && (
-                <div style={{ flex: 1, padding: "8px 14px", fontFamily: "var(--mono)", fontSize: 12, color: "#4FC1FF", background: "#0a0c10" }}>
-                  <div>$ ckc-os run --lang={lang} --session={sid}</div>
-                  <div style={{ color: "#4EC9B0" }}>✓ Session active · {1 + botRefs.current.length} collaborators · OT v{curEng.version}</div>
-                  {lang === "py" && <div style={{ color: pyReady ? "#4EC9B0" : "#DCDCAA" }}>🐍 Pyodide: {pyReady ? "loaded" : "press Run to load"}</div>}
-                  <div style={{ color: "#4a5568", marginTop: 4 }}>$ _</div>
-                </div>
-              )}
-              {outTab === "problems" && (
-                <div style={{ flex: 1, overflowY: "auto", background: "#0a0c10" }}>
-                  {liveValidation && (liveValidation.errors.length > 0 || liveValidation.warnings.length > 0) ? (
-                    <>
-                      {/* ══ Open in Debug Room shortcut ══ */}
-                      <div style={{ padding: "6px 14px", borderBottom: "1px solid rgba(255,255,255,.04)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <span style={{ fontSize: 10, color: "#4a5568" }}>{liveValidation.errors.length} error(s) · {liveValidation.warnings.length} warning(s)</span>
-                        <button onClick={() => setShowDebugRoom(true)} style={{ fontSize: 10, color: "#FF6B9D", background: "rgba(255,107,157,.1)", border: "1px solid rgba(255,107,157,.25)", borderRadius: 5, padding: "2px 9px", cursor: "pointer", fontFamily: "'Inter',sans-serif", fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}>
-                          🔬 Open Debug Room
-                        </button>
-                      </div>
-                      {liveValidation.errors.map((e, i) => (
-                        <div key={`e-${i}`} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 14px", borderBottom: "1px solid rgba(255,255,255,.04)", cursor: "pointer" }}
-                          onMouseEnter={ev => ev.currentTarget.style.background = "rgba(255,255,255,.03)"}
-                          onMouseLeave={ev => ev.currentTarget.style.background = "transparent"}>
-                          <span style={{ color: "#FF6B9D", fontSize: 13, flexShrink: 0, marginTop: 1 }}>⊗</span>
-                          <div><div style={{ fontSize: 12, color: "#c0c8d8" }}>{e}</div><div style={{ fontSize: 11, color: "#4a5568", marginTop: 1 }}>{LANGS[lang]?.ext || "file"}</div></div>
-                        </div>
-                      ))}
-                      {liveValidation.warnings.map((w, i) => (
-                        <div key={`w-${i}`} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 14px", borderBottom: "1px solid rgba(255,255,255,.04)", cursor: "pointer" }}
-                          onMouseEnter={ev => ev.currentTarget.style.background = "rgba(255,255,255,.03)"}
-                          onMouseLeave={ev => ev.currentTarget.style.background = "transparent"}>
-                          <span style={{ color: "#DCDCAA", fontSize: 13, flexShrink: 0, marginTop: 1 }}>⚠</span>
-                          <div><div style={{ fontSize: 12, color: "#c0c8d8" }}>{w}</div><div style={{ fontSize: 11, color: "#4a5568", marginTop: 1 }}>{LANGS[lang]?.ext || "file"}</div></div>
-                        </div>
-                      ))}
-                    </>
-                  ) : (
-                    <div style={{ padding: "20px", textAlign: "center", color: "#4a5568", fontSize: 12 }}>
-                      <div style={{ fontSize: 24, marginBottom: 8 }}>✓</div>
-                      No problems detected
-                      <div style={{ fontSize: 11, marginTop: 4, color: "#333" }}>Start typing to validate your code</div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
         </div>
-
-        {/* ── RIGHT PANEL ── */}
-        <div className="right-panel" style={{ width: 210, background: "var(--bg2)", borderLeft: "1px solid var(--bdr)", display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0 }}>
+        <div className="right-panel">
           <div style={{ display: "flex", borderBottom: "1px solid var(--bdr)", flexShrink: 0, background: "var(--bg3)" }}>
             {[["crdt", "OT/CRDT"], ["ws", "WS Log"]].map(([id, lb]) => (
               <div key={id} className={`rp-tab${rpTab === id ? " on" : ""}`} onClick={() => setRpTab(id)} style={{ flex: 1, textAlign: "center" }}>{lb}</div>
             ))}
           </div>
-
-          {rpTab === "crdt" && (
-            <div style={{ flex: 1, overflowY: "auto", padding: "6px" }}>
-              <div style={{ fontSize: 9, color: "#4a5568", padding: "2px 4px 4px", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em" }}>
-                Operation Log · {crdt.length} ops
-              </div>
-              {crdt.map((op, i) => {
-                const t = op.type || "retain";
-                const bot = BOTS.find(b => b.name === op.from);
-                return (
-                  <div key={i} className={`op-card ${t}`}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
-                      <span className={`op-badge ${t}`}>{t.toUpperCase()}</span>
-                      <span style={{ fontSize: 9, color: "#4a5568", fontFamily: "var(--mono)" }}>{op.t}</span>
-                    </div>
-                    {t === "insert" && <div style={{ fontSize: 10, fontFamily: "var(--mono)", color: "#4FC1FF", marginBottom: 2, wordBreak: "break-all" }}>ins("{op.chars?.slice(0, 12)?.replace(/\n/g, "↵") || "…"}",@{op.pos})</div>}
-                    {t === "retain" && <div style={{ fontSize: 10, fontFamily: "var(--mono)", color: "#6a7585" }}>retain(@{op.pos || 0})</div>}
-                    {t === "delete" && <div style={{ fontSize: 10, fontFamily: "var(--mono)", color: "#ff6363" }}>del(@{op.pos},len:{op.len})</div>}
-                    {op.from && <div style={{ fontSize: 10, color: bot?.color || "#4FC1FF", display: "flex", alignItems: "center", gap: 3, marginTop: 2 }}>
-                      <span style={{ width: 5, height: 5, borderRadius: "50%", background: bot?.color || "#4FC1FF", display: "inline-block" }} />{op.from}
-                    </div>}
+          <div style={{ flex: 1, overflowY: "auto", padding: "8px" }}>
+            {rpTab === "crdt" ? (
+              crdt.length ? crdt.map((o, i) => (
+                <div key={i} className={`op-card ${o.type}`}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
+                    <span className={`op-badge ${o.type}`}>{o.type.toUpperCase()}</span>
+                    <span style={{ fontSize: 9, color: "#4a5568", fontFamily: "var(--mono)" }}>{o.from} · {o.t}</span>
                   </div>
-                );
-              })}
-              {crdt.length === 0 && <div style={{ padding: "12px 8px", fontSize: 11, color: "#333", textAlign: "center" }}>Waiting for ops…<br /><span style={{ fontSize: 10, color: "#2a3040" }}>Start typing to see operations</span></div>}
-            </div>
-          )}
-
-          {rpTab === "ws" && (
-            <div style={{ flex: 1, overflowY: "auto", padding: "6px" }}>
-              <div style={{ fontSize: 9, color: "#4a5568", padding: "2px 4px 4px", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em" }}>
-                WebSocket Events
-              </div>
-              {wsLog.slice(0, 25).map((e, i) => (
-                <div key={i} className={`ws-entry ${e.dir === "←" ? "in" : "out"}`}>
-                  <span style={{ fontSize: 8, color: "#333", display: "block", marginBottom: 1 }}>{e.t}</span>
-                  <span style={{ marginRight: 4 }}>{e.dir === "←" ? "↙" : "↗"}</span>{e.msg}
+                  <div style={{ fontSize: 10, color: "#e0e0e0", fontFamily: "var(--mono)", wordBreak: "break-all" }}>
+                    {o.type === "insert" ? `"${o.chars}" at ${o.pos}` : `len ${o.len} from ${o.pos}`}
+                  </div>
                 </div>
-              ))}
-              {wsLog.length === 0 && <div style={{ padding: "12px 8px", fontSize: 11, color: "#333", textAlign: "center" }}>No WS events yet</div>}
-            </div>
-          )}
-
-          {/* Stats footer */}
-          <div style={{ padding: "8px 10px", borderTop: "1px solid var(--bdr)", flexShrink: 0 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-              {[
-                { label: "Ops", value: opCnt, color: "#4FC1FF" },
-                { label: "Ver", value: `v${curEng.version}`, color: "#4EC9B0" },
-                { label: "Size", value: `${curEng.text.length}ch`, color: "#DCDCAA" },
-                { label: "Users", value: connectedCount, color: "#FF6B9D" },
-              ].map(s => (
-                <div key={s.label} style={{ background: "rgba(255,255,255,.02)", borderRadius: 5, padding: "4px 7px" }}>
-                  <div style={{ fontSize: 9, color: "#4a5568", textTransform: "uppercase", letterSpacing: ".08em" }}>{s.label}</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: s.color, fontFamily: "var(--mono)" }}>{s.value}</div>
-                </div>
-              ))}
-            </div>
+              )) : <div style={{ padding: "20px", textAlign: "center", color: "#4a5568", fontSize: 11 }}>Waiting for ops..</div>
+            ) : (
+              wsLog.map((l, i) => <div key={i} className={`ws-entry ${l.type}`}>[{l.t}] {l.msg}</div>)
+            )}
           </div>
         </div>
       </div>
 
-      {/* ── STATUS BAR ── */}
       <div className="statusbar">
         <SB c="#4EC9B0">⬡ {connectedCount} online</SB>
         <SB c={errCount > 0 ? "#FF6B9D" : "#4a5568"} onClick={() => { setOutOpen(true); setOutTab("problems"); }}>⊗ {errCount} · ⚠ {warnCount}</SB>
         <SB c="#4FC1FF">OT v{curEng.version}</SB>
-        {/* ══ NEW: Status bar shortcuts for 5.2 and 5.3 ══ */}
-        <SB c="#FF6B9Daa" onClick={() => setShowDebugRoom(true)}>🔬 Debug Room</SB>
-        <SB c="#4FC1FFaa" onClick={() => setShowServerLogs(true)}>📡 Server Logs</SB>
         <div style={{ flex: 1 }} />
+        <SB onClick={() => setShowDebugRoom(true)} c="#FF6B9D" className="sb-tool">🔬 Debug Room</SB>
+        <SB onClick={() => setShowServerLogs(true)} c="#4FC1FF" className="sb-tool">📡 Server Logs</SB>
         <SB>Ln {cursor.line}, Col {cursor.col}</SB>
         <SB>UTF-8</SB>
-        <SB c="#FFB547">↕ {opCnt} ops</SB>
         <SB c="#4EC9B0">⬡ Live</SB>
-        {lang === "py" && <SB c={pyReady ? "#4EC9B0" : "#DCDCAA"}>🐍 {pyReady ? "Pyodide" : "…"}</SB>}
         <SB c="#4FC1FF">CKC-OS v4.2</SB>
       </div>
 
-      {/* ── CMD PALETTE ── */}
+
+      <div className="mobile-bottom-bar">
+        <button className={`mbb-btn${mobilePanelTab === "editor" ? " active" : ""}`} onClick={() => setMobilePanelTab("editor")}>
+          <span className="mbb-icon">📝</span><span>Editor</span>
+        </button>
+        <button className="mbb-btn" onClick={() => setMobileSidebarOpen(true)}>
+          <span className="mbb-icon">📁</span><span>Files</span>
+        </button>
+        <button className={`mbb-btn${mobilePanelTab === "output" ? " active" : ""}`} onClick={() => { setMobilePanelTab("output"); setOutOpen(true); }}>
+          <span className="mbb-icon">▣</span><span>Output</span>
+        </button>
+        <button className="mbb-btn" onClick={() => setShowServerLogs(true)}>
+          <span className="mbb-icon">📡</span><span>Logs</span>
+        </button>
+      </div>
+
+      <div className={`mobile-sidebar-overlay${mobileSidebarOpen ? " open" : ""}`} style={{ display: mobileSidebarOpen ? "block" : "none" }} onClick={() => setMobileSidebarOpen(false)} />
+      <div className={`mobile-sidebar-drawer${mobileSidebarOpen ? " open" : ""}`}><SidebarContent /></div>
+
       {cmdOpen && (
         <div className="cp-ov" onClick={() => setCmdOpen(false)}>
           <div className="cp-box fi" onClick={e => e.stopPropagation()}>
@@ -3024,8 +2459,7 @@ function Shell({ user, onLogout }) {
             <div style={{ overflowY: "auto", flex: 1 }}>
               {filtCmds.map((c, i) => (
                 <div key={i} className={`cp-row${cmdSel === i ? " hi" : ""}`} onMouseEnter={() => setCmdSel(i)} onClick={() => runCmd(c)}>
-                  <span style={{ fontSize: 14 }}>{c.ic}</span>
-                  <span style={{ flex: 1 }}>{c.lb}</span>
+                  <span style={{ fontSize: 14 }}>{c.ic}</span><span style={{ flex: 1 }}>{c.lb}</span>
                   {c.kb && <span style={{ fontSize: 10, color: "#4a5568", fontFamily: "var(--mono)" }}>{c.kb}</span>}
                 </div>
               ))}
@@ -3033,7 +2467,6 @@ function Shell({ user, onLogout }) {
           </div>
         </div>
       )}
-
       {notif && <div className="toast">{notif}</div>}
     </>
   );
