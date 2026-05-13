@@ -4,11 +4,11 @@
  */
 import { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../lib/supabase";
-import { useAuth } from "../pages/auth.jsx";
+import { useAuth } from "./auth.jsx";
+import { initials } from "../constants.js";
 
 const COLORS = ["#25d366","#00a884","#53bdeb","#7bcfb8","#e9af52","#f472b6","#a78bfa"];
 const getColor = (id="") => COLORS[Math.abs(id.split("").reduce((a,b)=>a+b.charCodeAt(0),0)) % COLORS.length];
-const mkInitials = (n="?") => n.trim().split(/\s+/).map(w=>w[0]).join("").toUpperCase().slice(0,2)||"?";
 const fmtTime = (ts) => new Date(ts).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
 
 const DEFAULT_CHANNELS = [
@@ -388,7 +388,7 @@ export default function DevChat() {
         <header className="dc-shdr">
           <div style={{display:"flex",alignItems:"center"}}>
             <div className="dc-ava" style={{background:authUser?.cursorColor||"#00a884"}}>
-              {mkInitials(authUser?.name)}
+              {initials(authUser?.name)}
             </div>
             <span className="dc-uname">{authUser?.name||"DevChat"}</span>
           </div>
