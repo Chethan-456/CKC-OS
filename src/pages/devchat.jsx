@@ -97,7 +97,7 @@ const CSS = `
 `;
 
 export default function DevChat() {
-  const { user: authUser, login } = useAuth();
+  const { user: authUser, login, logout } = useAuth();
 
   const [channels,  setChannels]  = useState([]);
   const [chanId,    setChanId]    = useState(null);
@@ -119,6 +119,7 @@ export default function DevChat() {
   const endRef      = useRef(null);
   const typingTimer = useRef(null);
   const presenceRef = useRef(null);
+  const searchRef   = useRef(null);
   // Refs so async callbacks always read latest values without stale closures
   const chanIdRef   = useRef(null);
   const authUserRef = useRef(null);
@@ -344,6 +345,27 @@ export default function DevChat() {
     }
   };
 
+  const handleNewChannel = async () => {
+    if (!authUser || authUser.isGuest) {
+      setSendErr("Please sign in to create a channel.");
+      setTimeout(()=>setSendErr(""),3000);
+      return;
+    }
+    const name = window.prompt("Enter new channel name:");
+    if (!name?.trim()) return;
+    const description = window.prompt("Enter channel description (optional):") || "";
+    
+    const slug = name.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    const { data, error } = await supabase.from("channels").insert([{ name: slug, description }]).select().single();
+    if (error) {
+      setSendErr("Error creating channel: " + error.message);
+      setTimeout(()=>setSendErr(""),4000);
+    } else if (data) {
+      setChannels(prev => [...prev, data].sort((a,b) => a.name.localeCompare(b.name)));
+      setChanId(data.id);
+    }
+  };
+
   /* ── Typing broadcast ── */
   const onType = (e) => {
     setInput(e.target.value);
@@ -393,16 +415,16 @@ export default function DevChat() {
             <span className="dc-uname">{authUser?.name||"DevChat"}</span>
           </div>
           <div className="dc-icos">
-            <button className="dc-ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg></button>
-            <button className="dc-ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg></button>
-            <button className="dc-ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>
+            <button className="dc-ico" title="Activity (Coming Soon)" onClick={() => alert("Activity view coming soon!")}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg></button>
+            <button className="dc-ico" title="New Channel" onClick={handleNewChannel}><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg></button>
+            <button className="dc-ico" title="Logout" onClick={logout}><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>
           </div>
         </header>
 
         <div className="dc-srch">
           <div className="dc-sbox">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--dim)" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
-            <input placeholder="Search or start new chat" value={search} onChange={e=>setSearch(e.target.value)}/>
+            <input ref={searchRef} placeholder="Search or start new chat" value={search} onChange={e=>setSearch(e.target.value)}/>
           </div>
         </div>
 
@@ -433,8 +455,8 @@ export default function DevChat() {
             </div>
           </div>
           <div className="dc-icos">
-            <button className="dc-ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></button>
-            <button className="dc-ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>
+            <button className="dc-ico" title="Search" onClick={() => searchRef.current?.focus()}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></button>
+            <button className="dc-ico" title="Settings" onClick={() => alert("Channel settings coming soon!")}><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>
           </div>
         </header>
 
