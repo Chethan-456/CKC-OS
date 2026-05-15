@@ -2113,14 +2113,15 @@ function Shell({ user, onLogout }) {
   const createNewEditor = useCallback(() => {
     const id = "new-" + Date.now();
     const ext = LANGS[newEdLang]?.ext?.split(".")[1] || newEdLang;
-    const newTab = { id, name: `scratch.${ext}`, lang: newEdLang, dirty: false, isNew: true, code: "" };
+    const shortName = me.name ? me.name.split(" ")[0].toLowerCase() : "user";
+    const newTab = { id, name: `scratch-${shortName}.${ext}`, lang: newEdLang, dirty: false, isNew: true, code: "" };
     setTabs(p => [...p, newTab]);
     setActiveTab(id); switchLang(newEdLang);
     toast(`New ${LANGS[newEdLang]?.n} editor opened`);
-    const payload = { uid: me.id, name: me.name, tab: newTab };
+    const payload = { uid: me.id, instanceId, name: me.name, tab: newTab };
     channelRef.current?.send({ type: "broadcast", event: "tabSync", payload });
     new BroadcastChannel("ckc_os_sync").postMessage({ type: "tabSync", payload });
-  }, [newEdLang, switchLang, toast, me.id, me.name]);
+  }, [newEdLang, switchLang, toast, me.id, me.name, instanceId]);
 
   const CMDS = [
     { ic: "▶", lb: "Run Code", kb: "Ctrl+Enter", fn: handleRun },
