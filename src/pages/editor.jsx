@@ -1899,6 +1899,7 @@ function Shell({ user, onLogout }) {
   };
   const sid = user?.sid || "default-session";
   const myId = useRef(user.id);
+  const instanceId = useRef(Math.random().toString(36).substring(7)).current;
   const [cursors, setCursors] = useState([]);
   const [crdt, setCrdt] = useState([]);
   const [wsLog, setWsLog] = useState([]);
@@ -1947,17 +1948,17 @@ function Shell({ user, onLogout }) {
     const bc = new BroadcastChannel("ckc_os_sync");
 
     const handleMessage = ({ type, payload }) => {
-      if (payload.uid === me.id || payload.id === me.id) return;
+      if (payload.instanceId === instanceId) return;
       
       switch (type) {
         case "join":
-          bc.postMessage({ type: "presence", payload: { id: me.id, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab } });
+          bc.postMessage({ type: "presence", payload: { id: me.id, instanceId, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab } });
           break;
         case "op":
           if (payload.tabId === activeTab) {
-            activeEditorRef.current?._applyRemoteOp?.(payload.op);
+            activeEditorRef.current?._applyRemoteOp?.(payload.op, payload.fullCode);
           }
-          setTabs(prev => prev.map(t => t.id === payload.tabId ? { ...t, code: applyOpToString(t.code || "", payload.op) } : t));
+          setTabs(prev => prev.map(t => t.id === payload.tabId ? { ...t, code: payload.fullCode ?? applyOpToString(t.code || "", payload.op) } : t));
           setOpCnt(c => c + 1);
           setCrdt(p => [{ ...payload.op, from: payload.name, t: nowTs() }, ...p].slice(0, 40));
           break;
@@ -2057,18 +2058,18 @@ function Shell({ user, onLogout }) {
   const handleLocalOp = useCallback(op => {
     if (lineLocks[cursor.line] && lineLocks[cursor.line].user_id !== me.id) { toast("Line locked by " + lineLocks[cursor.line].user_name); return; }
     const fullCode = activeEditorRef.current?._getText?.() || "";
-    const payload = { uid: me.id, name: me.name, lang, op, tabId: activeTab, tabName: tabs.find(t => t.id === activeTab)?.name || "scratch", fullCode };
+    const payload = { uid: me.id, instanceId, name: me.name, lang, op, tabId: activeTab, tabName: tabs.find(t => t.id === activeTab)?.name || "scratch", fullCode };
     channelRef.current?.send({ type: "broadcast", event: "op", payload });
     new BroadcastChannel("ckc_os_sync").postMessage({ type: "op", payload });
 
     setOpCnt(c => c + 1);
     setCrdt(p => [{ ...op, from: "me", t: nowTs() }, ...p].slice(0, 40));
     triggerLiveValidation(fullCode, lang);
-  }, [lang, me, cursor, lineLocks, toast, triggerLiveValidation, activeTab, tabs]);
+  }, [lang, me, instanceId, cursor, lineLocks, toast, triggerLiveValidation, activeTab, tabs]);
 
   const handleCursorMove = useCallback(async (line, col) => {
     setCursor({ line, col });
-    const payload = { id: me.id, name: me.name, color: me.cursorColor, line, col, lang, tabId: activeTab };
+    const payload = { id: me.id, instanceId, name: me.name, color: me.cursorColor, line, col, lang, tabId: activeTab };
     channelRef.current?.send({ type: "broadcast", event: "cursor", payload });
     new BroadcastChannel("ckc_os_sync").postMessage({ type: "cursor", payload });
 
@@ -2078,7 +2079,7 @@ function Shell({ user, onLogout }) {
         await supabase.from("line_locks").insert({ document_id: lang, line_number: line, user_id: me.id, user_name: me.name, color: me.cursorColor });
       }
     } catch (err) { console.error("Lock error:", err); }
-  }, [lang, me, activeTab]);
+  }, [lang, me, instanceId, activeTab]);
 
   const switchLang = useCallback(lk => {
     if (activeTab) { const txt = activeEditorRef.current?._getText() || ""; setTabs(p => p.map(t => t.id === activeTab ? { ...t, code: txt } : t)); }
