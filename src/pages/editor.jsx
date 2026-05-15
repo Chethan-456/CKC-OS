@@ -12,10 +12,13 @@ function nowTs() {
 }
 
 function applyOpToString(str, op) {
+  if (!op) return str;
   if (op.type === "insert") {
     return str.slice(0, op.pos) + op.chars + str.slice(op.pos);
   } else if (op.type === "delete") {
     return str.slice(0, op.pos) + str.slice(op.pos + op.len);
+  } else if (op.type === "replace") {
+    return str.slice(0, op.pos) + op.chars + str.slice(op.pos + op.len);
   }
   return str;
 }
@@ -1293,36 +1296,49 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 `;
 
 // ═══════════ CODEMIRROR ═══════════
-const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, remoteOps, cursors, lineLocks, myId, fileKey, readOnly = false, onRemoteOpsProcessed }, ref) => {
+const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, cursors, lineLocks, myId, fileKey, readOnly = false }, ref) => {
   const domRef = useRef(null), viewRef = useRef(null), modsRef = useRef(null);
   const inited = useRef(false), suppress = useRef(false), prevDoc = useRef(initText || "");
   useEffect(() => {
-    const api = { _getText: () => viewRef.current?.state.doc.toString() ?? prevDoc.current };
+    const api = { 
+      _getText: () => viewRef.current?.state.doc.toString() ?? prevDoc.current,
+      _applyRemoteOp: (op, fullCode) => {
+        if (!viewRef.current) return;
+        suppress.current = true;
+        try {
+          const v = viewRef.current;
+          const currentText = v.state.doc.toString();
+          
+          if (fullCode !== undefined && fullCode !== currentText) {
+            let i = 0, oe = currentText.length, ne = fullCode.length;
+            while (i < oe && i < ne && currentText[i] === fullCode[i]) i++;
+            let oe2 = oe, ne2 = ne;
+            while (oe2 > i && ne2 > i && currentText[oe2 - 1] === fullCode[ne2 - 1]) { oe2--; ne2--; }
+            v.dispatch({ changes: { from: i, to: oe2, insert: fullCode.slice(i, ne2) } });
+          } else if (fullCode === undefined) {
+            const dl = currentText.length;
+            let change = null;
+            if (op.type === "insert") change = { from: Math.max(0, Math.min(op.pos, dl)), insert: op.chars };
+            else if (op.type === "delete") {
+              const f = Math.max(0, Math.min(op.pos, dl));
+              const t = Math.min(f + op.len, dl);
+              if (t > f) change = { from: f, to: t };
+            }
+            else if (op.type === "replace") {
+              const f = Math.max(0, Math.min(op.pos, dl));
+              const t = Math.min(f + op.len, dl);
+              change = { from: f, to: t, insert: op.chars };
+            }
+            if (change) v.dispatch({ changes: change });
+          }
+          prevDoc.current = v.state.doc.toString();
+        } finally {
+          suppress.current = false;
+        }
+      }
+    };
     if (ref) { typeof ref === "function" ? ref(api) : (ref.current = api); }
   });
-  useEffect(() => {
-    if (!remoteOps?.length || !viewRef.current) return;
-    suppress.current = true;
-    try {
-      const v = viewRef.current;
-      v.dispatch({
-        changes: remoteOps.map(op => {
-          const dl = v.state.doc.length;
-          if (op.type === "insert") return { from: Math.max(0, Math.min(op.pos, dl)), insert: op.chars };
-          if (op.type === "delete") {
-            const f = Math.max(0, Math.min(op.pos, dl));
-            const t = Math.min(f + op.len, dl);
-            return t > f ? { from: f, to: t } : null;
-          }
-          return null;
-        }).filter(Boolean)
-      });
-      prevDoc.current = v.state.doc.toString();
-    } finally {
-      suppress.current = false;
-      onRemoteOpsProcessed?.();
-    }
-  }, [remoteOps]);
   useEffect(() => {
     if (inited.current || !domRef.current) return; inited.current = true;
     (async () => {
@@ -1360,8 +1376,9 @@ const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, remoteOp
           let oe2 = oe, ne2 = ne;
           while (oe2 > i && ne2 > i && old[oe2 - 1] === newText[ne2 - 1]) { oe2--; ne2--; }
           const del = old.slice(i, oe2), ins = newText.slice(i, ne2);
-          if (del.length) onLocalOp?.({ type: "delete", pos: i, len: del.length });
-          if (ins.length) onLocalOp?.({ type: "insert", pos: i, chars: ins });
+          if (del.length && ins.length) onLocalOp?.({ type: "replace", pos: i, len: del.length, chars: ins });
+          else if (del.length) onLocalOp?.({ type: "delete", pos: i, len: del.length });
+          else if (ins.length) onLocalOp?.({ type: "insert", pos: i, chars: ins });
           prevDoc.current = newText;
         });
         modsRef.current = { EditorState, EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars, indentOnInput, history, historyKeymap, indentWithTab, searchKeymap, highlightSelectionMatches, autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, foldGutter, foldKeymap, bracketMatching, syntaxHighlighting, defaultHighlightStyle, oneDark, theme, listener, LM };
@@ -1381,9 +1398,12 @@ const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, remoteOp
               const nT = e.target.value, old = prevDoc.current;
               let i = 0, oe = old.length, ne = nT.length;
               while (i < oe && i < ne && old[i] === nT[i]) i++;
-              const ins = nT.slice(i), del = old.slice(i, oe);
-              if (del.length) onLocalOp?.({ type: "delete", pos: i, len: del.length });
-              if (ins.length) onLocalOp?.({ type: "insert", pos: i, chars: ins });
+              let oe2 = oe, ne2 = ne;
+              while (oe2 > i && ne2 > i && old[oe2 - 1] === nT[ne2 - 1]) { oe2--; ne2--; }
+              const del = old.slice(i, oe2), ins = nT.slice(i, ne2);
+              if (del.length && ins.length) onLocalOp?.({ type: "replace", pos: i, len: del.length, chars: ins });
+              else if (del.length) onLocalOp?.({ type: "delete", pos: i, len: del.length });
+              else if (ins.length) onLocalOp?.({ type: "insert", pos: i, chars: ins });
               prevDoc.current = nT;
             });
           }
@@ -1879,7 +1899,6 @@ function Shell({ user, onLogout }) {
   };
   const sid = user?.sid || "default-session";
   const myId = useRef(user.id);
-  const [remOps, setRemOps] = useState([]);
   const [cursors, setCursors] = useState([]);
   const [crdt, setCrdt] = useState([]);
   const [wsLog, setWsLog] = useState([]);
@@ -1935,7 +1954,9 @@ function Shell({ user, onLogout }) {
           bc.postMessage({ type: "presence", payload: { id: me.id, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab } });
           break;
         case "op":
-          if (payload.tabId === activeTab) setRemOps(prev => [...prev, payload.op]);
+          if (payload.tabId === activeTab) {
+            activeEditorRef.current?._applyRemoteOp?.(payload.op);
+          }
           setTabs(prev => prev.map(t => t.id === payload.tabId ? { ...t, code: applyOpToString(t.code || "", payload.op) } : t));
           setOpCnt(c => c + 1);
           setCrdt(p => [{ ...payload.op, from: payload.name, t: nowTs() }, ...p].slice(0, 40));
@@ -2035,13 +2056,14 @@ function Shell({ user, onLogout }) {
 
   const handleLocalOp = useCallback(op => {
     if (lineLocks[cursor.line] && lineLocks[cursor.line].user_id !== me.id) { toast("Line locked by " + lineLocks[cursor.line].user_name); return; }
-    const payload = { uid: me.id, name: me.name, lang, op, tabId: activeTab, tabName: tabs.find(t => t.id === activeTab)?.name || "scratch" };
+    const fullCode = activeEditorRef.current?._getText?.() || "";
+    const payload = { uid: me.id, name: me.name, lang, op, tabId: activeTab, tabName: tabs.find(t => t.id === activeTab)?.name || "scratch", fullCode };
     channelRef.current?.send({ type: "broadcast", event: "op", payload });
     new BroadcastChannel("ckc_os_sync").postMessage({ type: "op", payload });
 
     setOpCnt(c => c + 1);
     setCrdt(p => [{ ...op, from: "me", t: nowTs() }, ...p].slice(0, 40));
-    triggerLiveValidation(activeEditorRef.current?._getText?.() || "", lang);
+    triggerLiveValidation(fullCode, lang);
   }, [lang, me, cursor, lineLocks, toast, triggerLiveValidation, activeTab, tabs]);
 
   const handleCursorMove = useCallback(async (line, col) => {
@@ -2060,7 +2082,7 @@ function Shell({ user, onLogout }) {
 
   const switchLang = useCallback(lk => {
     if (activeTab) { const txt = activeEditorRef.current?._getText() || ""; setTabs(p => p.map(t => t.id === activeTab ? { ...t, code: txt } : t)); }
-    setLang(lk); setRemOps([]); setLiveValidation(null);
+    setLang(lk); setLiveValidation(null);
   }, [activeTab]);
 
   const triggerError = useCallback((msg, cLang) => {
@@ -2323,8 +2345,6 @@ function Shell({ user, onLogout }) {
               initText={curTab?.code || getEng(lang).text}
               onLocalOp={handleLocalOp}
               onCursorMove={handleCursorMove}
-              remoteOps={remOps}
-              onRemoteOpsProcessed={() => setRemOps([])}
               cursors={activeCursors}
               lineLocks={lineLocks}
               myId={me.id}
