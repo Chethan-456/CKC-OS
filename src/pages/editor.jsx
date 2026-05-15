@@ -2258,6 +2258,9 @@ function Shell({ user, onLogout }) {
         <div onClick={() => { setShowServerLogs(true); setMobileSidebarOpen(false); }} className="tool-btn logs" style={{ padding: "7px 10px", width: "100%" }}>
           <span>📡</span> Server Logs Dashboard
         </div>
+        <div onClick={onLogout} className="tool-btn" style={{ padding: "7px 10px", width: "100%", marginTop: 5, color: "#ff5555", background: "rgba(255,75,75,.08)", border: "1px solid rgba(255,75,75,.2)" }}>
+          <span>🚪</span> Logout Session
+        </div>
       </div>
     </>
   );
@@ -2313,7 +2316,9 @@ function Shell({ user, onLogout }) {
           {running ? <span className="spin" style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", border: "1.5px solid currentColor", borderTopColor: "transparent" }} /> : "▶"}
           <span>{running ? "Running…" : "Run"}</span>
         </button>
-        <button onClick={onLogout} style={{ padding: "4px 10px", borderRadius: 5, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", color: "#4a5568", cursor: "pointer", fontSize: 11, fontFamily: "Inter,sans-serif", whiteSpace: "nowrap", marginLeft: 8 }}>← Exit</button>
+        <button onClick={onLogout} style={{ padding: "5px 12px", borderRadius: 6, background: "rgba(255,75,75,.12)", border: "1px solid rgba(255,75,75,.3)", color: "#ff6b9d", cursor: "pointer", fontSize: 11, fontFamily: "Inter,sans-serif", fontWeight: 600, whiteSpace: "nowrap", marginLeft: 12, display: "flex", alignItems: "center", gap: 6, transition: "all .15s" }} onMouseEnter={e => { e.currentTarget.style.background="rgba(255,75,75,.2)"; }} onMouseLeave={e => { e.currentTarget.style.background="rgba(255,75,75,.12)"; }}>
+          <span style={{ fontSize: 12 }}>🚪</span> Logout
+        </button>
       </div>
 
 
