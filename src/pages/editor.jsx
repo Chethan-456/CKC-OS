@@ -1972,15 +1972,15 @@ function Shell({ user, onLogout }) {
             return [...prev, payload.tab];
           });
           toast(`${payload.name} opened ${payload.tab.name}`);
-          bc.postMessage({ type: "stateRequest", payload: { tabId: payload.tab.id, requesterId: me.id } });
-          channel.send({ type: "broadcast", event: "stateRequest", payload: { tabId: payload.tab.id, requesterId: me.id } });
+          bc.postMessage({ type: "stateRequest", payload: { tabId: payload.tab.id, requesterId: me.id, instanceId } });
+          channel.send({ type: "broadcast", event: "stateRequest", payload: { tabId: payload.tab.id, requesterId: me.id, instanceId } });
           break;
         case "stateRequest":
           if (payload.requesterId !== me.id) {
             const tab = tabs.find(t => t.id === payload.tabId);
             const currentCode = (payload.tabId === activeTab) ? (activeEditorRef.current?._getText?.() || "") : (tab?.code || "");
             if (currentCode) {
-              const resp = { type: "stateResponse", payload: { tabId: payload.tabId, code: currentCode, toId: payload.requesterId } };
+              const resp = { type: "stateResponse", payload: { tabId: payload.tabId, code: currentCode, toId: payload.requesterId, instanceId } };
               bc.postMessage(resp);
               channel.send({ type: "broadcast", event: "stateResponse", payload: resp.payload });
             }
@@ -2021,12 +2021,12 @@ function Shell({ user, onLogout }) {
       .on("broadcast", { event: "stateResponse" }, ({ payload }) => handleMessage({ type: "stateResponse", payload }))
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
-          await channel.track({ user_id: me.id, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab, online: true });
-          bc.postMessage({ type: "join", payload: { id: me.id } });
-          bc.postMessage({ type: "presence", payload: { id: me.id, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab } });
+          await channel.track({ user_id: me.id, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab, online: true, instanceId });
+          bc.postMessage({ type: "join", payload: { id: me.id, instanceId } });
+          bc.postMessage({ type: "presence", payload: { id: me.id, instanceId, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab } });
           tabs.forEach(t => {
-            channel.send({ type: "broadcast", event: "stateRequest", payload: { tabId: t.id, requesterId: me.id } });
-            bc.postMessage({ type: "stateRequest", payload: { tabId: t.id, requesterId: me.id } });
+            channel.send({ type: "broadcast", event: "stateRequest", payload: { tabId: t.id, requesterId: me.id, instanceId } });
+            bc.postMessage({ type: "stateRequest", payload: { tabId: t.id, requesterId: me.id, instanceId } });
           });
         }
       });
@@ -2346,6 +2346,7 @@ function Shell({ user, onLogout }) {
           </div>
           <div style={{ flex: 1, overflow: "hidden", background: "#0d0f14" }} className={errShake ? "err-shake" : ""}>
             <CMEditor
+              key={activeTab}
               ref={activeEditorRef}
               lang={lang}
               fileKey={activeTab}
