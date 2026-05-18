@@ -25,114 +25,14 @@ function applyOpToString(str, op) {
 
 // ═══════════ STARTERS ═══════════
 const STARTERS = {
-  ts: `import { EventEmitter } from 'events';
-interface Config { port: number; debug: boolean; maxSessions: number; }
-class CKCEngine extends EventEmitter {
-  private config: Config;
-  constructor(config: Config) { super(); this.config = config; this.init(); }
-  private init(): void { console.log(\`CKC Engine ready on port \${this.config.port}\`); }
-  createSession(id: string) { console.log(\`Session created: \${id}\`); }
-  broadcastOp(sessionId: string, op: unknown): void { console.log(\`Op broadcast for session: \${sessionId}\`); }
-}
-const engine = new CKCEngine({ port: 8080, debug: true, maxSessions: 100 });
-engine.createSession('sess_abc123');
-engine.broadcastOp('sess_abc123', { type: 'insert', pos: 0 });`,
-  js: `const routes = new Map();
-const get = (p, fn) => routes.set('GET:' + p, fn);
-get('/api/status', (_, res) => { console.log(JSON.stringify({ status: 'ok', uptime: 123 })); });
-console.log('Server on http://localhost:3000');
-console.log('Routes registered:', routes.size);`,
-  py: `# CKC-OS Python — edit and press Run!
-def greet(name):
-    return f"Hello, {name}!"
-
-numbers = [1, 2, 3, 4, 5]
-total = sum(numbers)
-print(greet("CKC-OS"))
-print(f"Sum of {numbers} = {total}")
-for i in range(3):
-    print(f"  Step {i + 1}: processing...")
-print("Done!")`,
-  java: `import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
-public class WorkerPool {
-    private final BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
-    private final AtomicInteger done = new AtomicInteger(0);
-    private volatile boolean running = true;
-    public WorkerPool(int size) {
-        for (int i = 0; i < size; i++) {
-            Thread t = new Thread(this::loop, "worker-" + i);
-            t.setDaemon(true); t.start();
-        }
-    }
-    private void loop() {
-        while (running || !queue.isEmpty()) {
-            try {
-                Runnable task = queue.poll(100, TimeUnit.MILLISECONDS);
-                if (task != null) { task.run(); done.incrementAndGet(); }
-            } catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
-        }
-    }
-    public void submit(Runnable task) { queue.offer(task); }
-    public int completed() { return done.get(); }
-    public void shutdown() { running = false; }
-    public static void main(String[] args) {
-        WorkerPool pool = new WorkerPool(4);
-        System.out.println("WorkerPool initialized with 4 threads.");
-        pool.shutdown();
-    }
-}`,
-  cpp: `#include <iostream>
-using namespace std;
-
-int main() {
-    cout << "Hello, World!" << endl;
-    for (int i = 1; i <= 5; i++) {
-        cout << "Step " << i << " done" << endl;
-    }
-    return 0;
-}`,
-  rs: `use std::collections::HashMap;
-fn main() {
-    let mut scores: HashMap<&str, i32> = HashMap::new();
-    scores.insert("Alice", 95);
-    scores.insert("Bob", 87);
-    scores.insert("Carol", 92);
-    for (name, score) in &scores {
-        println!("{}: {}", name, score);
-    }
-    println!("Total students: {}", scores.len());
-}`,
-  go: `package main
-import "fmt"
-func fibonacci(n int) int {
-    if n <= 1 { return n }
-    return fibonacci(n-1) + fibonacci(n-2)
-}
-func main() {
-    fmt.Println("Fibonacci sequence:")
-    for i := 0; i < 10; i++ {
-        fmt.Printf("  fib(%d) = %d\\n", i, fibonacci(i))
-    }
-}`,
-  sql: `-- CKC-OS Analytics Schema
-CREATE DATABASE IF NOT EXISTS ckcos;
-USE ckcos;
-CREATE TABLE users (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    username VARCHAR(64) NOT NULL UNIQUE,
-    plan ENUM('free','pro','team','enterprise') DEFAULT 'free',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE sessions (
-    id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
-    owner_id BIGINT NOT NULL REFERENCES users(id),
-    language VARCHAR(32) NOT NULL,
-    ops_count INT UNSIGNED DEFAULT 0
-);
-SELECT s.id, u.username, s.language, s.ops_count
-FROM sessions s JOIN users u ON u.id = s.owner_id
-WHERE s.ops_count > 0 ORDER BY s.ops_count DESC LIMIT 20;`,
+  ts: ``,
+  js: ``,
+  py: ``,
+  java: ``,
+  cpp: ``,
+  rs: ``,
+  go: ``,
+  sql: ``,
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -1299,6 +1199,11 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, cursors, lineLocks, myId, fileKey, readOnly = false }, ref) => {
   const domRef = useRef(null), viewRef = useRef(null), modsRef = useRef(null);
   const inited = useRef(false), suppress = useRef(false), prevDoc = useRef(initText || "");
+  const lineLocksRef = useRef(lineLocks);
+  const cursorsRef = useRef(cursors);
+  useEffect(() => { lineLocksRef.current = lineLocks; }, [lineLocks]);
+  useEffect(() => { cursorsRef.current = cursors; }, [cursors]);
+  
   useEffect(() => {
     const api = { 
       _getText: () => viewRef.current?.state.doc.toString() ?? prevDoc.current,
@@ -1367,6 +1272,42 @@ const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, cursors,
           ".cm-tooltip": { backgroundColor: "#1c1f28", border: "1px solid rgba(255,255,255,.1)", borderRadius: "6px", color: "#e0e0e0" },
           ".cm-tooltip-autocomplete ul li[aria-selected]": { backgroundColor: "rgba(79,193,255,.15)" },
         }, { dark: true });
+        
+        const lockFilter = EditorState.transactionFilter.of(tr => {
+          if (tr.docChanged && !suppress.current) {
+            let lockedBy = null;
+            let lockedLine = null;
+            tr.changes.iterChangedRanges((fromA, toA) => {
+              const startLine = tr.startState.doc.lineAt(fromA).number;
+              const endLine = tr.startState.doc.lineAt(toA).number;
+              for (let i = startLine; i <= endLine; i++) {
+                if (lineLocksRef.current) {
+                  const lock = lineLocksRef.current[i];
+                  if (lock && lock.user_id !== myId) {
+                    lockedBy = lock.user_name || "another user";
+                    lockedLine = i;
+                    break;
+                  }
+                }
+                if (cursorsRef.current) {
+                  const remoteCursor = cursorsRef.current.find(c => c.id !== myId && c.line === i && c.lang === lang && c.tabId === fileKey);
+                  if (remoteCursor) {
+                    lockedBy = remoteCursor.name || "another user";
+                    lockedLine = i;
+                    break;
+                  }
+                }
+              }
+            });
+            if (lockedBy) {
+              const event = new CustomEvent("line-locked-toast", { detail: { line: lockedLine, userName: lockedBy } });
+              window.dispatchEvent(event);
+              return [];
+            }
+          }
+          return tr;
+        });
+
         const listener = EditorView.updateListener.of(upd => {
           if (upd.selectionSet) { const pos = upd.state.selection.main.head; const ln = upd.state.doc.lineAt(pos); onCursorMove?.(ln.number, pos - ln.from + 1, pos); }
           if (!upd.docChanged || suppress.current || readOnly) return;
@@ -1381,9 +1322,9 @@ const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, cursors,
           else if (ins.length) onLocalOp?.({ type: "insert", pos: i, chars: ins });
           prevDoc.current = newText;
         });
-        modsRef.current = { EditorState, EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars, indentOnInput, history, historyKeymap, indentWithTab, searchKeymap, highlightSelectionMatches, autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, foldGutter, foldKeymap, bracketMatching, syntaxHighlighting, defaultHighlightStyle, oneDark, theme, listener, LM };
+        modsRef.current = { EditorState, EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars, indentOnInput, history, historyKeymap, indentWithTab, searchKeymap, highlightSelectionMatches, autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, foldGutter, foldKeymap, bracketMatching, syntaxHighlighting, defaultHighlightStyle, oneDark, theme, lockFilter, listener, LM };
         const mkExt = lk => {
-          const b = [lineNumbers(), highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(), history(), foldGutter(), drawSelection(), dropCursor(), bracketMatching(), closeBrackets(), autocompletion(), rectangularSelection(), crosshairCursor(), highlightSelectionMatches(), indentOnInput(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }), keymap.of([indentWithTab, ...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap]), LM[lk] || LM.ts, oneDark, theme, listener, EditorView.lineWrapping];
+          const b = [lineNumbers(), highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(), history(), foldGutter(), drawSelection(), dropCursor(), bracketMatching(), closeBrackets(), autocompletion(), rectangularSelection(), crosshairCursor(), highlightSelectionMatches(), indentOnInput(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }), keymap.of([indentWithTab, ...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap]), LM[lk] || LM.ts, oneDark, theme, lockFilter, listener, EditorView.lineWrapping];
           if (readOnly) b.push(EditorView.editable.of(false)); return b;
         };
         const view = new EditorView({ state: EditorState.create({ doc: initText || "", extensions: mkExt(lang) }), parent: domRef.current });
@@ -1416,9 +1357,9 @@ const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, cursors,
   }, []);
   useEffect(() => {
     if (!viewRef.current || !modsRef.current) return;
-    const { EditorState, EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars, indentOnInput, history, historyKeymap, indentWithTab, searchKeymap, highlightSelectionMatches, autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, foldGutter, foldKeymap, bracketMatching, syntaxHighlighting, defaultHighlightStyle, oneDark, theme, listener, LM } = modsRef.current;
+    const { EditorState, EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars, indentOnInput, history, historyKeymap, indentWithTab, searchKeymap, highlightSelectionMatches, autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, foldGutter, foldKeymap, bracketMatching, syntaxHighlighting, defaultHighlightStyle, oneDark, theme, lockFilter, listener, LM } = modsRef.current;
     const mkExt = lk => {
-      const b = [lineNumbers(), highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(), history(), foldGutter(), drawSelection(), dropCursor(), bracketMatching(), closeBrackets(), autocompletion(), rectangularSelection(), crosshairCursor(), highlightSelectionMatches(), indentOnInput(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }), keymap.of([indentWithTab, ...closeBracketsKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap, ...searchKeymap]), LM[lk] || LM.ts, oneDark, theme, listener, EditorView.lineWrapping];
+      const b = [lineNumbers(), highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(), history(), foldGutter(), drawSelection(), dropCursor(), bracketMatching(), closeBrackets(), autocompletion(), rectangularSelection(), crosshairCursor(), highlightSelectionMatches(), indentOnInput(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }), keymap.of([indentWithTab, ...closeBracketsKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap, ...searchKeymap]), LM[lk] || LM.ts, oneDark, theme, lockFilter, listener, EditorView.lineWrapping];
       if (readOnly) b.push(EditorView.editable.of(false)); return b;
     };
     suppress.current = true;
@@ -1426,9 +1367,23 @@ const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, cursors,
     prevDoc.current = initText || "";
     suppress.current = false;
   }, [lang, fileKey]);
+  const activeLocks = { ...lineLocks };
+  if (cursors) {
+    cursors.filter(c => c.id !== myId && c.lang === lang && c.tabId === fileKey).forEach(c => {
+      if (!activeLocks[c.line]) {
+        activeLocks[c.line] = {
+          line_number: c.line,
+          user_id: c.id,
+          user_name: c.name,
+          color: c.color || "#4FC1FF"
+        };
+      }
+    });
+  }
+
   return (
     <div style={{ position: "relative", height: "100%", width: "100%", overflow: "hidden" }}>
-      {Object.values(lineLocks || {}).filter(lock => lock.user_id !== myId).map(lock => (
+      {Object.values(activeLocks).filter(lock => lock.user_id !== myId).map(lock => (
         <div key={`lock-${lock.line_number}`} style={{ pointerEvents: "none", position: "absolute", inset: 0, overflow: "hidden", zIndex: 10 }}>
           <div style={{ position: "absolute", top: (lock.line_number - 1) * 21, left: 0, right: 0, height: 21, background: lock.color + "15", borderLeft: `4px solid ${lock.color}`, pointerEvents: "none" }}>
             <div style={{ position: "absolute", right: 10, top: 2, display: "flex", alignItems: "center", gap: 5, background: lock.color, color: "#fff", padding: "1px 6px", borderRadius: 4, fontSize: 9, fontWeight: 700 }}>
@@ -1750,7 +1705,7 @@ function LiveServerLogs({ onClose }) {
 
 // ═══════════ ACCESS TERMINAL ═══════════
 function AccessTerminal() {
-  const { login, loginGuest } = useAuth();
+  const { login, loginLocal, loginGuest } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("login");
   const [email, setEmail] = useState("");
@@ -1859,9 +1814,24 @@ function AccessTerminal() {
               </div>
             </div>
           )}
-          <button className="terminal-submit" disabled={loading}>
-            {loading ? "•••" : (activeTab === "login" ? "ESTABLISH CONNECTION →" : "INITIALIZE NODE →")}
-          </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+            <button className="terminal-submit" disabled={loading} style={{ width: "100%" }}>
+              {loading ? "•••" : (activeTab === "login" ? "ESTABLISH CONNECTION →" : "INITIALIZE NODE →")}
+            </button>
+            <button type="button" className="local-bypass-btn" style={{ width: "100%", margin: 0, textTransform: "uppercase" }} onClick={() => {
+              const guestName = name || (activeTab === "login" && email ? email.split("@")[0] : "") || `Guest_${Math.floor(1000 + Math.random() * 9000)}`;
+              loginLocal({
+                email: email || `${guestName.toLowerCase().replace(/\s+/g, "_")}@ckc-os.io`,
+                name: guestName,
+                cursorColor: PALETTE[colorIdx]?.hex || "#00d4ff",
+                bg: PALETTE[colorIdx]?.bg || "rgba(0,212,255,0.15)",
+                isGuest: true,
+              });
+              navigate("/editor");
+            }}>
+              ⚡ Bypass with Local Guest Session
+            </button>
+          </div>
         </form>
         <div className="terminal-footer">
           <div className="footer-line" />
@@ -1906,10 +1876,9 @@ function Shell({ user, onLogout }) {
   const [opCnt, setOpCnt] = useState(0);
   const [lang, setLang] = useState("ts");
   const [tabs, setTabs] = useState([
-    { id: "t_eng", name: "engine.ts", lang: "ts", dirty: false, isNew: false },
-    { id: "t_test", name: "test.ts", lang: "ts", dirty: false, isNew: false }
+    { id: "t_main", name: "main.ts", lang: "ts", dirty: false, isNew: false }
   ]);
-  const [activeTab, setActiveTab] = useState("t_eng");
+  const [activeTab, setActiveTab] = useState("t_main");
   const [cursor, setCursor] = useState({ line: 1, col: 1 });
   const [rpTab, setRpTab] = useState("crdt");
   const [outTab, setOutTab] = useState("output");
@@ -2013,6 +1982,17 @@ function Shell({ user, onLogout }) {
           const local = prev.filter(c => c.id.startsWith("guest_") && !users.find(u => u.user_id === c.id));
           return [...remote, ...local];
         });
+        const onlineUserIds = users.map(u => u.user_id);
+        if (onlineUserIds.length > 0 && !me.id.startsWith("guest_")) {
+          supabase.from("line_locks").select("user_id").then(({ data }) => {
+            if (data) {
+              const staleUserIds = data.map(l => l.user_id).filter(id => !onlineUserIds.includes(id) && !id.startsWith("guest_"));
+              if (staleUserIds.length > 0) {
+                supabase.from("line_locks").delete().in("user_id", staleUserIds).then();
+              }
+            }
+          });
+        }
       })
       .on("broadcast", { event: "op" }, ({ payload }) => handleMessage({ type: "op", payload }))
       .on("broadcast", { event: "cursor" }, ({ payload }) => handleMessage({ type: "cursor", payload }))
@@ -2044,7 +2024,20 @@ function Shell({ user, onLogout }) {
       if (data) { const locks = {}; data.forEach(l => locks[l.line_number] = l); setLineLocks(locks); }
     });
 
-    return () => { channel.unsubscribe(); lockSub.unsubscribe(); };
+    const handleLockToast = (e) => {
+      const { line, userName } = e.detail;
+      toast(`Line ${line} is locked by ${userName}`);
+    };
+    window.addEventListener("line-locked-toast", handleLockToast);
+
+    return () => { 
+      channel.unsubscribe(); 
+      lockSub.unsubscribe(); 
+      window.removeEventListener("line-locked-toast", handleLockToast);
+      if (!me.id.startsWith("guest_")) {
+        supabase.from("line_locks").delete().eq("user_id", me.id).then();
+      }
+    };
   }, [activeTab, tabs.length]);
 
   const triggerLiveValidation = useCallback((code, lk) => {

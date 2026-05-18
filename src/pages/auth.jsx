@@ -434,17 +434,12 @@ export const authStore = {
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user,  setUserState]  = useState(() => loadSession());
+  const [user,  setUserState]  = useState(null);
   const [prefs, setPrefsState] = useState(() => loadPrefs());
   const [stats, setStatsState] = useState(() => loadStats());
 
   // ── Supabase session bootstrap (from v1) ──────────────────
   useEffect(() => {
-    // Restore any existing Supabase session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) _applySupabaseSession(session);
-    });
-
     // Keep in sync with Supabase auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {

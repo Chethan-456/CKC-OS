@@ -304,7 +304,7 @@ function HomePage({
           <div className="nav-logo-mark">⚡</div>CKC-OS
         </div>
         <div className="nav-links">
-          {[["Overview","overview"],["Modules","modules"],["Architecture","arch"],["Languages","langs"]].map(([l,id]) => (
+          {[["Overview","overview"],["Modules","modules"],["Languages","langs"]].map(([l,id]) => (
             <button key={id} className="nav-link" onClick={() => scrollTo(id)}>{l}</button>
           ))}
         </div>
@@ -596,39 +596,6 @@ function HomePage({
         </div>
       </section>
 
-      {/* ── ARCHITECTURE ── */}
-      <section className="section darker" id="arch">
-        <div className="s-label">System Architecture</div>
-        <h2 className="s-title">Full-Stack Pipeline</h2>
-        <p className="s-desc">A layered architecture connecting frontend intelligence to AI execution and graph storage.</p>
-        <div style={{ marginTop:"3rem" }}>
-          <div style={{ background:"rgba(17,19,24,.85)", border:"1px solid rgba(255,255,255,.07)", borderRadius:18, padding:"2.2rem" }}>
-            <div style={{ marginBottom:"1.4rem" }}>
-              <div style={{ fontSize:".65rem", color:"var(--text-3)", letterSpacing:".1em", textTransform:"uppercase", marginBottom:".9rem", fontWeight:600 }}>Request Flow</div>
-              <div style={{ display:"flex", alignItems:"center", flexWrap:"wrap", gap:0 }}>
-                {["React + CodeMirror 6","WebSocket + CRDT/OT","Node.js Backend","AI Engine (Python)","Docker Sandbox"].map((n,i,arr) => (
-                  <span key={n}>
-                    <span style={{ background:"rgba(255,255,255,.035)", border:`1px solid ${(i===0||i===3)?"rgba(79,193,255,.45)":"rgba(255,255,255,.07)"}`, borderRadius:10, padding:".85rem 1.3rem", fontFamily:"var(--mono)", fontSize:".72rem", color:(i===0||i===3)?"#8DD8FF":"#e0e6ff", fontWeight:500, whiteSpace:"nowrap", display:"inline-block" }}>{n}</span>
-                    {i < arr.length-1 && <span style={{ padding:"0 .4rem", color:"var(--text-3)" }}>→</span>}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div style={{ borderTop:"1px solid rgba(255,255,255,.05)", paddingTop:"1.4rem" }}>
-              <div style={{ fontSize:".65rem", color:"var(--text-3)", letterSpacing:".1em", textTransform:"uppercase", marginBottom:".9rem", fontWeight:600 }}>Data Stores</div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"1rem" }}>
-                {[{ic:"🐘",n:"PostgreSQL",r:"Users · Projects · Sessions"},{ic:"🕸️",n:"Neo4j",r:"Concepts · Errors · Fixes"},{ic:"🔴",n:"Redis",r:"Events · Caching"}].map(db => (
-                  <div key={db.n} style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:11, padding:"1.1rem", textAlign:"center" }}>
-                    <div style={{ fontSize:"1.3rem", marginBottom:".4rem" }}>{db.ic}</div>
-                    <div style={{ fontFamily:"var(--disp)", fontSize:".9rem", fontWeight:700, color:"#fff", marginBottom:".25rem" }}>{db.n}</div>
-                    <div style={{ fontSize:".72rem", color:"var(--text-3)" }}>{db.r}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* ── WORKFLOW ── */}
       <section className="section">
