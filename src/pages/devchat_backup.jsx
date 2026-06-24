@@ -7,658 +7,830 @@ import { Navigate } from "react-router-dom";
 
 /* ─────────────────────────── GLOBAL STYLES ─────────────────────────── */
 const G = `
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-html,body{height:100%;overflow:hidden;}
+html,body,#root{height:100%;overflow:hidden;}
 
 :root{
-  --bg0:#050709;--bg1:#080c12;--bg2:#0d1320;--bg3:#111928;--bg4:#162035;
-  --border:#ffffff0d;--border2:#ffffff14;--border3:#ffffff1f;
-  --cyan:#22d3ee;--cyan2:#06b6d4;--cyan-glow:rgba(34,211,238,0.18);
-  --teal:#2dd4bf;--teal-glow:rgba(45,212,191,0.15);
-  --violet:#a78bfa;--violet-glow:rgba(167,139,250,0.15);
-  --rose:#f87171;--rose-glow:rgba(248,113,113,0.15);
-  --amber:#fbbf24;--amber-glow:rgba(251,191,36,0.12);
-  --green:#4ade80;--green-glow:rgba(74,222,128,0.15);
-  --text1:#f1f5f9;--text2:#94a3b8;--text3:#475569;--text4:#1e293b;
-  --mono:'IBM Plex Mono',monospace;--sans:'Outfit',sans-serif;
-  --r4:4px;--r8:8px;--r12:12px;--r16:16px;--r20:20px;--r999:999px;
+  --bg0:#060810;
+  --bg1:#090d16;
+  --bg2:#0c1120;
+  --bg3:#101828;
+  --bg4:#141f30;
+  --border:#ffffff08;
+  --border2:#ffffff10;
+  --border3:#ffffff18;
+  --border4:#ffffff22;
+  --cyan:#38bdf8;
+  --cyan2:#0ea5e9;
+  --cyan-dim:rgba(56,189,248,0.12);
+  --cyan-glow:rgba(56,189,248,0.2);
+  --teal:#2dd4bf;
+  --teal-dim:rgba(45,212,191,0.12);
+  --teal-glow:rgba(45,212,191,0.2);
+  --violet:#a78bfa;
+  --violet-dim:rgba(167,139,250,0.1);
+  --rose:#f87171;
+  --rose-dim:rgba(248,113,113,0.1);
+  --amber:#fbbf24;
+  --green:#34d399;
+  --green-dim:rgba(52,211,153,0.15);
+  --text1:#e8edf5;
+  --text2:#8b99b4;
+  --text3:#4a5568;
+  --text4:#2d3748;
+  --mono:'IBM Plex Mono',monospace;
+  --sans:'Inter',sans-serif;
+  --r4:4px;--r6:6px;--r8:8px;--r10:10px;--r12:12px;--r16:16px;--r20:20px;--r24:24px;--r999:999px;
+  --sidebar-w:260px;
+  --thread-w:380px;
 }
 
 ::-webkit-scrollbar{width:3px;height:3px;}
 ::-webkit-scrollbar-track{background:transparent;}
-::-webkit-scrollbar-thumb{background:var(--border3);border-radius:2px;}
-::-webkit-scrollbar-thumb:hover{background:rgba(34,211,238,0.3);}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.06);border-radius:4px;}
+::-webkit-scrollbar-thumb:hover{background:rgba(56,189,248,0.25);}
 
-body{font-family:var(--sans);background:var(--bg0);color:var(--text1);}
+body{font-family:var(--sans);background:var(--bg0);color:var(--text1);-webkit-font-smoothing:antialiased;}
 
-/* ── ANIMATIONS ── */
-@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-@keyframes slideLeft{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:translateX(0)}}
-@keyframes slideRight{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
-@keyframes popIn{from{opacity:0;transform:scale(0.92)}to{opacity:1;transform:scale(1)}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+/* ── KEYFRAMES ── */
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideInLeft{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideInRight{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+@keyframes scaleIn{from{opacity:0;transform:scale(0.94)}to{opacity:1;transform:scale(1)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.35}}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
 @keyframes spin{to{transform:rotate(360deg)}}
-@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
-@keyframes ripple{0%{transform:scale(0);opacity:0.6}100%{transform:scale(2.5);opacity:0}}
-@keyframes glowPulse{0%,100%{box-shadow:0 0 12px var(--cyan-glow)}50%{box-shadow:0 0 28px rgba(34,211,238,0.4)}}
+@keyframes glowBreath{0%,100%{box-shadow:0 0 14px rgba(56,189,248,0.3)}50%{box-shadow:0 0 32px rgba(56,189,248,0.55),0 0 60px rgba(56,189,248,0.15)}}
+@keyframes shimmer{0%{opacity:0.4}50%{opacity:0.8}100%{opacity:0.4}}
 
-.anim-fadeUp{animation:fadeUp 0.2s ease both;}
-.anim-slideLeft{animation:slideLeft 0.25s ease both;}
-.anim-slideRight{animation:slideRight 0.28s ease both;}
-.anim-popIn{animation:popIn 0.18s cubic-bezier(0.34,1.56,0.64,1) both;}
-.anim-pulse{animation:pulse 2s ease infinite;}
-.blink{animation:pulse 1.6s ease infinite;}
+.anim-fadeUp{animation:fadeUp 0.22s cubic-bezier(0.2,0,0,1) both;}
+.anim-fadeIn{animation:fadeIn 0.18s ease both;}
+.anim-scaleIn{animation:scaleIn 0.2s cubic-bezier(0.34,1.4,0.64,1) both;}
+.anim-slideLeft{animation:slideInLeft 0.28s cubic-bezier(0.2,0,0,1) both;}
+.anim-slideRight{animation:slideInRight 0.28s cubic-bezier(0.2,0,0,1) both;}
+.blink{animation:pulse 1.8s ease infinite;}
+.shimmer{animation:shimmer 2s ease infinite;}
 
 /* ── LAYOUT ── */
-.app{display:flex;height:100vh;overflow:hidden;background:var(--bg0);position:relative;}
+.app{
+  display:flex;height:100vh;overflow:hidden;
+  background:var(--bg0);
+  position:relative;
+}
 .app::before{
   content:'';position:absolute;inset:0;pointer-events:none;z-index:0;
-  background:radial-gradient(ellipse 60% 40% at 20% 0%,rgba(34,211,238,0.04) 0%,transparent 70%),
-             radial-gradient(ellipse 40% 60% at 80% 100%,rgba(167,139,250,0.03) 0%,transparent 70%);
+  background:
+    radial-gradient(ellipse 70% 50% at -5% -10%,rgba(56,189,248,0.05) 0%,transparent 65%),
+    radial-gradient(ellipse 50% 70% at 105% 105%,rgba(167,139,250,0.04) 0%,transparent 65%);
 }
 
 /* ── SIDEBAR ── */
 .sidebar{
-  width:256px;min-width:256px;background:var(--bg1);border-right:1px solid var(--border);
-  display:flex;flex-direction:column;flex-shrink:0;position:relative;z-index:1;
-  transition:all 0.3s cubic-bezier(0.4,0,0.2,1);overflow:hidden;
+  width:var(--sidebar-w);min-width:var(--sidebar-w);
+  background:var(--bg1);
+  border-right:1px solid var(--border2);
+  display:flex;flex-direction:column;flex-shrink:0;
+  position:relative;z-index:10;
+  transition:width 0.3s cubic-bezier(0.4,0,0.2,1), min-width 0.3s cubic-bezier(0.4,0,0.2,1);
+  overflow:hidden;
 }
 .sidebar.collapsed{width:0;min-width:0;}
 
-.sidebar-logo{
-  display:flex;align-items:center;gap:10px;padding:16px;
-  border-bottom:1px solid var(--border);flex-shrink:0;
+/* Logo */
+.logo-row{
+  display:flex;align-items:center;gap:10px;
+  padding:16px 14px 14px;
+  border-bottom:1px solid var(--border2);
+  flex-shrink:0;
 }
 .logo-icon{
-  width:34px;height:34px;border-radius:var(--r8);display:flex;align-items:center;
-  justify-content:center;font-size:16px;flex-shrink:0;position:relative;
-  background:linear-gradient(135deg,#22d3ee,#2dd4bf);
-  box-shadow:0 0 20px rgba(34,211,238,0.4);
-  animation:glowPulse 3s ease infinite;
+  width:32px;height:32px;border-radius:var(--r8);
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--cyan) 0%,var(--teal) 100%);
+  animation:glowBreath 4s ease infinite;
 }
-.logo-text{font-weight:800;font-size:16px;letter-spacing:-0.02em;}
-.live-badge{
+.logo-name{
+  font-family:var(--mono);font-weight:700;font-size:13px;
+  letter-spacing:0.04em;color:var(--text1);
+  white-space:nowrap;
+}
+.live-pill{
   margin-left:auto;display:flex;align-items:center;gap:4px;
-  font-family:var(--mono);font-size:8px;font-weight:600;
-  color:var(--cyan);background:rgba(34,211,238,0.1);
-  border:1px solid rgba(34,211,238,0.25);padding:3px 8px;border-radius:var(--r999);
-  letter-spacing:0.1em;
+  padding:3px 8px;border-radius:var(--r999);
+  border:1px solid rgba(56,189,248,0.2);background:rgba(56,189,248,0.06);
+  font-family:var(--mono);font-size:8px;font-weight:700;
+  color:var(--cyan);letter-spacing:0.12em;white-space:nowrap;flex-shrink:0;
 }
 
-.sidebar-section{padding:16px 10px 6px;}
-.section-label{
-  font-family:var(--mono);font-size:8px;color:var(--text3);
-  text-transform:uppercase;letter-spacing:0.2em;padding:0 8px 8px;
+/* Nav sections */
+.nav-section{padding:18px 8px 4px;}
+.nav-label{
+  font-family:var(--mono);font-size:8.5px;font-weight:600;
+  color:var(--text3);letter-spacing:0.2em;text-transform:uppercase;
+  padding:0 8px 8px;display:block;
 }
-.ch-btn{
-  width:100%;display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r8);
-  font-size:13px;font-weight:500;color:var(--text2);background:transparent;border:none;
-  cursor:pointer;transition:all 0.12s;margin-bottom:2px;text-align:left;font-family:var(--sans);
-  position:relative;overflow:hidden;
+.ch-item{
+  display:flex;align-items:center;gap:8px;
+  width:100%;padding:7px 10px;border-radius:var(--r8);
+  font-size:13px;font-weight:500;color:var(--text2);
+  background:transparent;border:none;cursor:pointer;
+  transition:background 0.1s, color 0.1s;
+  margin-bottom:1px;text-align:left;
+  font-family:var(--sans);
+  position:relative;overflow:hidden;white-space:nowrap;
 }
-.ch-btn::before{content:'';position:absolute;inset:0;background:transparent;transition:background 0.12s;}
-.ch-btn:hover{color:var(--text1);background:var(--border);}
-.ch-btn.active{color:var(--cyan);background:rgba(34,211,238,0.08);}
-.ch-btn.active::after{content:'';position:absolute;left:0;top:20%;bottom:20%;width:2px;background:var(--cyan);border-radius:0 2px 2px 0;}
-.ch-badge{
-  margin-left:auto;font-family:var(--mono);font-size:9px;font-weight:700;
-  padding:2px 7px;border-radius:var(--r999);flex-shrink:0;
+.ch-item:hover{color:var(--text1);background:var(--border2);}
+.ch-item.active{
+  color:var(--cyan);background:var(--cyan-dim);
 }
-.ch-badge.red{background:var(--rose);color:#fff;}
-.ch-badge.cyan{background:var(--cyan);color:#000;}
+.ch-item.active::before{
+  content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);
+  width:2.5px;height:55%;background:var(--cyan);border-radius:0 2px 2px 0;
+}
+.ch-hash{
+  font-family:var(--mono);font-size:14px;font-weight:400;
+  opacity:0.35;flex-shrink:0;transition:opacity 0.1s;
+}
+.ch-item:hover .ch-hash,.ch-item.active .ch-hash{opacity:0.9;}
 
-.sidebar-bottom{padding:10px;border-top:1px solid var(--border);margin-top:auto;}
-.quick-label{font-family:var(--mono);font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:0.18em;padding:0 8px 8px;}
-.quick-btn{
-  width:100%;display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:var(--r8);
-  font-family:var(--mono);font-size:11px;color:var(--text3);background:transparent;border:none;
-  cursor:pointer;transition:all 0.12s;margin-bottom:1px;text-align:left;white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis;
+/* Online users in sidebar */
+.user-item{
+  display:flex;align-items:center;gap:8px;
+  width:100%;padding:6px 10px;border-radius:var(--r8);
+  font-size:12.5px;font-weight:500;
+  background:transparent;border:none;
+  margin-bottom:1px;
 }
-.quick-btn:hover{color:var(--teal);background:var(--border);}
+.online-dot{
+  width:5px;height:5px;border-radius:50%;
+  background:var(--green);flex-shrink:0;
+  box-shadow:0 0 6px var(--green);
+}
 
-.me-row{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--border);}
-.online-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0;}
+/* Me row */
+.me-row{
+  display:flex;align-items:center;gap:10px;
+  padding:12px 14px;border-top:1px solid var(--border2);
+  background:var(--bg0);flex-shrink:0;
+}
+.me-name{font-size:13px;font-weight:600;color:var(--text1);}
+.me-status{
+  font-family:var(--mono);font-size:8.5px;color:var(--green);
+  letter-spacing:0.1em;display:flex;align-items:center;gap:4px;
+}
 
 /* ── MAIN ── */
-.main{display:flex;flex-direction:column;flex:1;min-width:0;overflow:hidden;position:relative;z-index:1;}
+.main{
+  display:flex;flex-direction:column;flex:1;min-width:0;
+  overflow:hidden;position:relative;z-index:1;
+}
 
 /* ── TOPBAR ── */
 .topbar{
-  display:flex;align-items:center;gap:10px;padding:12px 20px;
-  background:var(--bg1);border-bottom:1px solid var(--border);flex-shrink:0;
+  display:flex;align-items:center;gap:10px;padding:0 20px;height:52px;
+  background:rgba(9,13,22,0.85);backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border2);flex-shrink:0;
+  position:relative;z-index:5;
 }
-.topbar-info{flex:1;min-width:0;}
-.topbar-name{font-weight:700;font-size:15px;letter-spacing:-0.01em;}
-.topbar-members{font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:1px;}
-.topbar-pills{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
-.pill{
-  display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:var(--r999);
-  font-family:var(--mono);font-size:10px;cursor:pointer;transition:all 0.12s;border:1px solid;white-space:nowrap;
+.menu-btn{
+  background:transparent;border:none;color:var(--text3);
+  cursor:pointer;font-size:17px;padding:6px;
+  border-radius:var(--r8);transition:color 0.1s, background 0.1s;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
 }
-.pill-teal{color:var(--teal);background:var(--teal-glow);border-color:rgba(45,212,191,0.25);}
-.pill-teal:hover{background:rgba(45,212,191,0.22);}
-.pill-rose{color:var(--rose);background:var(--rose-glow);border-color:rgba(248,113,113,0.25);}
-.pill-rose:hover{background:rgba(248,113,113,0.22);}
-.pill-violet{color:var(--violet);background:var(--violet-glow);border-color:rgba(167,139,250,0.25);}
-.pill-violet:hover{background:rgba(167,139,250,0.22);}
+.menu-btn:hover{color:var(--text1);background:var(--border2);}
+.topbar-hash{
+  font-family:var(--mono);font-size:16px;font-weight:500;
+  color:var(--cyan);opacity:0.6;flex-shrink:0;
+}
+.topbar-name{font-size:15px;font-weight:700;letter-spacing:-0.01em;}
+.topbar-desc{font-family:var(--mono);font-size:9.5px;color:var(--text3);margin-top:1px;}
+.topbar-divider{width:1px;height:20px;background:var(--border3);margin:0 4px;flex-shrink:0;}
 
 .icon-btn{
-  width:32px;height:32px;border-radius:var(--r8);display:flex;align-items:center;justify-content:center;
-  background:transparent;border:1px solid var(--border2);color:var(--text3);
-  cursor:pointer;font-size:14px;transition:all 0.12s;flex-shrink:0;
+  width:30px;height:30px;border-radius:var(--r8);
+  display:flex;align-items:center;justify-content:center;
+  background:transparent;border:1px solid var(--border2);
+  color:var(--text3);cursor:pointer;font-size:13px;
+  transition:all 0.12s;flex-shrink:0;
 }
-.icon-btn:hover{color:var(--text1);border-color:var(--border3);background:var(--border);}
-.icon-btn.active{color:var(--cyan);border-color:rgba(34,211,238,0.35);background:rgba(34,211,238,0.08);}
-.menu-btn{background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:4px;transition:color 0.12s;flex-shrink:0;}
-.menu-btn:hover{color:var(--text1);}
+.icon-btn:hover{color:var(--text1);border-color:var(--border3);background:var(--border2);}
+.icon-btn.active{color:var(--cyan);border-color:rgba(56,189,248,0.3);background:var(--cyan-dim);}
 
-/* ── CONTEXT PANEL ── */
-.ctx-panel{
-  background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;
-  overflow:hidden;transition:max-height 0.3s cubic-bezier(0.4,0,0.2,1);
+.members-pill{
+  display:flex;align-items:center;gap:5px;
+  padding:4px 10px;border-radius:var(--r999);
+  border:1px solid var(--border2);background:var(--border);
+  font-family:var(--mono);font-size:9.5px;color:var(--text3);
+  cursor:default;white-space:nowrap;
 }
-.ctx-tabs{display:flex;align-items:center;padding:10px 16px 0;gap:2px;}
-.ctx-tab{
-  display:flex;align-items:center;gap:5px;padding:7px 12px;
-  font-family:var(--mono);font-size:10px;font-weight:600;
-  background:transparent;border:none;border-bottom:2px solid transparent;
-  cursor:pointer;transition:all 0.12s;letter-spacing:0.02em;
-}
-.ctx-tab.t-teal{color:var(--text3);}
-.ctx-tab.t-teal.active{color:var(--teal);border-bottom-color:var(--teal);}
-.ctx-tab.t-rose{color:var(--text3);}
-.ctx-tab.t-rose.active{color:var(--rose);border-bottom-color:var(--rose);}
-.ctx-tab.t-violet{color:var(--text3);}
-.ctx-tab.t-violet.active{color:var(--violet);border-bottom-color:var(--violet);}
-.ctx-count{border-radius:var(--r999);padding:1px 5px;font-size:8px;background:var(--border2);}
+.members-dot{width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:0 0 5px var(--green);}
 
-.ctx-cards{display:flex;gap:10px;padding:10px 16px 12px;overflow-x:auto;}
-.ctx-card{
-  flex-shrink:0;border-radius:var(--r12);border:1px solid var(--border2);
-  background:var(--bg3);padding:12px;cursor:pointer;transition:all 0.18s ease;
-  position:relative;overflow:hidden;
-}
-.ctx-card::before{
-  content:'';position:absolute;inset:0;opacity:0;transition:opacity 0.18s;
-  background:linear-gradient(135deg,rgba(255,255,255,0.03),transparent);
-}
-.ctx-card:hover::before{opacity:1;}
-.ctx-card:hover{transform:translateY(-2px);}
-.ctx-card-f{width:176px;}
-.ctx-card-e{width:210px;}
-.ctx-card-p{width:196px;}
-.ctx-card:hover.hover-teal{border-color:rgba(45,212,191,0.3);box-shadow:0 4px 20px var(--teal-glow);}
-.ctx-card:hover.hover-rose{border-color:rgba(248,113,113,0.3);box-shadow:0 4px 20px var(--rose-glow);}
-.ctx-card:hover.hover-violet{border-color:rgba(167,139,250,0.3);box-shadow:0 4px 20px var(--violet-glow);}
-.card-attached{border-color:rgba(34,211,238,0.4)!important;box-shadow:0 0 0 1px rgba(34,211,238,0.2)!important;}
-.card-attached-badge{
-  position:absolute;top:6px;right:6px;width:16px;height:16px;border-radius:50%;
-  background:var(--cyan);display:flex;align-items:center;justify-content:center;
-  font-size:8px;color:#000;font-weight:800;animation:popIn 0.2s ease;
+/* ── MESSAGES AREA ── */
+.msg-area{
+  flex:1;overflow-y:auto;padding:8px 0 4px;
+  display:flex;flex-direction:column;
 }
 
-/* ── MESSAGES ── */
-.msg-area{flex:1;overflow-y:auto;padding:12px 0;}
-.day-divider{display:flex;align-items:center;gap:12px;padding:4px 20px;margin-bottom:4px;}
-.day-line{flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--border3),transparent);opacity:0.5;}
-.day-label{font-family:var(--mono);font-size:9px;color:var(--text3);flex-shrink:0;letter-spacing:0.1em;}
+/* Day divider */
+.day-divider{
+  display:flex;align-items:center;gap:12px;
+  padding:16px 20px 8px;flex-shrink:0;
+}
+.day-line{flex:1;height:1px;background:var(--border2);}
+.day-label{
+  font-family:var(--mono);font-size:9px;color:var(--text3);
+  letter-spacing:0.12em;text-transform:uppercase;white-space:nowrap;
+}
 
+/* Message row */
 .msg-row{
-  display:flex;gap:12px;padding:5px 16px;border-radius:var(--r12);
-  transition:background 0.1s;position:relative;group:true;
+  display:flex;gap:11px;padding:5px 16px 5px;
+  border-radius:var(--r8);position:relative;
+  transition:background 0.08s;
+  group:true;
 }
-.msg-row:hover{background:rgba(255,255,255,0.015);}
+.msg-row:hover{background:rgba(255,255,255,0.012);}
 .msg-row:hover .msg-actions{opacity:1;transform:translateY(0);}
+
+/* Message action toolbar (hover) */
 .msg-actions{
-  position:absolute;right:16px;top:4px;
-  display:flex;gap:3px;background:var(--bg3);
-  border:1px solid var(--border2);border-radius:var(--r8);
-  padding:3px;opacity:0;transform:translateY(-4px);
-  transition:all 0.15s;z-index:10;
+  position:absolute;right:12px;top:-12px;
+  display:flex;gap:2px;
+  background:var(--bg3);border:1px solid var(--border3);
+  border-radius:var(--r10);padding:3px;
+  opacity:0;transform:translateY(4px);
+  transition:all 0.15s;z-index:20;
+  box-shadow:0 4px 20px rgba(0,0,0,0.5);
 }
 .action-btn{
-  width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;
-  font-size:13px;background:transparent;border:none;cursor:pointer;color:var(--text2);transition:all 0.1s;
+  width:26px;height:26px;border-radius:var(--r6);
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;background:transparent;border:none;
+  cursor:pointer;color:var(--text2);transition:all 0.1s;
 }
-.action-btn:hover{background:var(--border2);color:var(--text1);}
+.action-btn:hover{background:var(--border3);color:var(--text1);}
+.action-btn-sep{width:1px;height:18px;background:var(--border2);margin:auto 1px;}
 
-.msg-avatar{flex-shrink:0;margin-top:2px;}
+/* Avatar */
+.av{
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-weight:800;user-select:none;
+  flex-shrink:0;letter-spacing:-0.5px;
+}
+.msg-avatar{flex-shrink:0;margin-top:3px;}
+
+/* Message content */
 .msg-content{flex:1;min-width:0;}
 .msg-header{display:flex;align-items:baseline;gap:8px;margin-bottom:3px;}
 .msg-name{font-weight:700;font-size:13px;}
-.msg-role-badge{
-  font-family:var(--mono);font-size:8px;font-weight:600;padding:2px 6px;
-  border-radius:var(--r4);border:1px solid;letter-spacing:0.05em;
+.msg-time{font-family:var(--mono);font-size:9px;color:var(--text3);margin-left:2px;}
+
+.msg-body{
+  font-size:13.5px;line-height:1.7;
+  color:rgba(232,237,245,0.8);
+  word-break:break-word;
 }
-.msg-time{font-family:var(--mono);font-size:9px;color:var(--text3);}
-.msg-body{font-size:13.5px;line-height:1.65;color:rgba(241,245,249,0.82);}
 
 /* Inline tags */
 .tag-mention{
-  color:var(--cyan);background:rgba(34,211,238,0.1);border-radius:var(--r4);
-  padding:1px 5px;font-weight:700;cursor:pointer;transition:background 0.1s;display:inline;
+  color:var(--cyan);background:var(--cyan-dim);
+  border-radius:var(--r4);padding:1px 5px;
+  font-weight:700;cursor:pointer;
+  transition:background 0.1s;display:inline;
 }
-.tag-mention:hover{background:rgba(34,211,238,0.2);}
-.tag-file{
-  display:inline-flex;align-items:center;gap:3px;color:var(--teal);
-  background:var(--teal-glow);border:1px solid rgba(45,212,191,0.2);
-  border-radius:var(--r4);padding:1px 6px;font-family:var(--mono);font-size:11px;cursor:pointer;
-  transition:background 0.1s;vertical-align:middle;
-}
-.tag-file:hover{background:rgba(45,212,191,0.2);}
-.tag-err{
-  display:inline-flex;align-items:center;gap:3px;color:var(--rose);
-  background:var(--rose-glow);border:1px solid rgba(248,113,113,0.2);
-  border-radius:var(--r4);padding:1px 6px;font-family:var(--mono);font-size:11px;cursor:pointer;
-  transition:background 0.1s;vertical-align:middle;
-}
-.tag-err:hover{background:rgba(248,113,113,0.2);}
-.tag-proj{
-  display:inline-flex;align-items:center;gap:3px;color:var(--violet);
-  background:var(--violet-glow);border:1px solid rgba(167,139,250,0.2);
-  border-radius:var(--r4);padding:1px 6px;font-family:var(--mono);font-size:11px;cursor:pointer;
-  transition:background 0.1s;vertical-align:middle;
-}
-.tag-proj:hover{background:rgba(167,139,250,0.2);}
+.tag-mention:hover{background:rgba(56,189,248,0.2);}
 
 /* Code block */
-.code-block{margin-top:8px;border-radius:var(--r12);overflow:hidden;border:1px solid var(--border2);background:#030508;}
+.code-block{
+  margin-top:10px;border-radius:var(--r12);
+  overflow:hidden;border:1px solid var(--border3);
+  background:#020407;
+}
 .code-header{
   display:flex;align-items:center;gap:8px;padding:8px 14px;
-  border-bottom:1px solid var(--border);background:rgba(255,255,255,0.02);
+  border-bottom:1px solid var(--border2);
+  background:rgba(255,255,255,0.018);
 }
 .code-dots{display:flex;gap:5px;}
-.code-dot{width:9px;height:9px;border-radius:50%;}
-.code-lang{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:0.08em;margin-left:4px;}
+.code-dot{width:8px;height:8px;border-radius:50%;}
+.code-lang{
+  font-family:var(--mono);font-size:9px;color:var(--text3);
+  letter-spacing:0.08em;margin-left:4px;
+}
 .code-copy{
   margin-left:auto;font-family:var(--mono);font-size:9px;
-  padding:3px 9px;border-radius:var(--r4);border:1px solid var(--border2);
-  background:transparent;cursor:pointer;transition:all 0.12s;color:var(--text3);
+  padding:3px 9px;border-radius:var(--r4);
+  border:1px solid var(--border2);background:transparent;
+  cursor:pointer;transition:all 0.12s;color:var(--text3);
 }
-.code-copy:hover{color:var(--cyan);border-color:rgba(34,211,238,0.3);}
-.code-body{padding:12px 14px;font-family:var(--mono);font-size:11.5px;line-height:1.7;overflow-x:auto;color:rgba(241,245,249,0.7);}
+.code-copy:hover{color:var(--cyan);border-color:rgba(56,189,248,0.3);background:var(--cyan-dim);}
+.code-body{
+  padding:14px 16px;font-family:var(--mono);font-size:11.5px;
+  line-height:1.75;overflow-x:auto;color:rgba(232,237,245,0.65);
+}
 
 /* Reactions */
-.reactions{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
+.reactions{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px;}
 .rxn-btn{
-  display:inline-flex;align-items:center;gap:4px;padding:3px 9px;
-  border-radius:var(--r999);font-size:12px;cursor:pointer;transition:all 0.13s;border:1px solid;
+  display:inline-flex;align-items:center;gap:4px;
+  padding:3px 9px;border-radius:var(--r999);
+  font-size:12px;cursor:pointer;transition:all 0.12s;border:1px solid;
+  font-family:var(--sans);
 }
-.rxn-btn.mine{color:var(--cyan);background:rgba(34,211,238,0.08);border-color:rgba(34,211,238,0.35);}
-.rxn-btn.other{color:var(--text2);background:rgba(255,255,255,0.03);border-color:var(--border2);}
-.rxn-btn.other:hover{color:var(--text1);border-color:var(--border3);}
-.rxn-add{
-  display:inline-flex;align-items:center;padding:3px 8px;border-radius:var(--r999);
-  font-size:12px;cursor:pointer;border:1px solid var(--border);background:transparent;
-  color:var(--text3);transition:all 0.12s;
+.rxn-btn.mine{
+  color:var(--cyan);background:var(--cyan-dim);
+  border-color:rgba(56,189,248,0.3);
 }
-.rxn-add:hover{color:var(--text1);border-color:var(--border3);}
+.rxn-btn.mine:hover{background:rgba(56,189,248,0.18);}
+.rxn-btn.other{
+  color:var(--text2);background:rgba(255,255,255,0.03);
+  border-color:var(--border2);
+}
+.rxn-btn.other:hover{color:var(--text1);border-color:var(--border3);background:var(--border2);}
+.rxn-count{font-family:var(--mono);font-size:10px;opacity:0.7;}
+
+/* Emoji picker */
+.emoji-picker{
+  position:absolute;
+  background:var(--bg3);border:1px solid var(--border3);
+  border-radius:var(--r12);padding:8px;
+  display:flex;gap:4px;flex-wrap:wrap;width:168px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.6);z-index:30;
+  animation:scaleIn 0.15s ease;
+}
+.emoji-opt{
+  width:30px;height:30px;border-radius:var(--r6);
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;cursor:pointer;border:none;
+  background:transparent;transition:background 0.1s;
+}
+.emoji-opt:hover{background:var(--border3);}
 
 /* Thread bar */
 .thread-bar{
-  display:flex;align-items:center;gap:8px;padding:4px 8px;margin-top:6px;
-  border-radius:var(--r8);background:transparent;border:none;cursor:pointer;
-  transition:background 0.12s;width:fit-content;border:1px solid transparent;
+  display:inline-flex;align-items:center;gap:7px;
+  padding:4px 10px;margin-top:7px;
+  border-radius:var(--r8);background:transparent;
+  border:1px solid var(--border2);cursor:pointer;
+  transition:all 0.12s;
+  font-size:12px;
 }
-.thread-bar:hover{background:rgba(34,211,238,0.05);border-color:rgba(34,211,238,0.15);}
-.thread-avatars{display:flex;}
-.thread-count{color:var(--cyan);font-size:12px;font-weight:700;}
-.thread-hint{color:var(--text3);font-family:var(--mono);font-size:10px;}
+.thread-bar:hover{
+  background:var(--cyan-dim);
+  border-color:rgba(56,189,248,0.25);
+}
+.thread-count{color:var(--cyan);font-weight:700;}
+.thread-hint{color:var(--text3);font-family:var(--mono);font-size:9px;}
 
-/* ── INPUT ── */
-.input-zone{padding:8px 16px 14px;background:var(--bg0);flex-shrink:0;}
-.attached-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
-.attached-chip{
-  display:flex;align-items:center;gap:6px;padding:4px 10px;
-  border-radius:var(--r8);font-family:var(--mono);font-size:11px;
-  border:1px solid;transition:all 0.12s;animation:popIn 0.18s ease;
+/* ── INPUT ZONE ── */
+.input-zone{
+  padding:8px 16px 14px;
+  background:var(--bg0);flex-shrink:0;
+  border-top:1px solid var(--border);
 }
-.chip-remove{
-  background:transparent;border:none;cursor:pointer;color:inherit;opacity:0.4;
-  padding:0;line-height:1;transition:opacity 0.12s;
-}
-.chip-remove:hover{opacity:1;}
-
+.input-wrap{position:relative;max-width:960px;margin:0 auto;}
 .input-box{
-  background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r16);
-  overflow:hidden;transition:all 0.2s;position:relative;
+  background:var(--bg3);
+  border:1px solid var(--border3);border-radius:var(--r20);
+  overflow:hidden;transition:all 0.18s;
 }
-.input-box:focus-within{border-color:rgba(34,211,238,0.3);box-shadow:0 0 0 3px rgba(34,211,238,0.06);}
+.input-box:focus-within{
+  border-color:rgba(56,189,248,0.35);
+  box-shadow:0 0 0 3px rgba(56,189,248,0.06), 0 4px 24px rgba(0,0,0,0.3);
+}
 .input-ta{
   width:100%;background:transparent;padding:13px 18px 8px;
-  font-size:13.5px;color:var(--text1);font-family:var(--sans);
-  border:none;line-height:1.6;resize:none;
+  font-size:13.5px;color:var(--text1);
+  font-family:var(--sans);border:none;line-height:1.6;
+  resize:none;max-height:160px;overflow-y:auto;
 }
 .input-ta::placeholder{color:var(--text3);}
 .input-ta:focus{outline:none;}
-.input-toolbar{display:flex;align-items:center;gap:4px;padding:0 12px 10px;}
+.input-footer{
+  display:flex;align-items:center;gap:4px;
+  padding:0 12px 11px;
+}
 .tb-btn{
-  width:30px;height:30px;display:flex;align-items:center;justify-content:center;
-  border-radius:var(--r8);font-size:14px;color:var(--text3);background:transparent;border:none;
-  cursor:pointer;transition:all 0.12s;
-}
-.tb-btn:hover{color:var(--text1);background:var(--border);}
-.tb-sep{width:1px;height:18px;background:var(--border2);margin:0 3px;}
-.tb-fmt{
   width:28px;height:28px;display:flex;align-items:center;justify-content:center;
-  border-radius:var(--r4);font-family:var(--mono);font-size:11px;color:var(--text3);
-  background:transparent;border:none;cursor:pointer;transition:all 0.12s;
+  border-radius:var(--r8);font-size:14px;color:var(--text3);
+  background:transparent;border:none;cursor:pointer;
+  transition:all 0.1s;
 }
-.tb-fmt:hover{color:var(--text1);background:var(--border);}
+.tb-btn:hover{color:var(--text2);background:var(--border2);}
 .send-btn{
   margin-left:auto;display:flex;align-items:center;gap:5px;
-  padding:7px 18px;border-radius:var(--r12);font-family:var(--sans);
-  font-size:12px;font-weight:700;color:#000;border:none;cursor:pointer;
-  background:linear-gradient(135deg,var(--cyan),var(--teal));
-  box-shadow:0 0 18px rgba(34,211,238,0.35);transition:all 0.2s;
+  padding:7px 18px;border-radius:var(--r12);
+  font-family:var(--sans);font-size:12px;font-weight:700;
+  color:#000;border:none;cursor:pointer;
+  background:linear-gradient(135deg,var(--cyan) 0%,var(--teal) 100%);
+  box-shadow:0 0 20px rgba(56,189,248,0.3);
+  transition:all 0.18s;
 }
-.send-btn:hover:not(:disabled){box-shadow:0 0 28px rgba(34,211,238,0.55);transform:translateY(-1px);}
-.send-btn:disabled{opacity:0.3;cursor:not-allowed;transform:none;}
-.send-hint{font-family:var(--mono);font-size:9px;color:var(--text3);}
+.send-btn:hover:not(:disabled){
+  box-shadow:0 0 30px rgba(56,189,248,0.5);
+  transform:translateY(-1px);
+}
+.send-btn:disabled{opacity:0.25;cursor:not-allowed;transform:none;}
+.hint-text{
+  font-family:var(--mono);font-size:8.5px;color:var(--text3);
+  opacity:0.6;margin-right:6px;
+}
 
-/* ── MENTION DROPDOWN ── */
+/* Mention dropdown */
 .mention-dd{
-  position:absolute;bottom:calc(100% + 6px);left:0;right:0;
-  background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r12);
-  overflow:hidden;box-shadow:0 -8px 32px rgba(0,0,0,0.6);z-index:100;
-  animation:popIn 0.15s ease;
+  position:absolute;bottom:calc(100% + 8px);left:0;right:0;
+  background:var(--bg3);border:1px solid var(--border3);
+  border-radius:var(--r12);overflow:hidden;
+  box-shadow:0 -8px 40px rgba(0,0,0,0.7);z-index:100;
+  animation:scaleIn 0.14s ease;
 }
-.mention-header{padding:7px 12px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:8px;color:var(--text3);letter-spacing:0.2em;text-transform:uppercase;}
+.mention-header{
+  padding:7px 12px;border-bottom:1px solid var(--border2);
+  font-family:var(--mono);font-size:8px;color:var(--text3);
+  letter-spacing:0.18em;text-transform:uppercase;
+}
 .mention-row{
-  display:flex;align-items:center;gap:10px;padding:8px 12px;
-  cursor:pointer;transition:background 0.1s;
+  display:flex;align-items:center;gap:9px;
+  padding:8px 12px;cursor:pointer;transition:background 0.08s;
 }
-.mention-row.sel{background:rgba(34,211,238,0.06);}
-.mention-row:hover{background:var(--border);}
-.mention-kbd{margin-left:auto;font-family:var(--mono);font-size:8px;color:var(--text3);}
+.mention-row.sel{background:var(--cyan-dim);}
+.mention-row:hover{background:var(--border2);}
+.mention-kbd{
+  margin-left:auto;font-family:var(--mono);font-size:8px;
+  color:var(--text3);
+}
 
 /* ── THREAD PANEL ── */
 .thread-panel{
-  width:384px;min-width:384px;display:flex;flex-direction:column;
-  background:var(--bg1);border-left:1px solid var(--border);
-  animation:slideRight 0.25s ease;
+  width:var(--thread-w);min-width:var(--thread-w);
+  display:flex;flex-direction:column;
+  background:var(--bg1);border-left:1px solid var(--border2);
+  position:relative;z-index:5;
+  animation:slideInRight 0.25s cubic-bezier(0.2,0,0,1);
 }
 .thread-header{
   display:flex;align-items:center;justify-content:space-between;
-  padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0;
+  padding:0 16px;height:52px;
+  border-bottom:1px solid var(--border2);flex-shrink:0;
 }
-.thread-title{font-weight:700;font-size:15px;letter-spacing:-0.01em;}
-.thread-sub{font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:2px;}
+.thread-title{font-weight:700;font-size:14px;display:flex;align-items:center;gap:7px;}
+.thread-badge{
+  font-family:var(--mono);font-size:9px;
+  padding:2px 7px;border-radius:var(--r999);
+  background:var(--cyan-dim);color:var(--cyan);
+  border:1px solid rgba(56,189,248,0.2);
+}
 .thread-close{
-  width:30px;height:30px;border-radius:var(--r8);display:flex;align-items:center;justify-content:center;
-  background:transparent;border:1px solid transparent;cursor:pointer;color:var(--text3);
-  font-size:16px;transition:all 0.12s;
+  width:28px;height:28px;border-radius:var(--r8);
+  display:flex;align-items:center;justify-content:center;
+  background:transparent;border:1px solid transparent;
+  cursor:pointer;color:var(--text3);font-size:14px;
+  transition:all 0.12s;
 }
-.thread-close:hover{color:var(--rose);background:var(--rose-glow);border-color:rgba(248,113,113,0.3);}
-.thread-divider{margin:8px 14px;height:1px;background:linear-gradient(90deg,transparent,var(--border3),transparent);}
-.thread-input{padding:10px;border-top:1px solid var(--border);flex-shrink:0;}
+.thread-close:hover{color:var(--rose);background:var(--rose-dim);border-color:rgba(248,113,113,0.25);}
+.thread-divider{
+  margin:12px 16px;height:1px;
+  background:var(--border2);
+}
+.thread-input-area{padding:10px 12px 14px;border-top:1px solid var(--border2);flex-shrink:0;}
 .thread-box{
-  background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r12);overflow:hidden;
-  transition:border-color 0.2s;
+  background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r12);
+  overflow:hidden;transition:border-color 0.18s;
 }
-.thread-box:focus-within{border-color:rgba(34,211,238,0.25);}
+.thread-box:focus-within{border-color:rgba(56,189,248,0.28);}
 .thread-ta{
   width:100%;background:transparent;padding:10px 14px 6px;
-  font-size:12.5px;color:var(--text1);font-family:var(--sans);
-  border:none;resize:none;line-height:1.5;
+  font-size:13px;color:var(--text1);font-family:var(--sans);
+  border:none;resize:none;line-height:1.55;
 }
 .thread-ta::placeholder{color:var(--text3);}
 .thread-ta:focus{outline:none;}
-.thread-foot{display:flex;align-items:center;padding:0 10px 8px;}
+.thread-foot{display:flex;align-items:center;justify-content:space-between;padding:0 12px 10px;}
+.thread-hint-text{font-family:var(--mono);font-size:8.5px;color:var(--text3);}
 
 /* ── STATUS BAR ── */
 .statusbar{
-  display:flex;align-items:center;gap:12px;padding:5px 16px;
-  background:var(--bg1);border-top:1px solid var(--border);flex-shrink:0;
+  display:flex;align-items:center;gap:10px;padding:4px 16px;
+  background:rgba(6,8,16,0.9);border-top:1px solid var(--border);
+  flex-shrink:0;
   font-family:var(--mono);font-size:9px;color:var(--text3);
 }
-.status-dot{width:5px;height:5px;border-radius:50%;}
+.status-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0;}
 
-/* ── AVATAR ── */
-.av{
-  display:flex;align-items:center;justify-content:center;
-  font-family:var(--mono);font-weight:700;user-select:none;flex-shrink:0;letter-spacing:-0.5px;
+/* ── TYPING INDICATOR ── */
+.typing-row{
+  display:flex;align-items:center;gap:10px;
+  padding:4px 16px 6px 52px;min-height:24px;
+}
+.typing-dots{display:flex;align-items:center;gap:3px;}
+.typing-dot{
+  width:4px;height:4px;border-radius:50%;background:var(--text3);
+}
+.typing-dot:nth-child(1){animation:bounce 1.3s ease 0s infinite;}
+.typing-dot:nth-child(2){animation:bounce 1.3s ease 0.18s infinite;}
+.typing-dot:nth-child(3){animation:bounce 1.3s ease 0.36s infinite;}
+.typing-label{
+  font-family:var(--mono);font-size:9.5px;color:var(--text3);
+  letter-spacing:0.05em;
 }
 
-/* Typing indicator */
-@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
-.typing-dot{width:4px;height:4px;border-radius:50%;background:var(--text3);display:inline-block;margin:0 1px;}
-.typing-dot:nth-child(1){animation:bounce 1.2s ease 0s infinite;}
-.typing-dot:nth-child(2){animation:bounce 1.2s ease 0.2s infinite;}
-.typing-dot:nth-child(3){animation:bounce 1.2s ease 0.4s infinite;}
-
-/* New msg badge */
-.new-badge{
-  position:absolute;bottom:80px;left:50%;transform:translateX(-50%);
-  background:var(--cyan);color:#000;font-family:var(--mono);font-size:10px;font-weight:700;
-  padding:5px 14px;border-radius:var(--r999);cursor:pointer;
-  box-shadow:0 4px 16px rgba(34,211,238,0.4);animation:fadeUp 0.2s ease;
-  z-index:20;border:none;
+/* ── EMPTY STATE ── */
+.empty-state{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;opacity:0.3;padding:24px;
 }
+.empty-icon{font-size:40px;}
+.empty-label{font-family:var(--mono);font-size:11px;color:var(--text3);letter-spacing:0.1em;text-align:center;}
 `;
 
 /* ─────────────────────────── UTILS ─────────────────────────── */
-function hl(src) {
-  if (!src) return null;
+function hl(src = '') {
   return src.split('\n').map((line, i) => {
     const t = line.trimStart();
-    let ls = {};
-    if (t.startsWith('//')) ls = { color:'#3d5166', fontStyle:'italic' };
-    else if (/^(async|function|const|let|var|return|await|export|import|type|if|else|for|while|switch|case|break|default|try|catch|finally|throw)\b/.test(t)) ls = { color:'#c792ea' };
-    else if (/^(class|extends|interface|enum|implements|namespace|package)\b/.test(t)) ls = { color:'#ffcb6b' };
+    let color = 'rgba(232,237,245,0.6)';
+    if (t.startsWith('//') || t.startsWith('#')) color = '#3d5a75';
+    else if (/^(async|function|const|let|var|return|await|export|import|if|else|for|while|switch|case|break|default|try|catch|finally|throw|from|of|in)\b/.test(t)) color = '#c792ea';
+    else if (/^(class|extends|interface|type|enum)\b/.test(t)) color = '#ffcb6b';
     return (
-      <div key={i} style={ls}>
-        {line.split(/([\w$]+(?=\s*\())/g).map((p, j) =>
-          /(analyzeCode|buildKnowledgeGraph|detectCognitiveState|merge|push|map|filter|reduce|find|forEach|useEffect|useState|useCallback|useMemo)/.test(p)
-            ? <span key={j} style={{color:'#7fc1ff'}}>{p}</span>
-            : p.startsWith('"') || p.startsWith("'") || p.startsWith('`')
-              ? <span key={j} style={{color:'#b9e4a3'}}>{p}</span>
-              : <span key={j}>{p}</span>
+      <div key={i} style={{ color }}>
+        {line.split(/(["'`][^"'`]*["'`])/g).map((p, j) =>
+          /^["'`]/.test(p)
+            ? <span key={j} style={{ color: '#b9e4a3' }}>{p}</span>
+            : p
         )}
       </div>
     );
   });
 }
 
-function parseText(text, onlineUsers) {
+function parseText(text, onlineUsers = {}) {
   if (!text) return [];
   const users = Object.values(onlineUsers);
-  const segs = []; 
-  let currentText = text;
-  
-  // Very simple parsing for @mentions
-  // In a real app, this would use a more robust regex or markdown parser
+  const segs = [];
   const mentionRegex = /@(\w+)/g;
   let match;
   let lastIdx = 0;
-
   while ((match = mentionRegex.exec(text)) !== null) {
     const username = match[1];
     const user = users.find(u => u.username?.toLowerCase() === username.toLowerCase());
-    
     if (user) {
-      if (match.index > lastIdx) {
-        segs.push({ t: 'text', v: text.slice(lastIdx, match.index) });
-      }
+      if (match.index > lastIdx) segs.push({ t: 'text', v: text.slice(lastIdx, match.index) });
       segs.push({ t: 'mention', user });
       lastIdx = mentionRegex.lastIndex;
     }
   }
-
-  if (lastIdx < text.length) {
-    segs.push({ t: 'text', v: text.slice(lastIdx) });
-  }
-
+  if (lastIdx < text.length) segs.push({ t: 'text', v: text.slice(lastIdx) });
   return segs.length > 0 ? segs : [{ t: 'text', v: text }];
 }
 
+function fmtTime(iso) {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+const EMOJIS = ['👍','❤️','🔥','🎉','👀','✅','💯','🚀'];
+
 /* ─────────────────────────── COMPONENTS ─────────────────────────── */
-function Av({ user, size=32, r=8 }) {
-  if (!user) return <div className="av" style={{ width:size, height:size, borderRadius:r, background:'var(--bg3)' }}/>;
-  const initials = user.username?.slice(0, 2).toUpperCase() || '??';
-  const color = user.color || '#22d3ee';
-  const bg = user.bg || 'rgba(34,211,238,0.14)';
+function Av({ user, size = 32, r = 8 }) {
+  if (!user) return <div className="av" style={{ width: size, height: size, borderRadius: r, background: 'var(--bg3)' }} />;
+  const initials = (user.username || '??').slice(0, 2).toUpperCase();
+  const color = user.color || '#38bdf8';
+  const bg = user.bg || 'rgba(56,189,248,0.13)';
   return (
-    <div className="av" style={{ width:size, height:size, borderRadius:r, fontSize:size*0.36,
-      background:bg, color:color, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800 }}>
+    <div className="av" style={{
+      width: size, height: size, borderRadius: r,
+      fontSize: size * 0.36, background: bg, color,
+    }}>
       {initials}
     </div>
   );
 }
 
 function Seg({ s }) {
-  if (s.t==='text')    return <span>{s.v}</span>;
-  if (s.t==='mention') return <span className="tag-mention">@{s.user.username}</span>;
+  if (s.t === 'text') return <span>{s.v}</span>;
+  if (s.t === 'mention') return <span className="tag-mention">@{s.user.username}</span>;
   return null;
 }
 
 function CodeBlock({ code }) {
   const [copied, setCopied] = useState(false);
-  const copy = () => { navigator.clipboard.writeText(code.body); setCopied(true); setTimeout(()=>setCopied(false),2000); };
+  const copy = () => {
+    navigator.clipboard.writeText(code.body).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
   if (!code) return null;
   return (
-    <div className="code-block my-3">
+    <div className="code-block">
       <div className="code-header">
         <div className="code-dots">
-          <div className="code-dot" style={{background:'rgba(248,113,113,0.7)'}}/>
-          <div className="code-dot" style={{background:'rgba(251,191,36,0.7)'}}/>
-          <div className="code-dot" style={{background:'rgba(74,222,128,0.7)'}}/>
+          <div className="code-dot" style={{ background: 'rgba(248,113,113,0.65)' }} />
+          <div className="code-dot" style={{ background: 'rgba(251,191,36,0.65)' }} />
+          <div className="code-dot" style={{ background: 'rgba(74,222,128,0.65)' }} />
         </div>
-        <span className="code-lang">{code.lang || 'javascript'}</span>
-        <button className="code-copy" onClick={copy}>{copied?'✓ copied':'copy'}</button>
+        <span className="code-lang">{code.lang || 'js'}</span>
+        <button className="code-copy" onClick={copy}>{copied ? '✓ copied' : 'copy'}</button>
       </div>
       <pre className="code-body">{hl(code.body)}</pre>
     </div>
   );
 }
 
-function Reactions({ reactions, onReact }) {
+function Reactions({ reactions, onReact, myUserId }) {
   if (!reactions?.length) return null;
   const grouped = reactions.reduce((acc, r) => {
-    const existing = acc.find(x => x.e === r.emoji);
-    if (existing) existing.n++;
-    else acc.push({ e: r.emoji, n: 1, mine: false }); // mine logic needs profile check
+    const ex = acc.find(x => x.e === r.emoji);
+    if (ex) {
+      ex.n++;
+      if (r.user_id === myUserId) ex.mine = true;
+    } else {
+      acc.push({ e: r.emoji, n: 1, mine: r.user_id === myUserId });
+    }
     return acc;
   }, []);
-
   return (
     <div className="reactions">
-      {grouped.map((r,i)=>(
-        <button key={i} onClick={()=>onReact(r.e)}
-          className={`rxn-btn ${r.mine?'mine':'other'}`}>
-          {r.e}<span className="ml-1 opacity-60">{r.n}</span>
+      {grouped.map((r, i) => (
+        <button key={i} onClick={() => onReact(r.e)} className={`rxn-btn ${r.mine ? 'mine' : 'other'}`}>
+          {r.e}<span className="rxn-count">{r.n}</span>
         </button>
       ))}
     </div>
   );
 }
 
-function ThreadBar({ count, onClick }) {
+function EmojiPicker({ onPick, style }) {
   return (
-    <button className="thread-bar mt-2" onClick={onClick}>
-      <span className="thread-count">{count} {count===1?'reply':'replies'}</span>
-      <span className="thread-hint">View thread →</span>
-    </button>
+    <div className="emoji-picker" style={style}>
+      {EMOJIS.map(e => (
+        <button key={e} className="emoji-opt" onClick={() => onPick(e)}>{e}</button>
+      ))}
+    </div>
   );
 }
 
-function MsgRow({ msg, onlineUsers, messages, onThread, onReact, isThread=false }) {
-  const user = msg.profiles || { username: 'System', color: '#94a3b8' };
+function MsgRow({ msg, onlineUsers, messages, onThread, onReact, isThread = false, myUserId }) {
+  const user = msg.profiles || { username: 'System', color: '#8b99b4' };
   const segments = parseText(msg.content, onlineUsers);
-  const time = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  
-  // Calculate reply count from the full messages list if not provided
-  const replyCount = msg.reply_count || messages.filter(m => m.reply_to === msg.id).length;
+  const replyCount = msg.reply_count ?? messages.filter(m => m.reply_to === msg.id).length;
+  const [showEmoji, setShowEmoji] = useState(false);
+
+  // Detect code block
+  let codeData = null;
+  if (msg.content?.includes('```')) {
+    const parts = msg.content.split('```');
+    if (parts.length >= 3) {
+      const inner = parts[1];
+      const firstLine = inner.split('\n')[0].trim();
+      const body = inner.split('\n').slice(1).join('\n').trimEnd();
+      codeData = { lang: firstLine || 'js', body };
+    }
+  }
+  const displayText = codeData ? msg.content.split('```')[0].trim() : msg.content;
 
   return (
-    <div className="msg-row group">
+    <div className="msg-row anim-fadeUp" style={{ position: 'relative' }}>
       <div className="msg-avatar">
-        <Av user={user}/>
+        <Av user={user} />
       </div>
       <div className="msg-content">
         <div className="msg-header">
-          <span className="msg-name" style={{color:user.color}}>{user.username}</span>
-          <span className="msg-time ml-2 opacity-40">{time}</span>
+          <span className="msg-name" style={{ color: user.color || '#38bdf8' }}>{user.username}</span>
+          <span className="msg-time">{fmtTime(msg.created_at)}</span>
         </div>
-        <div className="msg-body">{segments.map((s,i)=><Seg key={i} s={s}/>)}</div>
-        
-        {/* Simple markdown code block detection */}
-        {msg.content.includes('```') && (
-          <CodeBlock code={{ 
-            lang: msg.content.split('```')[1].split('\n')[0] || 'javascript',
-            body: msg.content.split('```')[1].split('\n').slice(1).join('\n').split('```')[0]
-          }}/>
+
+        {displayText && (
+          <div className="msg-body">
+            {segments.map((s, i) => <Seg key={i} s={s} />)}
+          </div>
         )}
 
-        <Reactions reactions={msg.reactions} onReact={e=>onReact(msg.id,e)}/>
+        {codeData && <CodeBlock code={codeData} />}
+
+        <Reactions reactions={msg.reactions} onReact={e => onReact(msg.id, e)} myUserId={myUserId} />
+
         {!isThread && replyCount > 0 && (
-          <ThreadBar count={replyCount} onClick={()=>onThread(msg)}/>
+          <button className="thread-bar" onClick={() => onThread(msg)}>
+            <span className="thread-count">{replyCount} {replyCount === 1 ? 'reply' : 'replies'}</span>
+            <span className="thread-hint">View thread →</span>
+          </button>
         )}
       </div>
-      <div className="msg-actions">
-        <button className="action-btn" onClick={()=>onReact(msg.id, '👍')}>😊</button>
-        {!isThread && <button className="action-btn" onClick={()=>onThread(msg)}>💬</button>}
+
+      {/* Hover actions */}
+      <div className="msg-actions" style={{ position: 'relative' }}>
+        <button className="action-btn" title="React" onClick={() => setShowEmoji(v => !v)}>😊</button>
+        {!isThread && (
+          <>
+            <div className="action-btn-sep" />
+            <button className="action-btn" title="Reply in thread" onClick={() => onThread(msg)}>💬</button>
+          </>
+        )}
+        {showEmoji && (
+          <div style={{ position: 'absolute', right: 0, top: '110%' }}>
+            <EmojiPicker
+              onPick={e => { onReact(msg.id, e); setShowEmoji(false); }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function MentionDD({ query, users, selected, onSelect }) {
-  const list = users.filter(u=>u.username?.toLowerCase().includes(query.toLowerCase())).slice(0,5);
+  const list = users
+    .filter(u => u.username?.toLowerCase().includes(query.toLowerCase()))
+    .slice(0, 6);
   if (!list.length) return null;
   return (
     <div className="mention-dd">
       <div className="mention-header">Mention a teammate</div>
-      {list.map((u,i)=>(
-        <div key={u.id} onClick={()=>onSelect(u)}
-          className={`mention-row${i===selected?' sel':''}`}>
-          <Av user={u} size={24} r={6}/>
-          <span className="ml-2 font-bold" style={{color:u.color}}>{u.username}</span>
-          {i===selected && <span className="mention-kbd ml-auto text-[8px] opacity-40">↵ select</span>}
+      {list.map((u, i) => (
+        <div key={u.id} onClick={() => onSelect(u)}
+          className={`mention-row${i === selected ? ' sel' : ''}`}>
+          <Av user={u} size={22} r={6} />
+          <span style={{ fontWeight: 700, fontSize: 13, color: u.color || 'var(--cyan)' }}>{u.username}</span>
+          {i === selected && <span className="mention-kbd">↵</span>}
         </div>
       ))}
     </div>
   );
 }
 
-function ThreadPanel({ msg, onlineUsers, messages, onClose, onSend, onReact }) {
+function ThreadPanel({ msg, onlineUsers, messages, onClose, onSend, onReact, myUserId }) {
   const [val, setVal] = useState('');
   const endRef = useRef(null);
   const replies = messages.filter(m => m.reply_to === msg.id);
-  
-  useEffect(()=>{ endRef.current?.scrollIntoView({behavior:'smooth'}); }, [replies.length]);
-  
-  const send = () => { if(!val.trim()) return; onSend(val.trim(), msg.id); setVal(''); };
-  
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [replies.length]);
+
+  const send = () => {
+    if (!val.trim()) return;
+    onSend(val.trim(), msg.id);
+    setVal('');
+  };
+
   return (
-    <div className="thread-panel anim-slideRight">
+    <div className="thread-panel">
       <div className="thread-header">
-        <div>
-          <div className="thread-title">Thread</div>
-          <div className="thread-sub opacity-50">{replies.length} replies</div>
+        <div className="thread-title">
+          Thread
+          <span className="thread-badge">{replies.length} {replies.length === 1 ? 'reply' : 'replies'}</span>
         </div>
-        <button className="thread-close" onClick={onClose}>✕</button>
+        <button className="thread-close" onClick={onClose} title="Close thread">✕</button>
       </div>
-      <div className="flex-1 overflow-y-auto py-4">
-        <MsgRow msg={msg} onlineUsers={onlineUsers} messages={messages} onThread={()=>{}} onReact={onReact} isThread/>
-        <div className="thread-divider my-4 mx-4"/>
-        {replies.map(r=><MsgRow key={r.id} msg={r} onlineUsers={onlineUsers} messages={messages} onThread={()=>{}} onReact={onReact} isThread/>)}
-        <div ref={endRef}/>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        {/* Parent message */}
+        <MsgRow
+          msg={msg} onlineUsers={onlineUsers} messages={messages}
+          onThread={() => {}} onReact={onReact} isThread myUserId={myUserId}
+        />
+        {replies.length > 0 && <div className="thread-divider" />}
+        {replies.map(r => (
+          <MsgRow key={r.id} msg={r} onlineUsers={onlineUsers} messages={messages}
+            onThread={() => {}} onReact={onReact} isThread myUserId={myUserId} />
+        ))}
+        <div ref={endRef} />
       </div>
-      <div className="thread-input p-4">
-        <div className="thread-box bg-[#111928] border border-white/5 rounded-2xl overflow-hidden focus-within:border-cyan-500/30 transition-all">
-          <textarea className="w-full bg-transparent p-4 text-sm text-white outline-none resize-none" 
-            rows={2} value={val}
-            onChange={e=>setVal(e.target.value)}
-            onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}}
-            placeholder="Reply in thread…"/>
-          <div className="flex items-center justify-between px-4 pb-3">
-            <span className="text-[10px] opacity-30 font-mono italic">shift+enter for newline</span>
-            <button onClick={send} disabled={!val.trim()} 
-              className="bg-cyan-500 hover:bg-cyan-400 disabled:opacity-20 text-black px-4 py-1.5 rounded-xl text-xs font-bold transition-all">
+
+      <div className="thread-input-area">
+        <div className="thread-box">
+          <textarea
+            className="thread-ta"
+            rows={2}
+            value={val}
+            onChange={e => setVal(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+            placeholder="Reply in thread…"
+          />
+          <div className="thread-foot">
+            <span className="thread-hint-text">shift+enter for newline</span>
+            <button
+              onClick={send}
+              disabled={!val.trim()}
+              style={{
+                background: val.trim() ? 'var(--cyan)' : 'transparent',
+                border: '1px solid',
+                borderColor: val.trim() ? 'transparent' : 'var(--border2)',
+                color: val.trim() ? '#000' : 'var(--text3)',
+                padding: '5px 14px',
+                borderRadius: 'var(--r10)',
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: val.trim() ? 'pointer' : 'not-allowed',
+                transition: 'all 0.15s',
+                fontFamily: 'var(--sans)',
+              }}
+            >
               Reply ↵
             </button>
           </div>
@@ -683,7 +855,6 @@ export default function DevChat() {
   const endRef = useRef(null);
   const msgAreaRef = useRef(null);
 
-  // Supabase hooks
   const { messages, loading: chatLoading, sendMessage, addReaction } = useChat(activeChId);
   const { onlineUsers, typingUsers, setTyping } = usePresence(activeChId);
 
@@ -699,13 +870,24 @@ export default function DevChat() {
     fetchChannels();
   }, []);
 
-  useEffect(()=>{
-    if(msgAreaRef.current) {
-      endRef.current?.scrollIntoView({behavior:'smooth'});
-    }
-  },[messages.length]);
+  // Auto-scroll on new messages
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages.length]);
 
-  if (authLoading) return <div className="h-screen w-screen bg-[#050709] flex items-center justify-center text-cyan-500 font-bold tracking-widest animate-pulse">BOOTING ENGINE...</div>;
+  if (authLoading) {
+    return (
+      <div style={{
+        height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: '#060810', color: '#38bdf8',
+        fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, fontWeight: 700,
+        letterSpacing: '0.2em',
+      }}>
+        <span style={{ animation: 'pulse 1.5s ease infinite' }}>CONNECTING…</span>
+        <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}`}</style>
+      </div>
+    );
+  }
   if (!user) return <Navigate to="/login" />;
 
   const handleInput = e => {
@@ -715,44 +897,49 @@ export default function DevChat() {
     const cur = e.target.selectionStart;
     const before = v.slice(0, cur);
     const at = before.lastIndexOf('@');
-    if(at!==-1 && (at===0||/\s/.test(before[at-1]))) {
-      const q = before.slice(at+1);
-      if(!/\s/.test(q)){ setMention({query:q,start:at}); setMentionSel(0); return; }
+    if (at !== -1 && (at === 0 || /\s/.test(before[at - 1]))) {
+      const q = before.slice(at + 1);
+      if (!/\s/.test(q)) { setMention({ query: q, start: at }); setMentionSel(0); return; }
     }
     setMention(null);
   };
 
   const pickMention = u => {
-    if(!mention) return;
-    const before = input.slice(0,mention.start);
-    const after  = input.slice(mention.start+1+mention.query.length);
-    setInput(before+'@'+u.username+' '+after);
+    if (!mention) return;
+    const before = input.slice(0, mention.start);
+    const after = input.slice(mention.start + 1 + mention.query.length);
+    setInput(before + '@' + u.username + ' ' + after);
     setMention(null);
     textRef.current?.focus();
   };
 
   const handleKeyDown = e => {
-    const mentionList = Object.values(onlineUsers).filter(u=>u.username?.toLowerCase().includes((mention?.query||'').toLowerCase()));
-    if(mention && mentionList.length) {
-      if(e.key==='ArrowDown'){e.preventDefault();setMentionSel(s=>(s+1)%mentionList.length);return;}
-      if(e.key==='ArrowUp'){e.preventDefault();setMentionSel(s=>(s-1+mentionList.length)%mentionList.length);return;}
-      if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();pickMention(mentionList[mentionSel]);return;}
-      if(e.key==='Escape'){setMention(null);return;}
+    const mentionList = Object.values(onlineUsers)
+      .filter(u => u.username?.toLowerCase().includes((mention?.query || '').toLowerCase()));
+    if (mention && mentionList.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setMentionSel(s => (s + 1) % mentionList.length); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setMentionSel(s => (s - 1 + mentionList.length) % mentionList.length); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickMention(mentionList[mentionSel]); return; }
+      if (e.key === 'Escape') { setMention(null); return; }
     }
-    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault(); handleSend();}
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
   const handleSend = () => {
-    if(!input.trim()) return;
+    if (!input.trim()) return;
     sendMessage(input.trim());
     setInput('');
     setMention(null);
+    setTyping(false);
   };
 
-  const curCh = channels.find(c=>c.id===activeChId);
+  const curCh = channels.find(c => c.id === activeChId);
+  const onlineList = Object.values(onlineUsers);
   const typingDisplay = Object.entries(typingUsers)
-    .filter(([id, isTyping]) => isTyping && id !== user.id)
+    .filter(([id, isTyping]) => isTyping && id !== user?.id)
     .map(([id]) => onlineUsers[id]?.username || 'Someone');
+
+  const topLevelMsgs = messages.filter(m => !m.reply_to);
 
   return (
     <>
@@ -760,129 +947,203 @@ export default function DevChat() {
       <div className="app">
 
         {/* ── SIDEBAR ── */}
-        <div className={`sidebar${sideOpen?'':' collapsed'}`}>
-          <div className="sidebar-logo">
-            <div className="logo-icon bg-gradient-to-br from-cyan-400 to-teal-500 shadow-cyan-500/50">⚡</div>
-            <span className="logo-text tracking-tighter">CKC-OS</span>
-            <div className="live-badge border-cyan-500/20 bg-cyan-500/5">
-              <div className="blink bg-cyan-400" style={{width:5,height:5,borderRadius:'50%'}}/>
+        <div className={`sidebar${sideOpen ? '' : ' collapsed'}`}>
+          {/* Logo */}
+          <div className="logo-row">
+            <div className="logo-icon">⚡</div>
+            <span className="logo-name">CKC-OS</span>
+            <div className="live-pill">
+              <div className="blink" style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--cyan)', flexShrink: 0 }} />
               LIVE
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-2 pt-4">
-            <div className="sidebar-section">
-              <div className="section-label">Nodes</div>
-              {channels.map(ch=>(
-                <button key={ch.id} onClick={()=>setActiveChId(ch.id)}
-                  className={`ch-btn group ${activeChId===ch.id?' active':''}`}>
-                  <span className={`opacity-40 group-hover:opacity-100 transition-opacity ${activeChId===ch.id?'text-cyan-400 opacity-100':''}`}>#</span>
-                  <span className="truncate">{ch.name}</span>
+          {/* Scrollable nav */}
+          <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 8 }}>
+            {/* Channels */}
+            <div className="nav-section">
+              <span className="nav-label">Channels</span>
+              {channels.map(ch => (
+                <button key={ch.id}
+                  onClick={() => setActiveChId(ch.id)}
+                  className={`ch-item${activeChId === ch.id ? ' active' : ''}`}
+                >
+                  <span className="ch-hash">#</span>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{ch.name}</span>
                 </button>
               ))}
             </div>
-            
-            <div className="sidebar-section mt-8">
-              <div className="section-label">Active Users</div>
-              {Object.values(onlineUsers).map(u=>(
-                <div key={u.id} className="ch-btn opacity-80 hover:opacity-100">
-                  <Av user={u} size={18} r={6}/>
-                  <span className="truncate ml-2" style={{color:u.color}}>{u.username}</span>
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 ml-auto shadow-emerald-500/50 shadow-sm" />
-                </div>
-              ))}
-            </div>
+
+            {/* Online users */}
+            {onlineList.length > 0 && (
+              <div className="nav-section" style={{ marginTop: 12 }}>
+                <span className="nav-label">Online — {onlineList.length}</span>
+                {onlineList.map(u => (
+                  <div key={u.id} className="user-item">
+                    <Av user={u} size={18} r={5} />
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 12.5, fontWeight: 500, color: u.color || 'var(--text2)' }}>{u.username}</span>
+                    <div className="online-dot" />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div className="me-row bg-[#080c12]/50 backdrop-blur-md">
-            <Av user={profile}/>
-            <div className="flex-1 min-w-0 ml-3">
-              <div className="text-sm font-bold truncate text-white">{profile?.username}</div>
-              <div className="flex items-center gap-1.5 text-[9px] font-mono text-emerald-400/80">
-                <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse"/> ONLINE
+          {/* Me row */}
+          <div className="me-row">
+            <Av user={profile} />
+            <div style={{ flex: 1, minWidth: 0, marginLeft: 8 }}>
+              <div className="me-name">{profile?.username || 'You'}</div>
+              <div className="me-status">
+                <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--green)', boxShadow: '0 0 5px var(--green)', animation: 'pulse 2s ease infinite' }} />
+                ONLINE
               </div>
             </div>
           </div>
         </div>
 
-        {/* ── MAIN ── */}
+        {/* ── MAIN COLUMN ── */}
         <div className="main">
+
           {/* TOPBAR */}
-          <div className="topbar bg-[#080c12]/80 backdrop-blur-xl border-b border-white/5">
-            <button className="menu-btn mr-4 text-slate-500 hover:text-white transition-colors" onClick={()=>setSideOpen(s=>!s)}>☰</button>
-            <span className="font-mono text-xl text-cyan-400 font-bold mr-2">#</span>
-            <div className="topbar-info">
-              <div className="topbar-name text-lg font-extrabold tracking-tight">{curCh?.name||'Loading...'}</div>
-              <div className="topbar-members opacity-40 font-medium text-xs truncate max-w-md">{curCh?.description || 'Real-time collaborative chat'}</div>
+          <div className="topbar">
+            <button className="menu-btn" onClick={() => setSideOpen(s => !s)} title="Toggle sidebar">
+              {sideOpen ? '◀' : '▶'}
+            </button>
+            <span className="topbar-hash">#</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="topbar-name">{curCh?.name || 'Loading…'}</div>
+              {curCh?.description && (
+                <div className="topbar-desc">{curCh.description}</div>
+              )}
             </div>
+            <div className="topbar-divider" />
+            <div className="members-pill">
+              <div className="members-dot" />
+              {onlineList.length} online
+            </div>
+            <button
+              className={`icon-btn${activeThread ? ' active' : ''}`}
+              onClick={() => setActiveThread(null)}
+              title="Close thread"
+              style={{ marginLeft: 4 }}
+            >
+              💬
+            </button>
           </div>
 
           {/* MESSAGES */}
-          <div className="msg-area px-2 md:px-6" ref={msgAreaRef}>
-            <div className="day-divider my-8">
-              <div className="day-line"/>
-              <span className="day-label uppercase tracking-[0.3em] font-black opacity-30 text-[8px]">Session Start · {new Date().toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})}</span>
-              <div className="day-line"/>
+          <div className="msg-area" ref={msgAreaRef}>
+            <div className="day-divider">
+              <div className="day-line" />
+              <span className="day-label">
+                {new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
+              </span>
+              <div className="day-line" />
             </div>
-            {messages.filter(m => !m.reply_to).map(m=>(
-              <MsgRow key={m.id} msg={m} onlineUsers={onlineUsers} messages={messages} onThread={setActiveThread} onReact={addReaction}/>
+
+            {chatLoading && (
+              <div className="empty-state">
+                <div className="empty-icon shimmer">💬</div>
+                <div className="empty-label">Loading messages…</div>
+              </div>
+            )}
+
+            {!chatLoading && topLevelMsgs.length === 0 && (
+              <div className="empty-state">
+                <div className="empty-icon">🚀</div>
+                <div className="empty-label">No messages yet<br />Be the first to say something!</div>
+              </div>
+            )}
+
+            {topLevelMsgs.map(m => (
+              <MsgRow
+                key={m.id}
+                msg={m}
+                onlineUsers={onlineUsers}
+                messages={messages}
+                onThread={setActiveThread}
+                onReact={addReaction}
+                myUserId={user?.id}
+              />
             ))}
 
             {/* Typing indicator */}
             {typingDisplay.length > 0 && (
-              <div className="msg-row opacity-60">
-                <div className="w-8" />
-                <div className="flex items-center gap-4 py-2 pl-4">
-                  <div className="flex gap-1">
-                    <div className="typing-dot"/><div className="typing-dot"/><div className="typing-dot"/>
-                  </div>
-                  <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500">
-                    {typingDisplay.join(', ')} typing…
-                  </span>
+              <div className="typing-row anim-fadeIn">
+                <div className="typing-dots">
+                  <div className="typing-dot" />
+                  <div className="typing-dot" />
+                  <div className="typing-dot" />
                 </div>
+                <span className="typing-label">
+                  {typingDisplay.join(', ')} {typingDisplay.length === 1 ? 'is' : 'are'} typing…
+                </span>
               </div>
             )}
-            <div ref={endRef}/>
+
+            <div ref={endRef} />
           </div>
 
           {/* INPUT ZONE */}
-          <div className="input-zone pb-6 px-6">
-            <div className="relative max-w-4xl mx-auto">
+          <div className="input-zone">
+            <div className="input-wrap">
               {mention && (
-                <MentionDD query={mention.query} users={Object.values(onlineUsers)} selected={mentionSel} onSelect={pickMention}/>
+                <MentionDD
+                  query={mention.query}
+                  users={Object.values(onlineUsers)}
+                  selected={mentionSel}
+                  onSelect={pickMention}
+                />
               )}
-              <div className="input-box bg-[#111928] border border-white/5 rounded-[24px] overflow-hidden shadow-2xl focus-within:border-cyan-500/40 transition-all focus-within:ring-4 focus-within:ring-cyan-500/5">
-                <textarea className="w-full bg-transparent p-5 text-sm text-white outline-none resize-none placeholder:text-slate-700" 
-                  ref={textRef} rows={1}
-                  value={input} onChange={handleInput} onKeyDown={handleKeyDown}
-                  placeholder={`Transmit to #${curCh?.name || '...'} — mention with @`}/>
-                <div className="flex items-center px-5 pb-4">
-                  <div className="flex gap-2">
-                    <button className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white/5 text-slate-500 transition-colors">📎</button>
-                    <button className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white/5 text-slate-500 transition-colors">😊</button>
-                  </div>
-                  <div className="ml-auto flex items-center gap-4">
-                    <span className="text-[9px] font-mono opacity-20 hidden md:block">ENTER TO SEND · SHIFT+ENTER FOR NEWLINE</span>
-                    <button onClick={handleSend} disabled={!input.trim()} 
-                      className="bg-gradient-to-r from-cyan-400 to-teal-400 text-black px-6 py-2 rounded-2xl text-xs font-black shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/40 transition-all hover:-translate-y-0.5 disabled:opacity-20 disabled:translate-y-0">
-                      SEND ↵
-                    </button>
-                  </div>
+              <div className="input-box">
+                <textarea
+                  className="input-ta"
+                  ref={textRef}
+                  rows={1}
+                  value={input}
+                  onChange={handleInput}
+                  onKeyDown={handleKeyDown}
+                  placeholder={`Message #${curCh?.name || '…'} — use @ to mention`}
+                />
+                <div className="input-footer">
+                  <button className="tb-btn" title="Attach file">📎</button>
+                  <button className="tb-btn" title="Emoji">😊</button>
+                  <span className="hint-text" style={{ marginLeft: 8 }}>ENTER to send · SHIFT+ENTER for newline</span>
+                  <button
+                    className="send-btn"
+                    onClick={handleSend}
+                    disabled={!input.trim()}
+                  >
+                    Send ↵
+                  </button>
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* STATUS BAR */}
+          <div className="statusbar">
+            <div className="status-dot" style={{ background: 'var(--green)', boxShadow: '0 0 5px var(--green)' }} />
+            Connected
+            <span style={{ marginLeft: 4, color: 'var(--text4)' }}>·</span>
+            <span>{messages.length} messages</span>
+            <span style={{ color: 'var(--text4)' }}>·</span>
+            <span>{onlineList.length} online</span>
           </div>
         </div>
 
         {/* THREAD PANEL */}
         {activeThread && (
           <ThreadPanel
-            msg={activeThread} 
+            msg={activeThread}
             onlineUsers={onlineUsers}
             messages={messages}
-            onClose={()=>setActiveThread(null)}
-            onSend={sendMessage} 
-            onReact={addReaction}/>
+            onClose={() => setActiveThread(null)}
+            onSend={sendMessage}
+            onReact={addReaction}
+            myUserId={user?.id}
+          />
         )}
       </div>
     </>
