@@ -1904,7 +1904,6 @@ function Shell({ user, onLogout }) {
   const [knowledgeCode, setKnowledgeCode] = useState("");
 
   const channelRef = useRef(null);
-  const bcRef = useRef(null);
   const liveValTimer = useRef(null);
   const activeEditorRef = useRef(null);
   const notifTmr = useRef(null);
@@ -1916,7 +1915,6 @@ function Shell({ user, onLogout }) {
     const channel = supabase.channel("global-workspace");
     channelRef.current = channel;
     const bc = new BroadcastChannel("ckc_os_sync");
-    bcRef.current = bc;
 
     const handleMessage = ({ type, payload }) => {
       if (payload.instanceId === instanceId) return;
@@ -2036,8 +2034,6 @@ function Shell({ user, onLogout }) {
       channel.unsubscribe(); 
       lockSub.unsubscribe(); 
       window.removeEventListener("line-locked-toast", handleLockToast);
-      bc.close();
-      bcRef.current = null;
       if (!me.id.startsWith("guest_")) {
         supabase.from("line_locks").delete().eq("user_id", me.id).then();
       }
@@ -2052,25 +2048,14 @@ function Shell({ user, onLogout }) {
     }, 600);
   }, []);
 
-  // ─────────────────────────────────────────────────────────────
-  // FIX: handleLocalOp now also updates local `tabs` state with the
-  // freshly-typed fullCode (previously only remote ops updated tabs,
-  // so the local tab record went stale until a remote op echoed back).
-  // Everything else in this function is unchanged.
-  // ─────────────────────────────────────────────────────────────
   const handleLocalOp = useCallback(op => {
     if (lineLocks[cursor.line] && lineLocks[cursor.line].user_id !== me.id) { toast("Line locked by " + lineLocks[cursor.line].user_name); return; }
     const fullCode = activeEditorRef.current?._getText?.() || "";
-    // Only the op is needed to apply this change remotely; fullCode is the
-    // expensive part (whole-document serialize + whole-document diff on the
-    // receiving end), so it's omitted from the hot per-keystroke broadcast.
-    const payload = { uid: me.id, instanceId, name: me.name, lang, op, tabId: activeTab, tabName: tabs.find(t => t.id === activeTab)?.name || "scratch" };
+    const payload = { uid: me.id, instanceId, name: me.name, lang, op, tabId: activeTab, tabName: tabs.find(t => t.id === activeTab)?.name || "scratch", fullCode };
     channelRef.current?.send({ type: "broadcast", event: "op", payload });
-    bcRef.current?.postMessage({ type: "op", payload });
+    new BroadcastChannel("ckc_os_sync").postMessage({ type: "op", payload });
 
-    // keep local tab state in sync with what was just typed
     setTabs(prev => prev.map(t => t.id === activeTab ? { ...t, code: fullCode, dirty: true } : t));
-
     setOpCnt(c => c + 1);
     setCrdt(p => [{ ...op, from: "me", t: nowTs() }, ...p].slice(0, 40));
     triggerLiveValidation(fullCode, lang);
@@ -2080,7 +2065,7 @@ function Shell({ user, onLogout }) {
     setCursor({ line, col });
     const payload = { id: me.id, instanceId, name: me.name, color: me.cursorColor, line, col, lang, tabId: activeTab };
     channelRef.current?.send({ type: "broadcast", event: "cursor", payload });
-    bcRef.current?.postMessage({ type: "cursor", payload });
+    new BroadcastChannel("ckc_os_sync").postMessage({ type: "cursor", payload });
 
     try {
       if (!me.id.startsWith("guest_")) {
@@ -2129,7 +2114,7 @@ function Shell({ user, onLogout }) {
     toast(`New ${LANGS[newEdLang]?.n} editor opened`);
     const payload = { uid: me.id, instanceId, name: me.name, tab: newTab };
     channelRef.current?.send({ type: "broadcast", event: "tabSync", payload });
-    bcRef.current?.postMessage({ type: "tabSync", payload });
+    new BroadcastChannel("ckc_os_sync").postMessage({ type: "tabSync", payload });
   }, [newEdLang, switchLang, toast, me.id, me.name, instanceId]);
 
   const CMDS = [
