@@ -6,7 +6,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import MessageBubble from '../components/MessageBubble';
 
 export default function Dashboard() {
-  const { user, signOut } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
@@ -108,7 +108,7 @@ export default function Dashboard() {
 
   // Handle sign out
   const handleSignOut = async () => {
-    await signOut();
+    await logout();
     navigate('/', { replace: true });
   };
 

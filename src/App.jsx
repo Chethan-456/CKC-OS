@@ -2,12 +2,13 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { AuthProvider, useAuth } from "./pages/auth.jsx";
 import ProtectedRoute from "./components/ProtectedRoute";
 
-// Pages
+// ── Pages ─────────────────────────────────────────────────────────────────────
 import Login              from "./pages/LoginPage.jsx";
-import Dashboard          from "./pages/devchat.jsx";
+import Signup             from "./pages/SignupPage.jsx";
 import Index              from "./pages/index.jsx";
-import Ckcossupabase      from "./pages/Ckcossupabase.jsx";
-import SupabaseChat       from "./pages/SupabaseChat.jsx";
+import EditorPage         from "./pages/editor.jsx";        // ← real Yjs collab editor
+import DevChat            from "./pages/devchat.jsx";       // ← collaborative dev chat
+import SupabaseChat       from "./pages/SupabaseChat.jsx";  // ← legacy chat at /chat
 import SandBox            from "./pages/sandbox.jsx";
 import ApiTesting         from "./pages/api.jsx";
 import PerformanceMonitor from "./pages/performance.jsx";
@@ -20,12 +21,14 @@ import Cognitive          from "./pages/cognitive.jsx";
 import Gitbridge          from "./pages/Gitbridge.jsx";
 import AIPair             from "./pages/AIPair.jsx";
 
-// ── /login and /auth: if already logged in, go to editor ─────────────────────
-function LoginWithRedirect() {
+// ── Auth-aware login redirect ─────────────────────────────────────────────────
+// Sends already-logged-in users to their intended destination.
+function LoginWithRedirect({ mode }) {
   const { user } = useAuth();
   const location = useLocation();
   const destination = location.state?.from || "/editor";
   if (user) return <Navigate to={destination} replace />;
+  if (mode === "signup") return <Signup />;
   return <Login />;
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -33,24 +36,44 @@ function LoginWithRedirect() {
 function AppRoutes() {
   const { loading } = useAuth();
 
+  // Show a full-screen spinner while the Supabase session is resolving —
+  // this prevents ProtectedRoute from incorrectly redirecting to "/" on load.
   if (loading) {
     return (
-      <div className="loading-screen">
-        <div className="spinner spinner-lg" />
-        <span className="loading-screen-text">Loading CKC-OS...</span>
+      <div style={{
+        height: "100vh", display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        background: "#0d0f14", gap: 16,
+      }}>
+        <div style={{
+          width: 40, height: 40, border: "3px solid rgba(79,193,255,.1)",
+          borderTopColor: "#4FC1FF", borderRadius: "50%",
+          animation: "spin .7s linear infinite",
+        }} />
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+        <span style={{ color: "#4a5568", fontFamily: "monospace", fontSize: 13 }}>
+          Loading CKC-OS…
+        </span>
       </div>
     );
   }
 
   return (
     <Routes>
-      {/* ── Public — no login needed ── */}
+      {/* ── Public — accessible without login ── */}
       <Route path="/"           element={<Index />} />
       <Route path="/login"      element={<LoginWithRedirect />} />
+      <Route path="/signup"     element={<LoginWithRedirect mode="signup" />} />
       <Route path="/auth"       element={<LoginWithRedirect />} />
+
+      {/* ── Module pages — no auth required ── */}
       <Route path="/chat"       element={<SupabaseChat />} />
-      <Route path="/devchat"    element={<Dashboard />} />
-      <Route path="/dashboard"  element={<Dashboard />} />
+      <Route path="/devchat"    element={
+        <ProtectedRoute><DevChat /></ProtectedRoute>
+      } />
+      <Route path="/dashboard"  element={
+        <ProtectedRoute><DevChat /></ProtectedRoute>
+      } />
       <Route path="/sandbox"    element={<SandBox />} />
       <Route path="/api"        element={<ApiTesting />} />
       <Route path="/performance"element={<PerformanceMonitor />} />
@@ -63,12 +86,12 @@ function AppRoutes() {
       <Route path="/gitbridge"  element={<Gitbridge />} />
       <Route path="/aipair"     element={<AIPair />} />
 
-      {/* ── Protected — login required only for editor ── */}
+      {/* ── Protected — login required for the live editor ── */}
       <Route path="/editor" element={
-        <ProtectedRoute><Ckcossupabase /></ProtectedRoute>
+        <ProtectedRoute><EditorPage /></ProtectedRoute>
       } />
 
-      {/* ── 404 ── */}
+      {/* ── 404 fallback ── */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
