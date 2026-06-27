@@ -434,12 +434,18 @@ export const authStore = {
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user,  setUserState]  = useState(null);
+  const [user,  setUserState]  = useState(() => loadSession());
+  const [loading, setLoading]  = useState(true);
   const [prefs, setPrefsState] = useState(() => loadPrefs());
   const [stats, setStatsState] = useState(() => loadStats());
 
   // ── Supabase session bootstrap (from v1) ──────────────────
   useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) _applySupabaseSession(session);
+      setLoading(false);
+    });
+
     // Keep in sync with Supabase auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
@@ -448,6 +454,7 @@ export function AuthProvider({ children }) {
         // Only wipe if user was a Supabase user (not a guest)
         setUserState(prev => (prev && !prev.isGuest) ? null : prev);
       }
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
@@ -567,7 +574,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const value = {
-    user, prefs, stats,
+    user, loading, prefs, stats,
     login, loginLocal, loginGuest, logout,
     updateUser, updatePref, updateStats, resetPrefs,
   };
@@ -590,7 +597,8 @@ export function useAuth() {
 // ─── ProtectedRoute (router-safe, from v2) ───────────────────
 // Works inside and outside a RouterProvider — falls back gracefully.
 export function ProtectedRoute({ children, fallback }) {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  if (loading) return null;
   if (user) return children;
   // Try react-router Navigate; if unavailable, use window redirect
   try {
