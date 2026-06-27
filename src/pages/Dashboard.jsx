@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from './auth.jsx';
 import { supabase } from '../lib/supabase.js';
 import ThemeToggle from '../components/ThemeToggle';
 import MessageBubble from '../components/MessageBubble';
