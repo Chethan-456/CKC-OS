@@ -13,18 +13,19 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Server is missing GROQ_API_KEY" });
   }
 
-  const { messages, langName, userCode } = req.body || {};
+  const { messages, currentIssue, langName, userCode } = req.body || {};
   if (!Array.isArray(messages)) {
     return res.status(400).json({ error: "messages array is required" });
   }
 
-  const systemPrompt =
-    "You are an expert debugging assistant helping developers fix code issues.\n" +
-    "Language: " + (langName || "unknown") + "\n" +
-    (userCode
-      ? "\nUser's code context:\n```\n" + userCode + "\n```"
-      : "") +
-    "\n\nProvide clear, concise debugging help. Use code blocks when showing code examples.";
+  const systemPrompt = `You are an expert debugging assistant helping developers fix code issues.
+Current issue being debugged:
+- Type: ${currentIssue?.type || "unknown"}
+- Message: ${currentIssue?.text || "unknown"}
+- Language: ${langName || "unknown"}
+${userCode ? `\nUser's code context:\n\`\`\`\n${userCode}\n\`\`\`` : ""}
+
+Provide clear, concise debugging help. Use code blocks when showing code examples.`;
 
   const groqMessages = messages
     .filter(

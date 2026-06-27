@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { authStore, PALETTE, LANGS, LK, initials, genSid } from "../constants.js";
-import { useAuth } from "./auth.jsx";
+import { useAuth } from "../context/AuthContext";
 
 
 
