@@ -788,6 +788,24 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 .cp-row:hover,.cp-row.hi{background:var(--sel);}
 .toast{position:fixed;bottom:30px;right:14px;background:var(--bg3);border:1px solid var(--bdr);border-radius:6px;padding:8px 14px;font-size:12px;z-index:999;max-width:300px;box-shadow:0 6px 24px rgba(0,0,0,.5);animation:fadeIn .2s ease both;}
 
+/* ── NEW FILE MODAL ── */
+.nf-ov{position:fixed;inset:0;z-index:950;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;}
+.nf-box{width:520px;max-width:calc(100vw - 24px);background:#0e1117;border:1px solid rgba(79,193,255,.18);border-radius:14px;overflow:hidden;box-shadow:0 0 0 1px rgba(79,193,255,.06),0 32px 80px rgba(0,0,0,.9);animation:errSlide .2s cubic-bezier(.34,1.2,.64,1) both;}
+.nf-head{padding:14px 18px 10px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:10px;}
+.nf-title{font-size:14px;font-weight:700;color:#fff;flex:1;}
+.nf-close{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--txt2);font-size:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);transition:all .15s;}
+.nf-close:hover{background:rgba(255,99,99,.12);color:#ff6363;border-color:rgba(255,99,99,.2);}
+.nf-sub{font-size:11px;color:var(--txt2);padding:8px 18px 6px;}
+.nf-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px 18px 18px;}
+.nf-card{display:flex;flex-direction:column;align-items:center;gap:7px;padding:14px 8px 12px;border-radius:10px;cursor:pointer;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);transition:all .18s cubic-bezier(.34,1.2,.64,1);}
+.nf-card:hover{transform:translateY(-3px) scale(1.04);border-color:var(--lang-c);background:rgba(255,255,255,.05);box-shadow:0 8px 24px rgba(0,0,0,.4),0 0 0 1px var(--lang-c);}
+.nf-ic{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;font-family:var(--mono);flex-shrink:0;transition:all .18s;}
+.nf-card:hover .nf-ic{transform:scale(1.1);}
+.nf-name{font-size:11px;font-weight:600;color:var(--txt2);transition:color .15s;text-align:center;}
+.nf-card:hover .nf-name{color:#fff;}
+.nf-btn{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:6px;background:rgba(79,193,255,.1);border:1px solid rgba(79,193,255,.25);color:#4FC1FF;font-size:11px;font-weight:700;cursor:pointer;transition:all .18s;flex-shrink:0;white-space:nowrap;}
+.nf-btn:hover{background:rgba(79,193,255,.2);border-color:#4FC1FF;transform:translateY(-1px);box-shadow:0 4px 12px rgba(79,193,255,.15);}
+
 /* ── VALIDATION BADGE ── */
 .val-pass{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;background:rgba(78,201,176,.08);border:1px solid rgba(78,201,176,.2);font-size:10px;font-weight:700;color:#4EC9B0;flex-shrink:0;}
 .val-fail{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;background:rgba(255,107,157,.1);border:1px solid rgba(255,107,157,.25);font-size:10px;font-weight:700;color:#FF6B9D;flex-shrink:0;}
@@ -1811,6 +1829,7 @@ function Shell({ user, onLogout }) {
   const [connectedCount, setConnectedCount] = useState(1);
   const [liveValidation, setLiveValidation] = useState(null);
   const [showDebugRoom, setShowDebugRoom] = useState(false);
+  const [showNewFileModal, setShowNewFileModal] = useState(false);
   const [showServerLogs, setShowServerLogs] = useState(false);
   const [mobilePanelTab, setMobilePanelTab] = useState("editor");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -2278,6 +2297,39 @@ function Shell({ user, onLogout }) {
       <ErrorPopup error={errPopup?.msg || null} lang={errPopup?.lang || lang} onClose={() => setErrPopup(null)} onOpenOutput={() => { setOutOpen(true); setOutTab("output"); }} />
       {showDebugRoom && <DebuggingRoom errors={liveValidation?.errors || []} warnings={liveValidation?.warnings || []} lang={lang} me={me} onLocalOp={handleLocalOp} onClose={() => setShowDebugRoom(false)} />}
       {showServerLogs && <LiveServerLogs onClose={() => setShowServerLogs(false)} />}
+      {showNewFileModal && (
+        <div className="nf-ov" onClick={() => setShowNewFileModal(false)}>
+          <div className="nf-box" onClick={e => e.stopPropagation()}>
+            <div className="nf-head">
+              <div className="nf-title">📄 Create New File</div>
+              <div className="nf-close" onClick={() => setShowNewFileModal(false)}>✕</div>
+            </div>
+            <div className="nf-sub">Choose a language to open a new collaborative editor</div>
+            <div className="nf-grid">
+              {LK.map(lk => {
+                const l = LANGS[lk];
+                return (
+                  <div
+                    key={lk}
+                    className="nf-card"
+                    style={{ "--lang-c": l.c }}
+                    onClick={() => {
+                      const newId = `untitled-${Date.now()}.${lk}`;
+                      setTabs(prev => [...prev, { id: newId, name: newId, lang: lk, code: "" }]);
+                      setActiveTab(newId);
+                      setLang(lk);
+                      setShowNewFileModal(false);
+                    }}
+                  >
+                    <div className="nf-ic" style={{ background: l.bg, color: l.c }}>{l.ic}</div>
+                    <div className="nf-name">{l.n}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="topbar">
         <div className="tb-logo"><div className="gem">⚡</div><span>CKC-OS</span></div>
@@ -2343,25 +2395,10 @@ function Shell({ user, onLogout }) {
                 </div>
               );
             })}
-            <div style={{ marginLeft: 8, paddingBottom: 6 }}>
-              <select 
-                style={{ background: "#1c1f28", color: "#8892a4", border: "1px solid var(--bdr)", borderRadius: 4, padding: "2px 6px", fontSize: 11, outline: "none", cursor: "pointer" }}
-                value=""
-                onChange={(e) => {
-                  if (!e.target.value) return;
-                  const newLang = e.target.value;
-                  const newId = `untitled-${Date.now()}.${newLang}`;
-                  setTabs(prev => [...prev, { id: newId, name: newId, lang: newLang, code: "" }]);
-                  setActiveTab(newId);
-                  setLang(newLang);
-                  e.target.value = "";
-                }}
-              >
-                <option value="" disabled>+ New File</option>
-                {LK.map(lk => (
-                  <option key={lk} value={lk}>{LANGS[lk].n}</option>
-                ))}
-              </select>
+            <div style={{ display: "flex", alignItems: "center", paddingBottom: 6, marginLeft: 6, flexShrink: 0 }}>
+              <button className="nf-btn" onClick={() => setShowNewFileModal(true)}>
+                <span style={{ fontSize: 14, lineHeight: 1 }}>+</span> New File
+              </button>
             </div>
           </div>
           <div className="bc">
