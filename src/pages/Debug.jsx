@@ -331,7 +331,30 @@ function DebuggingRoomModal({ isOpen, onClose, lang: initialLang = "ts", isFullP
           </div>
 
           <div className="dbgm-code-area">
-            <div className="dbgm-code-area-label">Paste code context (optional)</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "3px" }}>
+              <div className="dbgm-code-area-label" style={{ margin: 0 }}>Paste code context (optional)</div>
+              <select
+                value={lang}
+                onChange={(e) => setLang(e.target.value)}
+                style={{
+                  background: "rgba(0,0,0,.4)",
+                  border: "1px solid rgba(78,201,176,.2)",
+                  borderRadius: "4px",
+                  color: "var(--teal)",
+                  fontSize: "9px",
+                  fontFamily: "var(--mono)",
+                  padding: "1px 5px",
+                  outline: "none",
+                  cursor: "pointer",
+                }}
+              >
+                {Object.entries(LANGS).map(([k, v]) => (
+                  <option key={k} value={k} style={{ background: "#0f1219", color: "var(--text)" }}>
+                    {v.n}
+                  </option>
+                ))}
+              </select>
+            </div>
             <textarea
               className="dbgm-code-input"
               value={userCode}

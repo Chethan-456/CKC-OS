@@ -61,7 +61,7 @@ export default async function handler(req, res) {
       const driver = getDriver();
       const session = driver.session();
       try {
-        await session.writeTransaction(async (tx) => {
+        await session.executeWrite(async (tx) => {
           await tx.run(
             `CREATE (g:CodeGraph {
                id:$id, name:$name, language:$language, code:$code, savedAt:$savedAt,

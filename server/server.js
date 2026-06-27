@@ -342,7 +342,7 @@ app.post("/api/graphs", async (req, res) => {
   const label = name || `${language || "unknown"} — ${new Date().toLocaleTimeString()}`;
   const session = driver.session();
   try {
-    await session.writeTransaction(async (tx) => {
+    await session.executeWrite(async (tx) => {
       await tx.run(
         `CREATE (g:CodeGraph { id:$id, name:$name, language:$language, code:$code, savedAt:$savedAt,
            conceptCount:$cc, errorCount:$ec, fixCount:$fc, explanationCount:$xc })`,
@@ -474,9 +474,6 @@ app.patch("/api/graphs/:id/nodes/:nodeLocalId", async (req, res) => {
   const globalNodeId = `${id}__${nodeLocalId}`;
   const setClauses = [];
   const params = { nodeId: globalNodeId };
-  const setClauses   = [];
-  const params       = { nodeId: globalNodeId };
-  const setClauses = [], params = { nodeId: globalNodeId };
   if (label != null) { setClauses.push("n.label = $label"); params.label = label.trim(); }
   if (desc  != null) { setClauses.push("n.desc  = $desc");  params.desc  = desc.trim(); }
   try {
@@ -494,13 +491,6 @@ app.patch("/api/graphs/:id/nodes/:nodeLocalId", async (req, res) => {
 
 // GET /health
 app.get("/health", (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
-
-// ─── Start ────────────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀  Server running on http://localhost:${PORT}`));
-server.on("error", (err) => {
-  if (err.code === "EADDRINUSE") {
-    console.error(`❌ Port ${PORT} already in use. Run: kill $(lsof -t -i:${PORT})`);
 // ═══════════════════════════════════════════════════════════════════════════════
 //  SECTION 4 — Performance monitor: data collectors
 // ═══════════════════════════════════════════════════════════════════════════════
