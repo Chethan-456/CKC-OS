@@ -1,14 +1,3 @@
-/**
- * App.jsx  —  FIXED
- *
- * The /login and /auth routes now read location.state.from so that after
- * a successful login the user lands on the module they originally clicked,
- * not always on /chat.
- *
- * Only the /login and /auth redirect targets changed.
- * Everything else (routes, ProtectedRoute usage) is identical to before.
- */
-
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./pages/auth.jsx";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -25,29 +14,28 @@ import PerformanceMonitor from "./pages/performance.jsx";
 import Behavior           from "./pages/behavior.jsx";
 import Knowledge          from "./pages/Knowledge.jsx";
 import AiMentor           from "./pages/AiMentor.jsx";
-import Auth               from "./pages/auth.jsx";
 import Debug              from "./pages/Debug.jsx";
 import Logs               from "./pages/Logs.jsx";
 import Cognitive          from "./pages/cognitive.jsx";
 import Gitbridge          from "./pages/Gitbridge.jsx";
 import AIPair             from "./pages/AIPair.jsx";
 
-// ─── small wrapper so /login and /auth can read location.state.from ───────────
+// ── After login, send user to where they originally wanted to go ──────────────
 function LoginWithRedirect() {
   const { user } = useAuth();
   const location = useLocation();
-  // After login, go to where they originally wanted — fallback to /chat
-  const destination = location.state?.from || "/chat";
+  const destination = location.state?.from || "/editor";
   if (user) return <Navigate to={destination} replace />;
   return <Login />;
 }
 
+// /auth also shows the login page — same redirect logic
 function AuthWithRedirect() {
   const { user } = useAuth();
   const location = useLocation();
-  const destination = location.state?.from || "/chat";
+  const destination = location.state?.from || "/editor";
   if (user) return <Navigate to={destination} replace />;
-  return <Auth />;
+  return <Login />;   // ← LOGIN page, not the debug Auth component
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -58,7 +46,7 @@ function AppRoutes() {
     return (
       <div className="loading-screen">
         <div className="spinner spinner-lg" />
-        <span className="loading-screen-text">Loading ChatFlow...</span>
+        <span className="loading-screen-text">Loading CKC-OS...</span>
       </div>
     );
   }
@@ -66,9 +54,7 @@ function AppRoutes() {
   return (
     <Routes>
       {/* ── Public ── */}
-      <Route path="/" element={<Index />} />
-
-      {/* FIXED: use wrapper components so state.from is preserved */}
+      <Route path="/"      element={<Index />} />
       <Route path="/login" element={<LoginWithRedirect />} />
       <Route path="/auth"  element={<AuthWithRedirect />} />
 
@@ -133,7 +119,7 @@ function AppRoutes() {
         <ProtectedRoute><AIPair /></ProtectedRoute>
       } />
 
-      {/* ── 404 — keep at bottom ── */}
+      {/* ── 404 ── */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
