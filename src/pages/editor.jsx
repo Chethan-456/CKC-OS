@@ -99,7 +99,7 @@ function Shell({ user, onLogout }) {
   const activeEditorRef = useRef(null);
   const notifTmr = useRef(null);
 
-  const getEng = useCallback((lk) => WS.eng(lk), []);
+  const getStartText = useCallback((lk) => STARTERS[lk] || "", []);
   const toast = useCallback((msg, ms = 2500) => { clearTimeout(notifTmr.current); setNotif(msg); notifTmr.current = setTimeout(() => setNotif(null), ms); }, []);
 
   useEffect(() => {
@@ -280,7 +280,7 @@ function Shell({ user, onLogout }) {
     const currentTab = tabs.find(t => t.id === activeTab);
     const cLang = currentTab?.lang || lang;
     let code = activeEditorRef.current?._getText?.() || "";
-    if (!code.trim()) code = getEng(cLang).text;
+    if (!code.trim()) code = getStartText(cLang);
     setOutput(`⟳  Validating ${LANGS[cLang]?.n || cLang} syntax…`);
     setOutIsErr(false);
     try {
@@ -293,7 +293,7 @@ function Shell({ user, onLogout }) {
       setOutput(msg); setOutIsErr(true); triggerError(msg, cLang);
     }
     setRunning(false);
-  }, [lang, activeTab, tabs, getEng, pyReady, triggerError]);
+  }, [lang, activeTab, tabs, getStartText, pyReady, triggerError]);
 
   const createNewEditor = useCallback(() => {
     const id = "new-" + Date.now();
@@ -343,7 +343,7 @@ function Shell({ user, onLogout }) {
   };
 
   const activeCursors = cursors.filter(c => c.lang === lang && c.tabId === activeTab);
-  const curEng = getEng(lang);
+  const curStartText = getStartText(lang);
   const curTab = tabs.find(t => t.id === activeTab);
   const errCount = liveValidation?.errors?.length || 0;
   const warnCount = liveValidation?.warnings?.length || 0;
@@ -535,7 +535,7 @@ function Shell({ user, onLogout }) {
               ref={activeEditorRef}
               lang={lang}
               fileKey={activeTab}
-              initText={curTab?.code || getEng(lang).text}
+              initText={curTab?.code || getStartText(lang)}
               onLocalOp={handleLocalOp}
               onCursorMove={handleCursorMove}
               cursors={activeCursors}

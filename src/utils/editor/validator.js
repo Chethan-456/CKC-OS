@@ -1,6 +1,7 @@
 // ═══════════ COMPREHENSIVE MULTI-LANGUAGE VALIDATOR ═══════════
 // ═══════════════════════════════════════════════════════════════
 
+import { LANGS } from "../../constants.js";
 export function validateCode(lang, code) {
   const errors = [];
   const warnings = [];

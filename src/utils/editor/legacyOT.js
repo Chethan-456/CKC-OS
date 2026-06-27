@@ -1,4 +1,5 @@
 // ═══════════ OT ENGINE ═══════════
+const STARTERS = {};
 export class OTEngine {
   constructor(text = "") { this.text = text; this.version = 0; this.history = []; this._subs = []; }
   subscribe(fn) { this._subs.push(fn); return () => { this._subs = this._subs.filter(f => f !== fn); }; }
