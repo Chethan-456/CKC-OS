@@ -90,16 +90,27 @@ export class SupabaseYjsProvider {
         } catch { /* malformed */ }
       })
 
-      // Peer asking for our full doc state (new joiner)
+      // Peer asking for our full doc state (new joiner or periodic sync)
       .on("broadcast", { event: "yjs-sync-req" }, ({ payload }) => {
         if (!payload || payload.origin === this.origin) return;
-        const fullState = Y.encodeStateAsUpdate(this.doc);
+        
+        let update;
+        try {
+          if (payload.stateVector) {
+            update = Y.encodeStateAsUpdate(this.doc, new Uint8Array(payload.stateVector));
+          } else {
+            update = Y.encodeStateAsUpdate(this.doc);
+          }
+        } catch {
+          update = Y.encodeStateAsUpdate(this.doc);
+        }
+
         const awState   = encodeAwarenessUpdate(
           this.awareness,
           Array.from(this.awareness.getStates().keys())
         );
         this._send("yjs-sync-resp", {
-          update:   Array.from(fullState),
+          update:   Array.from(update),
           awUpdate: Array.from(awState),
           to:       payload.origin,
         });
@@ -129,13 +140,21 @@ export class SupabaseYjsProvider {
           for (const update of this._queue) this._sendDocUpdate(update);
           this._queue = [];
 
-          // Ask peers for the current full doc state
-          this._send("yjs-sync-req", { origin: this.origin });
+          // Start periodic state vector sync to heal dropped UDP-like broadcast packets
+          this._sendSyncReq();
+          this._healInterval = setInterval(() => this._sendSyncReq(), 2500);
         }
       });
   }
 
   // ── Internal helpers ──────────────────────────────────────────────────
+
+  _sendSyncReq() {
+    try {
+      const sv = Y.encodeStateVector(this.doc);
+      this._send("yjs-sync-req", { origin: this.origin, stateVector: Array.from(sv) });
+    } catch { /* ignore */ }
+  }
 
   _sendDocUpdate(update) {
     this._send("yjs-update", { update: Array.from(update), origin: this.origin });
@@ -161,6 +180,7 @@ export class SupabaseYjsProvider {
 
   destroy() {
     clearTimeout(this._autoSyncTimer);
+    clearInterval(this._healInterval);
     this.doc.off("update", this._onDocUpdate);
     this.awareness.off("update", this._onAwarenessUpdate);
     window.removeEventListener("beforeunload", this._handleBeforeUnload);
