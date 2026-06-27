@@ -1611,6 +1611,16 @@ function Shell({ user, onLogout }) {
     email: user?.email || "",
   };
   const sid = user?.sid || "default-session";
+  const [currentRoom, setCurrentRoom] = useState(() => {
+    const query = new URLSearchParams(window.location.search);
+    const r = query.get("room") || query.get("session");
+    if (r) return r;
+    // Generate a secure, unique room code if none is provided in the URL
+    const newRoom = user?.sid || Math.random().toString(36).substring(7);
+    const newUrl = `${window.location.pathname}?room=${newRoom}`;
+    window.history.replaceState(null, "", newUrl);
+    return newRoom;
+  });
   const myId = useRef(user.id);
   const instanceId = useRef(Math.random().toString(36).substring(7)).current;
   const [cursors, setCursors] = useState([]);
@@ -1659,8 +1669,8 @@ function Shell({ user, onLogout }) {
   const toast = useCallback((msg, ms = 2500) => { clearTimeout(notifTmr.current); setNotif(msg); notifTmr.current = setTimeout(() => setNotif(null), ms); }, []);
 
   useEffect(() => {
-    const provider = new SupabaseYjsProvider(supabase, `session-${sid}`, ydocRef.current, {
-      user: { name: me.name, color: me.cursorColor },
+    const provider = new SupabaseYjsProvider(supabase, `session-${currentRoom}`, ydocRef.current, {
+      user: { name: me.name, color: me.cursorColor, bg: me.bg },
     });
     providerRef.current = provider;
     setProviderReady(true);
@@ -1691,7 +1701,7 @@ function Shell({ user, onLogout }) {
       provider.destroy();
       setProviderReady(false);
     };
-  }, [sid]);
+  }, [currentRoom]);
 
   // Mirror Y.Doc updates into the OT/CRDT side panel (cosmetic)
   useEffect(() => {
@@ -1874,7 +1884,30 @@ function Shell({ user, onLogout }) {
       <div style={{ padding: "8px 12px" }}>
         <div style={{ fontSize: 10, color: "#4a5568", marginBottom: 4, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em" }}>Session</div>
         <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "#6a7585", lineHeight: 1.8 }}>
-          <div>ID: <span style={{ color: "#4FC1FF" }}>{sid.slice(0, 8)}</span></div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 4 }}>
+            <span>Room: <span style={{ color: "#4FC1FF", fontWeight: 700 }}>{currentRoom}</span></span>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(window.location.href);
+                toast("Share link copied to clipboard!");
+              }}
+              style={{
+                background: "rgba(79,193,255,.08)",
+                border: "1px solid rgba(79,193,255,.25)",
+                color: "#4FC1FF",
+                padding: "2px 6px",
+                borderRadius: "4px",
+                fontSize: "9px",
+                cursor: "pointer",
+                fontWeight: "bold",
+                transition: "all 0.1s"
+              }}
+              onMouseOver={(e) => e.target.style.background = "rgba(79,193,255,.18)"}
+              onMouseOut={(e) => e.target.style.background = "rgba(79,193,255,.08)"}
+            >
+              Copy Link
+            </button>
+          </div>
           <div>Ops: <span style={{ color: "#4EC9B0" }}>{opCnt}</span></div>
         </div>
       </div>

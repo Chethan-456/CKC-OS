@@ -38,11 +38,11 @@ const CMEditorYjs = forwardRef(({ lang, fileKey, ytext, awareness, onTextChange,
     (async () => {
       try {
         const [
-          { EditorState },
+          { EditorState, RangeSetBuilder },
           {
             EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
             drawSelection, dropCursor, rectangularSelection, crosshairCursor,
-            highlightSpecialChars, indentOnInput,
+            highlightSpecialChars, indentOnInput, ViewPlugin, Decoration,
           },
           { defaultKeymap, history, historyKeymap, indentWithTab },
           { searchKeymap, highlightSelectionMatches },
@@ -101,6 +101,63 @@ const CMEditorYjs = forwardRef(({ lang, fileKey, ytext, awareness, onTextChange,
           }
         });
 
+        // Highlights remote users' active editing lines with their assigned presence color
+        const remoteLineHighlighter = ViewPlugin.fromClass(class {
+          constructor(view) {
+            this.decorations = this.getDecorations(view);
+            this.listener = () => {
+              view.dispatch({ effects: [] });
+            };
+            awareness.on("change", this.listener);
+          }
+          update(update) {
+            if (update.docChanged || update.selectionSet || update.viewportChanged) {
+              this.decorations = this.getDecorations(update.view);
+            }
+          }
+          destroy() {
+            awareness.off("change", this.listener);
+          }
+          getDecorations(view) {
+            const builder = new RangeSetBuilder();
+            const states = Array.from(awareness.getStates().entries());
+            const localClientId = awareness.doc.clientID;
+            const lineHighlights = [];
+
+            for (const [clientId, s] of states) {
+              if (clientId === localClientId) continue;
+              if (s.cursor && s.user && s.cursor.tabId === fileKey) {
+                const lineNum = s.cursor.line;
+                if (lineNum && s.user.color) {
+                  lineHighlights.push({ lineNum, color: s.user.color });
+                }
+              }
+            }
+
+            lineHighlights.sort((a, b) => a.lineNum - b.lineNum);
+
+            for (const hl of lineHighlights) {
+              try {
+                if (hl.lineNum <= view.state.doc.lines) {
+                  const line = view.state.doc.line(hl.lineNum);
+                  builder.add(
+                    line.from,
+                    line.from,
+                    Decoration.line({
+                      attributes: {
+                        style: `background-color: ${hl.color}0f; border-left: 3px solid ${hl.color}`
+                      }
+                    })
+                  );
+                }
+              } catch (e) {}
+            }
+            return builder.finish();
+          }
+        }, {
+          decorations: v => v.decorations
+        });
+
         const mkExt = lk => {
           const b = [
             lineNumbers(), highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(),
@@ -110,6 +167,7 @@ const CMEditorYjs = forwardRef(({ lang, fileKey, ytext, awareness, onTextChange,
             keymap.of([indentWithTab, ...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap]),
             LM[lk] || LM.ts, oneDark, theme, listener, EditorView.lineWrapping,
             yCollab(ytext, awareness),
+            remoteLineHighlighter,
           ];
           if (readOnly) b.push(EditorView.editable.of(false));
           return b;
