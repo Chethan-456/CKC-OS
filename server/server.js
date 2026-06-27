@@ -18,6 +18,7 @@ import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import { WebSocketServer } from "ws";
 import { initChatServer } from "./chat.js";
+import { setupWSConnection } from "y-websocket/bin/utils";
 
 // ─── Startup diagnostics ──────────────────────────────────────────────────────
 console.log("─────────────────────────────────────────────");
@@ -188,58 +189,6 @@ io.on("connection", (socket) => {
     io.to(`chat:${newChannel}`).emit("chat:online_users", newOnline);
   });
 
-  // ── EDITOR (OT) EVENTS ─────────────────────────────────────────────────────
-
-  // Editor: user joins
-  socket.on("editor:join", ({ name, color, lang = "ts" }) => {
-    const username = typeof name === "string" ? name.trim().slice(0, 32) : "";
-    const userColor = typeof color === "string" && /^#[0-9A-Fa-f]{6}$/.test(color) ? color : "#4FC1FF";
-    const ALLOWED_LANGS = new Set(["ts","js","py","java","cpp","rs","go","sql"]);
-    const userLang = ALLOWED_LANGS.has(lang) ? lang : "ts";
-    if (!username) { socket.emit("error", { message: "Authentication required." }); socket.disconnect(true); return; }
-
-    editorUsers.set(socket.id, { name: username, color: userColor, lang: userLang });
-    const eng = getOTEngine(userLang);
-    socket.emit("editor:sync", { lang: userLang, text: eng.text, ver: eng.version });
-    socket.broadcast.emit("editor:presence", { id: socket.id, name: username, color: userColor, online: true });
-    const userList = [...editorUsers.entries()].map(([id, u]) => ({ id, ...u }));
-    socket.emit("editor:user_list", userList);
-    console.log(`✏️  Editor joined: ${username} [${socket.id}]`);
-  });
-
-  // Editor: OT operation
-  socket.on("editor:op", ({ lang, op }) => {
-    const user = editorUsers.get(socket.id);
-    if (!user || typeof op !== "object" || !op) return;
-    const ALLOWED_LANGS = new Set(["ts","js","py","java","cpp","rs","go","sql"]);
-    const safeLang = ALLOWED_LANGS.has(lang) ? lang : user.lang;
-    if (!["insert","delete"].includes(op.type) || typeof op.pos !== "number" || op.pos < 0) return;
-    if (op.type === "insert" && typeof op.chars !== "string") return;
-    if (op.type === "delete" && typeof op.len !== "number") return;
-    const eng = getOTEngine(safeLang);
-    const applied = eng.apply({ ...op, uid: socket.id });
-    if (applied) socket.broadcast.emit("editor:op", { lang: safeLang, op: applied, ver: eng.version });
-  });
-
-  // Editor: switch language
-  socket.on("editor:switch_lang", ({ lang }) => {
-    const user = editorUsers.get(socket.id);
-    const ALLOWED_LANGS = new Set(["ts","js","py","java","cpp","rs","go","sql"]);
-    if (!user || !ALLOWED_LANGS.has(lang)) return;
-    editorUsers.set(socket.id, { ...user, lang });
-    const eng = getOTEngine(lang);
-    socket.emit("editor:sync", { lang, text: eng.text, ver: eng.version });
-  });
-
-  // Editor: cursor broadcast
-  socket.on("editor:cursor", ({ line, col, lang }) => {
-    const user = editorUsers.get(socket.id);
-    if (!user || typeof line !== "number" || typeof col !== "number") return;
-    const ALLOWED_LANGS = new Set(["ts","js","py","java","cpp","rs","go","sql"]);
-    const safeLang = ALLOWED_LANGS.has(lang) ? lang : user.lang;
-    socket.broadcast.emit("editor:cursor", { id: socket.id, name: user.name, color: user.color, line, col, lang: safeLang });
-  });
-
   // ── DISCONNECT ─────────────────────────────────────────────────────────────
   socket.on("disconnect", () => {
     // Chat cleanup
@@ -248,14 +197,6 @@ io.on("connection", (socket) => {
       delete chatUsers[socket.id];
       const inChannel = Object.values(chatUsers).filter(u => u.channel === chatUser.channel);
       io.to(`chat:${chatUser.channel}`).emit("chat:online_users", inChannel);
-    }
-
-    // Editor cleanup
-    const editorUser = editorUsers.get(socket.id);
-    if (editorUser) {
-      socket.broadcast.emit("editor:presence", { id: socket.id, online: false });
-      editorUsers.delete(socket.id);
-      console.log(`👋 Editor left: ${editorUser.name} [${socket.id}]`);
     }
 
     console.log("🔌 Socket disconnected:", socket.id);
@@ -913,6 +854,10 @@ app.get("/api/chat/health", (_req, res) => res.json({ ok: true }));
 // ── Metrics WebSocket (path "/metrics") ────────────────────────────────────────
 const metricsWss = new WebSocketServer({ noServer: true });
 
+// ── Yjs Collaboration WebSocket (path "/yjs") ──────────────────────────────────
+const yjsWss = new WebSocketServer({ noServer: true });
+yjsWss.on("connection", setupWSConnection);
+
 metricsWss.on("connection", (ws) => {
   console.log("[Metrics WS] Client connected");
   if (metricsHistory.length > 0)
@@ -948,7 +893,11 @@ const chatWss = initChatServer();
 server.on('upgrade', (request, socket, head) => {
   const { pathname } = new URL(request.url, 'http://localhost');
 
-  if (pathname === '/metrics') {
+  if (pathname.startsWith('/yjs')) {
+    yjsWss.handleUpgrade(request, socket, head, (ws) => {
+      yjsWss.emit('connection', ws, request);
+    });
+  } else if (pathname === '/metrics') {
     metricsWss.handleUpgrade(request, socket, head, (ws) => {
       metricsWss.emit('connection', ws, request);
     });

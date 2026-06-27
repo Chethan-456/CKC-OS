@@ -5,6 +5,42 @@ import { useAuth } from "./auth.jsx";
 import KnowledgeGraphEngine from "./Knowledge.jsx";
 
 import { authStore, PALETTE, LANGS, LK, initials, genSid } from "../constants.js";
+import * as Y from "yjs";
+import { WebsocketProvider } from "y-websocket";
+import { yCollab } from "y-codemirror.next";
+import { EditorState } from "@codemirror/state";
+import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars } from "@codemirror/view";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
+import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
+import { foldGutter, foldKeymap, bracketMatching, syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
+import { javascript } from "@codemirror/lang-javascript";
+import { python } from "@codemirror/lang-python";
+import { java } from "@codemirror/lang-java";
+import { cpp } from "@codemirror/lang-cpp";
+import { rust } from "@codemirror/lang-rust";
+import { go } from "@codemirror/lang-go";
+import { sql } from "@codemirror/lang-sql";
+import { oneDark } from "@codemirror/theme-one-dark";
+
+import * as Y from "yjs";
+import { WebsocketProvider } from "y-websocket";
+import { yCollab } from "y-codemirror.next";
+import { EditorState } from "@codemirror/state";
+import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars } from "@codemirror/view";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
+import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
+import { foldGutter, foldKeymap, bracketMatching, syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
+import { javascript } from "@codemirror/lang-javascript";
+import { python } from "@codemirror/lang-python";
+import { java } from "@codemirror/lang-java";
+import { cpp } from "@codemirror/lang-cpp";
+import { rust } from "@codemirror/lang-rust";
+import { go } from "@codemirror/lang-go";
+import { sql } from "@codemirror/lang-sql";
+import { oneDark } from "@codemirror/theme-one-dark";
+
 
 // ═══════════ HELPERS ═══════════
 function nowTs() {
@@ -552,46 +588,6 @@ export async function validateAndRun(lang, code, pyReady, setPyReady) {
   }
   return result;
 }
-
-// ═══════════ OT ENGINE ═══════════
-class OTEngine {
-  constructor(text = "") { this.text = text; this.version = 0; this.history = []; this._subs = []; }
-  subscribe(fn) { this._subs.push(fn); return () => { this._subs = this._subs.filter(f => f !== fn); }; }
-  _emit(op) { this._subs.forEach(fn => fn(op, this.text, this.version)); }
-  static xform(a, b) {
-    let r = { ...b };
-    if (a.type === "insert" && b.type === "insert") { if (a.pos < b.pos || (a.pos === b.pos && a.uid < b.uid)) r.pos = b.pos + a.chars.length; }
-    else if (a.type === "insert" && b.type === "delete") { if (a.pos <= b.pos) r.pos = b.pos + a.chars.length; }
-    else if (a.type === "delete" && b.type === "insert") { if (a.pos < b.pos) r.pos = Math.max(b.pos - a.len, a.pos); }
-    else if (a.type === "delete" && b.type === "delete") { if (a.pos < b.pos) r.pos = Math.max(b.pos - a.len, a.pos); else if (a.pos === b.pos) r.skip = true; }
-    return r;
-  }
-  apply(op) {
-    let x = { ...op };
-    const conc = this.history.filter(h => h.ver > (op.baseVer ?? this.version));
-    for (const h of conc) x = OTEngine.xform(h, x);
-    if (x.skip) return null;
-    if (x.type === "insert") { const p = Math.max(0, Math.min(x.pos, this.text.length)); this.text = this.text.slice(0, p) + x.chars + this.text.slice(p); }
-    else if (x.type === "delete") { const p = Math.max(0, Math.min(x.pos, this.text.length)); const l = Math.min(x.len, this.text.length - p); if (l > 0) this.text = this.text.slice(0, p) + this.text.slice(p + l); }
-    this.version++; const rec = { ...x, ver: this.version }; this.history.push(rec);
-    if (this.history.length > 300) this.history = this.history.slice(-150);
-    this._emit(rec); return rec;
-  }
-  reset(t) { this.text = t; this.version = 0; this.history = []; }
-}
-
-class WSManager {
-  constructor() { this.engines = new Map(); }
-  eng(lang) { if (!this.engines.has(lang)) this.engines.set(lang, new OTEngine(STARTERS[lang] || "")); return this.engines.get(lang); }
-  send(uid, msg) { console.log(`[WS] Send to ${uid}:`, msg); }
-}
-const WS = new WSManager();
-
-const BOTS = [
-  { name: "Aria K.", color: "#FF6B9D", bg: "rgba(255,107,157,0.15)", inits: "AK" },
-  { name: "Dev M.", color: "#4FC1FF", bg: "rgba(79,193,255,0.15)", inits: "DM" },
-  { name: "Sam T.", color: "#4EC9B0", bg: "rgba(78,201,176,0.15)", inits: "ST" },
-];
 
 // ═══════════ BOTS & DEBUG HELPERS ═══════════
 function generateBotAnnotation(error, lang) {
@@ -1195,247 +1191,136 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 }
 `;
 
-// ═══════════ CODEMIRROR ═══════════
-const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, cursors, myId, fileKey, readOnly = false }, ref) => {
-  const domRef = useRef(null), viewRef = useRef(null), modsRef = useRef(null);
-  const inited = useRef(false), suppress = useRef(false), prevDoc = useRef(initText || "");
-  const cursorsRef = useRef(cursors);
-  useEffect(() => { cursorsRef.current = cursors; }, [cursors]);
-  
-  useEffect(() => {
-    const api = { 
-      _getText: () => viewRef.current?.state.doc.toString() ?? prevDoc.current,
-      _applyRemoteOp: (op, fullCode) => {
-        if (!viewRef.current) return;
-        suppress.current = true;
-        try {
-          const v = viewRef.current;
-          const currentText = v.state.doc.toString();
-          
-          if (fullCode !== undefined && fullCode !== currentText) {
-            let i = 0, oe = currentText.length, ne = fullCode.length;
-            while (i < oe && i < ne && currentText[i] === fullCode[i]) i++;
-            let oe2 = oe, ne2 = ne;
-            while (oe2 > i && ne2 > i && currentText[oe2 - 1] === fullCode[ne2 - 1]) { oe2--; ne2--; }
-            v.dispatch({ changes: { from: i, to: oe2, insert: fullCode.slice(i, ne2) } });
-          } else if (fullCode === undefined) {
-            const dl = currentText.length;
-            let change = null;
-            if (op.type === "insert") change = { from: Math.max(0, Math.min(op.pos, dl)), insert: op.chars };
-            else if (op.type === "delete") {
-              const f = Math.max(0, Math.min(op.pos, dl));
-              const t = Math.min(f + op.len, dl);
-              if (t > f) change = { from: f, to: t };
-            }
-            else if (op.type === "replace") {
-              const f = Math.max(0, Math.min(op.pos, dl));
-              const t = Math.min(f + op.len, dl);
-              change = { from: f, to: t, insert: op.chars };
-            }
-            if (change) v.dispatch({ changes: change });
-          }
-          prevDoc.current = v.state.doc.toString();
-        } finally {
-          suppress.current = false;
-        }
-      }
-    };
-    if (ref) { typeof ref === "function" ? ref(api) : (ref.current = api); }
-  });
-  useEffect(() => {
-    if (inited.current || !domRef.current) return; inited.current = true;
-    (async () => {
-      try {
-        const [{ EditorState }, { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars, indentOnInput }, { defaultKeymap, history, historyKeymap, indentWithTab }, { searchKeymap, highlightSelectionMatches }, { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap }, { foldGutter, foldKeymap, bracketMatching, syntaxHighlighting, defaultHighlightStyle }, { javascript }, { python }, { java }, { cpp }, { rust }, { go }, { sql }, { oneDark }] = await Promise.all([
-          import("https://esm.sh/@codemirror/state@6.4.1"), import("https://esm.sh/@codemirror/view@6.26.3"),
-          import("https://esm.sh/@codemirror/commands@6.6.0"), import("https://esm.sh/@codemirror/search@6.5.6"),
-          import("https://esm.sh/@codemirror/autocomplete@6.17.0"), import("https://esm.sh/@codemirror/language@6.10.2"),
-          import("https://esm.sh/@codemirror/lang-javascript@6.2.2"), import("https://esm.sh/@codemirror/lang-python@6.1.6"),
-          import("https://esm.sh/@codemirror/lang-java@6.0.1"), import("https://esm.sh/@codemirror/lang-cpp@6.0.2"),
-          import("https://esm.sh/@codemirror/lang-rust@6.0.1"), import("https://esm.sh/@codemirror/lang-go@6.0.0"),
-          import("https://esm.sh/@codemirror/lang-sql@6.8.0"), import("https://esm.sh/@codemirror/theme-one-dark@6.1.2"),
-        ]);
-        const LM = { ts: javascript({ typescript: true }), js: javascript(), py: python(), java: java(), cpp: cpp(), rs: rust(), go: go(), sql: sql() };
-        const theme = EditorView.theme({
-          "&": { backgroundColor: "#0d0f14", color: "#d4d4d4", height: "100%", fontSize: "13.5px" },
-          ".cm-content": { caretColor: "#4FC1FF", fontFamily: "'JetBrains Mono',Consolas,monospace", fontSize: "13.5px", lineHeight: "21px" },
-          ".cm-cursor,.cm-dropCursor": { borderLeftColor: "#4FC1FF", borderLeftWidth: "2px" },
-          ".cm-activeLine": { backgroundColor: "rgba(79,193,255,.04)" },
-          ".cm-selectionBackground": { backgroundColor: "rgba(79,193,255,.18) !important" },
-          "&.cm-focused .cm-selectionBackground": { backgroundColor: "rgba(79,193,255,.22) !important" },
-          ".cm-gutters": { backgroundColor: "#0d0f14", borderRight: "1px solid rgba(255,255,255,.05)", color: "#4a5568", minWidth: "48px" },
-          ".cm-lineNumbers .cm-gutterElement": { minWidth: "38px", textAlign: "right", paddingRight: "10px" },
-          ".cm-activeLineGutter": { backgroundColor: "rgba(79,193,255,.04)", color: "#8892a4" },
-          ".cm-matchingBracket": { backgroundColor: "rgba(79,193,255,.15)", color: "#fff !important" },
-          ".cm-tooltip": { backgroundColor: "#1c1f28", border: "1px solid rgba(255,255,255,.1)", borderRadius: "6px", color: "#e0e0e0" },
-          ".cm-tooltip-autocomplete ul li[aria-selected]": { backgroundColor: "rgba(79,193,255,.15)" },
-        }, { dark: true });
-        
-        // ── LINE LOCKING (rewritten) ──
-        // A line is only locked-for-others while a DIFFERENT user is actively
-        // typing on that exact line — not merely because their cursor is
-        // parked there. Each remote cursor carries `typingUntil` (a short
-        // TTL timestamp, refreshed on every keystroke by its owner). We only
-        // honor locks that haven't expired, so two users who both happen to
-        // land on line 1 at file-open no longer block each other — only a
-        // line someone is *currently, actively* editing is protected, and
-        // only for the few hundred ms it takes the edit to land everywhere.
-        const lockFilter = EditorState.transactionFilter.of(tr => {
-          if (tr.docChanged && !suppress.current) {
-            let lockedBy = null;
-            let lockedLine = null;
-            const now = Date.now();
-            tr.changes.iterChangedRanges((fromA, toA) => {
-              if (lockedBy) return;
-              const startLine = tr.startState.doc.lineAt(fromA).number;
-              const endLine = tr.startState.doc.lineAt(toA).number;
-              for (let i = startLine; i <= endLine; i++) {
-                const remoteCursor = (cursorsRef.current || []).find(c =>
-                  c.id !== myId &&
-                  c.lang === lang &&
-                  c.tabId === fileKey &&
-                  c.line === i &&
-                  c.typingUntil && c.typingUntil > now
-                );
-                if (remoteCursor) {
-                  lockedBy = remoteCursor.name || "another user";
-                  lockedLine = i;
-                  break;
-                }
-              }
-            });
-            if (lockedBy) {
-              const event = new CustomEvent("line-locked-toast", { detail: { line: lockedLine, userName: lockedBy } });
-              window.dispatchEvent(event);
-              return [];
-            }
-          }
-          return tr;
-        });
+// ═══════════ CODEMIRROR (Yjs) ═══════════
+const LM = {
+  ts: javascript({ typescript: true }),
+  js: javascript(),
+  py: python(),
+  java: java(),
+  cpp: cpp(),
+  rs: rust(),
+  go: go(),
+  sql: sql()
+};
 
-        const listener = EditorView.updateListener.of(upd => {
-          if (upd.selectionSet) { const pos = upd.state.selection.main.head; const ln = upd.state.doc.lineAt(pos); onCursorMove?.(ln.number, pos - ln.from + 1, pos); }
-          if (!upd.docChanged || suppress.current || readOnly) return;
-          const newText = upd.state.doc.toString(); const old = prevDoc.current; if (newText === old) return;
-          let i = 0, oe = old.length, ne = newText.length;
-          while (i < oe && i < ne && old[i] === newText[i]) i++;
-          let oe2 = oe, ne2 = ne;
-          while (oe2 > i && ne2 > i && old[oe2 - 1] === newText[ne2 - 1]) { oe2--; ne2--; }
-          const del = old.slice(i, oe2), ins = newText.slice(i, ne2);
-          // Compute the edit's line/col straight from the NEW doc state so
-          // the caller never has to rely on React cursor state that hasn't
-          // re-rendered yet (onCursorMove above only just queued a setState
-          // this same tick — reading it back synchronously would be stale).
-          const headPos = upd.state.selection.main.head;
-          const headLine = upd.state.doc.lineAt(headPos);
-          const editLoc = { line: headLine.number, col: headPos - headLine.from + 1 };
-          if (del.length && ins.length) onLocalOp?.({ type: "replace", pos: i, len: del.length, chars: ins }, editLoc);
-          else if (del.length) onLocalOp?.({ type: "delete", pos: i, len: del.length }, editLoc);
-          else if (ins.length) onLocalOp?.({ type: "insert", pos: i, chars: ins }, editLoc);
-          prevDoc.current = newText;
-        });
-        modsRef.current = { EditorState, EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars, indentOnInput, history, historyKeymap, indentWithTab, searchKeymap, highlightSelectionMatches, autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, foldGutter, foldKeymap, bracketMatching, syntaxHighlighting, defaultHighlightStyle, oneDark, theme, lockFilter, listener, LM };
-        const mkExt = lk => {
-          const b = [lineNumbers(), highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(), history(), foldGutter(), drawSelection(), dropCursor(), bracketMatching(), closeBrackets(), autocompletion(), rectangularSelection(), crosshairCursor(), highlightSelectionMatches(), indentOnInput(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }), keymap.of([indentWithTab, ...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap]), LM[lk] || LM.ts, oneDark, theme, lockFilter, listener, EditorView.lineWrapping];
-          if (readOnly) b.push(EditorView.editable.of(false)); return b;
-        };
-        const view = new EditorView({ state: EditorState.create({ doc: initText || "", extensions: mkExt(lang) }), parent: domRef.current });
-        viewRef.current = view; prevDoc.current = view.state.doc.toString();
-      } catch (err) {
-        if (domRef.current) {
-          domRef.current.innerHTML = "";
-          const ta = document.createElement("textarea"); ta.value = initText || "";
-          ta.style.cssText = "width:100%;height:100%;background:#0d0f14;color:#d4d4d4;font-family:'JetBrains Mono',monospace;font-size:13.5px;line-height:21px;padding:8px 14px;border:none;outline:none;resize:none;tab-size:4;";
-          if (!readOnly) {
-            ta.addEventListener("input", e => {
-              const nT = e.target.value, old = prevDoc.current;
-              let i = 0, oe = old.length, ne = nT.length;
-              while (i < oe && i < ne && old[i] === nT[i]) i++;
-              let oe2 = oe, ne2 = ne;
-              while (oe2 > i && ne2 > i && old[oe2 - 1] === nT[ne2 - 1]) { oe2--; ne2--; }
-              const del = old.slice(i, oe2), ins = nT.slice(i, ne2);
-              const caret = ta.selectionStart ?? nT.length;
-              const upToCaret = nT.slice(0, caret);
-              const lineNum = (upToCaret.match(/\n/g) || []).length + 1;
-              const colNum = caret - upToCaret.lastIndexOf("\n") - 1;
-              const editLoc = { line: lineNum, col: colNum };
-              if (del.length && ins.length) onLocalOp?.({ type: "replace", pos: i, len: del.length, chars: ins }, editLoc);
-              else if (del.length) onLocalOp?.({ type: "delete", pos: i, len: del.length }, editLoc);
-              else if (ins.length) onLocalOp?.({ type: "insert", pos: i, chars: ins }, editLoc);
-              prevDoc.current = nT;
-            });
-          }
-          domRef.current.appendChild(ta);
-          if (ref) { const api = { _getText: () => ta.value }; typeof ref === "function" ? ref(api) : (ref.current = api); }
-        }
-      }
-    })();
-    return () => { if (viewRef.current) { viewRef.current.destroy(); viewRef.current = null; inited.current = false; } };
-  }, []);
-  useEffect(() => {
-    if (!viewRef.current || !modsRef.current) return;
-    const { EditorState, EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars, indentOnInput, history, historyKeymap, indentWithTab, searchKeymap, highlightSelectionMatches, autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, foldGutter, foldKeymap, bracketMatching, syntaxHighlighting, defaultHighlightStyle, oneDark, theme, lockFilter, listener, LM } = modsRef.current;
-    const mkExt = lk => {
-      const b = [lineNumbers(), highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(), history(), foldGutter(), drawSelection(), dropCursor(), bracketMatching(), closeBrackets(), autocompletion(), rectangularSelection(), crosshairCursor(), highlightSelectionMatches(), indentOnInput(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }), keymap.of([indentWithTab, ...closeBracketsKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap, ...searchKeymap]), LM[lk] || LM.ts, oneDark, theme, lockFilter, listener, EditorView.lineWrapping];
-      if (readOnly) b.push(EditorView.editable.of(false)); return b;
-    };
-    suppress.current = true;
-    viewRef.current.setState(EditorState.create({ doc: initText || "", extensions: mkExt(lang) }));
-    prevDoc.current = initText || "";
-    suppress.current = false;
-  }, [lang, fileKey]);
-  // Force a re-render every 500ms so TTL-based locks visually expire even
-  // without new cursor/op traffic (otherwise a lock badge could stick around
-  // after the remote user stopped typing, since nothing would re-render).
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTick(t => t + 1), 500);
-    return () => clearInterval(id);
-  }, []);
+const theme = EditorView.theme({
+  "&": { backgroundColor: "#0d0f14", color: "#d4d4d4", height: "100%", fontSize: "13.5px" },
+  ".cm-content": { caretColor: "#4FC1FF", fontFamily: "'JetBrains Mono',Consolas,monospace", fontSize: "13.5px", lineHeight: "21px" },
+  ".cm-cursor,.cm-dropCursor": { borderLeftColor: "#4FC1FF", borderLeftWidth: "2px" },
+  ".cm-activeLine": { backgroundColor: "rgba(79,193,255,.04)" },
+  ".cm-selectionBackground": { backgroundColor: "rgba(79,193,255,.18) !important" },
+  "&.cm-focused .cm-selectionBackground": { backgroundColor: "rgba(79,193,255,.22) !important" },
+  ".cm-gutters": { backgroundColor: "#0d0f14", borderRight: "1px solid rgba(255,255,255,.05)", color: "#4a5568", minWidth: "48px" },
+  ".cm-lineNumbers .cm-gutterElement": { minWidth: "38px", textAlign: "right", paddingRight: "10px" },
+  ".cm-activeLineGutter": { backgroundColor: "rgba(79,193,255,.04)", color: "#8892a4" },
+  ".cm-matchingBracket": { backgroundColor: "rgba(79,193,255,.15)", color: "#fff !important" },
+  ".cm-tooltip": { backgroundColor: "#1c1f28", border: "1px solid rgba(255,255,255,.1)", borderRadius: "6px", color: "#e0e0e0" },
+  ".cm-tooltip-autocomplete ul li[aria-selected]": { backgroundColor: "rgba(79,193,255,.15)" },
+  ".cm-ySelectionInfo": { color: "#fff !important", fontFamily: "var(--mono) !important", fontWeight: "700 !important", opacity: "1 !important" }
+}, { dark: true });
 
-  const now = Date.now();
-  // A line is "locked" for display purposes only while its remote owner is
-  // inside their active-typing TTL window (see lockFilter above for why).
-  const activeLocks = {};
-  if (cursors) {
-    cursors.filter(c => c.id !== myId && c.lang === lang && c.tabId === fileKey && c.typingUntil && c.typingUntil > now).forEach(c => {
-      if (!activeLocks[c.line]) {
-        activeLocks[c.line] = {
-          line_number: c.line,
-          user_id: c.id,
-          user_name: c.name,
-          color: c.color || "#4FC1FF"
-        };
-      }
+const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, cursors, myId, fileKey, readOnly = false, me }, ref) => {
+  const domRef = useRef(null);
+  const viewRef = useRef(null);
+  const providerRef = useRef(null);
+
+  useEffect(() => {
+    if (!domRef.current) return;
+    
+    // Create Yjs doc
+    const ydoc = new Y.Doc();
+    const ytext = ydoc.getText('codemirror');
+    
+    // Set initial text if empty
+    if (initText && ytext.length === 0) {
+      ytext.insert(0, initText);
+    }
+    
+    // Websocket provider
+    const roomName = "ckc-os-" + fileKey;
+    const provider = new WebsocketProvider('ws://localhost:4000/yjs', roomName, ydoc, { connect: true });
+    providerRef.current = provider;
+    
+    // Awareness (cursors & user presence)
+    if (me) {
+      provider.awareness.setLocalStateField('user', {
+        name: me.name,
+        color: me.cursorColor || '#4FC1FF',
+        colorLight: (me.cursorColor || '#4FC1FF') + '33' // 20% opacity
+      });
+    }
+
+    // CodeMirror state
+    const state = EditorState.create({
+      doc: ytext.toString(),
+      extensions: [
+        lineNumbers(), highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(),
+        history(), foldGutter(), drawSelection(), dropCursor(), bracketMatching(), closeBrackets(),
+        autocompletion(), rectangularSelection(), crosshairCursor(), highlightSelectionMatches(),
+        indentOnInput(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        keymap.of([indentWithTab, ...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap]),
+        LM[lang] || LM.ts, oneDark, theme, EditorView.lineWrapping,
+        yCollab(ytext, provider.awareness, { undoManager: new Y.UndoManager(ytext) }),
+        EditorView.updateListener.of(upd => {
+          if (upd.selectionSet && onCursorMove) {
+            const pos = upd.state.selection.main.head;
+            const ln = upd.state.doc.lineAt(pos);
+            onCursorMove(ln.number, pos - ln.from + 1, pos);
+          }
+        }),
+        readOnly ? EditorView.editable.of(false) : []
+      ]
     });
-  }
 
-  return (
-    <div style={{ position: "relative", height: "100%", width: "100%", overflow: "hidden" }}>
-      {Object.values(activeLocks).filter(lock => lock.user_id !== myId).map(lock => (
-        <div key={`lock-${lock.line_number}`} style={{ pointerEvents: "none", position: "absolute", inset: 0, overflow: "hidden", zIndex: 10 }}>
-          <div style={{ position: "absolute", top: (lock.line_number - 1) * 21, left: 0, right: 0, height: 21, background: lock.color + "15", borderLeft: `4px solid ${lock.color}`, pointerEvents: "none" }}>
-            <div style={{ position: "absolute", right: 10, top: 2, display: "flex", alignItems: "center", gap: 5, background: lock.color, color: "#fff", padding: "1px 6px", borderRadius: 4, fontSize: 9, fontWeight: 700 }}>
-              🔒 {lock.user_name}
-            </div>
-          </div>
-        </div>
-      ))}
-      {cursors?.filter(c => c.id !== myId).map(cur => {
-        const top = (cur.line - 1) * 21, left = 48 + (cur.col - 1) * 8.1;
-        return (
-          <div key={cur.id} style={{ pointerEvents: "none", position: "absolute", inset: 0, overflow: "hidden", zIndex: 15 }}>
-            <div style={{ position: "absolute", top, left: 48, right: 0, height: 21, background: cur.color + "0a", borderLeft: `2px solid ${cur.color}22`, pointerEvents: "none" }} />
-            <div style={{ position: "absolute", top, left, width: 2, height: 21, background: cur.color, borderRadius: 1, transition: "top .2s ease, left .2s ease", boxShadow: `0 0 6px ${cur.color}88` }} />
-            <div style={{ position: "absolute", top: Math.max(0, top - 18), left: Math.max(48, left), background: cur.color, color: "#fff", fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: "3px 3px 3px 0", fontFamily: "Inter,sans-serif", whiteSpace: "nowrap", pointerEvents: "none", boxShadow: `0 2px 8px ${cur.color}66`, transition: "top .2s ease, left .2s ease", opacity: .95 }}>
-              {cur.name.split(" ")[0]}
-            </div>
-          </div>
-        );
-      })}
-      <div ref={domRef} style={{ height: "100%", width: "100%", overflow: "auto" }} />
-    </div>
-  );
+    const view = new EditorView({
+      state,
+      parent: domRef.current
+    });
+    viewRef.current = view;
+
+    // API for parent components (like debugging room fixes)
+    if (ref) {
+      const api = {
+        _getText: () => ytext.toString(),
+        _applyRemoteOp: (op, fullCode) => {
+          // If Debugging room sets full code:
+          if (fullCode !== undefined) {
+            ydoc.transact(() => {
+              ytext.delete(0, ytext.length);
+              ytext.insert(0, fullCode);
+            });
+          } else if (op) {
+             const dl = ytext.length;
+             ydoc.transact(() => {
+                if (op.type === "insert") ytext.insert(Math.max(0, Math.min(op.pos, dl)), op.chars);
+                else if (op.type === "delete") {
+                  const f = Math.max(0, Math.min(op.pos, dl));
+                  const t = Math.min(f + op.len, dl);
+                  if (t > f) ytext.delete(f, t - f);
+                }
+                else if (op.type === "replace") {
+                  const f = Math.max(0, Math.min(op.pos, dl));
+                  const t = Math.min(f + op.len, dl);
+                  if (t > f) ytext.delete(f, t - f);
+                  ytext.insert(f, op.chars);
+                }
+             });
+          }
+        }
+      };
+      if (typeof ref === "function") ref(api);
+      else ref.current = api;
+    }
+
+    return () => {
+      provider.destroy();
+      ydoc.destroy();
+      view.destroy();
+      viewRef.current = null;
+    };
+  }, [fileKey, lang, readOnly, me]); 
+
+  return <div ref={domRef} style={{ width: "100%", height: "100%", position: "relative", zIndex: 10 }} />;
 });
 
 // ═══════════ ERROR POPUP ═══════════
@@ -2476,6 +2361,7 @@ function Shell({ user, onLogout }) {
               onCursorMove={handleCursorMove}
               cursors={activeCursors}
               myId={me.id}
+              me={me}
             />
           </div>
           <div className="out-panel" style={{ height: outOpen ? (outTab === "knowledge" ? 450 : 220) : 32 }}>
