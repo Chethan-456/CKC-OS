@@ -4,7 +4,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 
 // Pages
 import Login from "./pages/LoginPage.jsx";
-import Dashboard from "./pages/Devchat.jsx";
+import Dashboard from "./pages/DevChat.jsx";
 import Index from "./pages/index.jsx";
 import Ckcossupabase from "./pages/Ckcossupabase.jsx";
 import SupabaseChat from "./pages/SupabaseChat.jsx";
