@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from "react";
-import { Navigate, Link } from "react-router-dom";
+import { Navigate, Link, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase.js";
 
 /* ═══════════════════════════════════════════════════════════════
@@ -598,16 +598,13 @@ export function useAuth() {
 // Works inside and outside a RouterProvider — falls back gracefully.
 export function ProtectedRoute({ children, fallback }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
+
   if (loading) return null;
   if (user) return children;
-  // Try react-router Navigate; if unavailable, use window redirect
-  try {
-    return <Navigate to="/login" replace />;
-  } catch {
-    return (
-      <ProtectedScreen fallback={fallback} />
-    );
-  }
+
+  // Pass state.from so the auth page knows where to redirect after login
+  return <Navigate to="/auth" state={{ from: location.pathname }} replace />;
 }
 
 // ─── ProtectedScreen (inline fallback, from v1) ──────────────
