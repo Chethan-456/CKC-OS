@@ -1943,6 +1943,29 @@ function Shell({ user, onLogout }) {
   const tabsRef = useRef(tabs);
   const activeTabRef = useRef(activeTab);
   const cursorRef = useRef(cursor);
+  // ── Per-tab document version (fixes a real divergence bug) ──
+  // The old sync model had each client diff its OWN current text against an
+  // incoming `fullCode` and patch toward it. Under concurrent edits this is
+  // not safe: if A and B each start from "d" and type "f"/"g" in the same
+  // instant, A ends up applying B's "dg" on top of its own "df" (and vice
+  // versa for B) — both documents change to match what the OTHER person
+  // typed, discarding their own keystroke, and the two clients end up with
+  // different, swapped text forever (exactly the "hii" vs "dfg" divergence
+  // seen in testing). A diff-based merge cannot detect that two updates
+  // both descended from the same base text and silently picks whichever
+  // arrived most recently — with no way to tell which is "right" for either
+  // side.
+  //
+  // The fix: every change to a tab is stamped with a strictly increasing
+  // version. A client only ever advances a tab to a STRICTLY higher version
+  // than the one it already has, and ties (the literal concurrent-edit case
+  // above) are broken the same way on every client — by comparing
+  // instanceId — so every client converges on the exact same winning text,
+  // deterministically, instead of each independently overwriting the other.
+  // This guarantees convergence; the line-lock TTL is what keeps real
+  // collisions rare in the first place.
+  const docVersionsRef = useRef(new Map()); // tabId -> { version, instanceId }
+
   // How long a line stays "locked for others" after the owner's last
   // keystroke on it. Short enough that it never feels like a real lock to
   // the person typing, long enough to cover the broadcast round-trip.
@@ -1982,7 +2005,20 @@ function Shell({ user, onLogout }) {
         case "join":
           bc.postMessage({ type: "presence", payload: { id: me.id, instanceId, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab, typingUntil: typingUntilRef.current } });
           break;
-        case "op":
+        case "op": {
+          // Deterministic convergence: only accept this remote edit if it
+          // outranks whatever version we've already applied to this tab.
+          // Higher version always wins; on a true tie (both clients edited
+          // from the same base at once) every client breaks the tie the
+          // same way — lower instanceId wins — so everyone ends up applying
+          // the exact same side of the race instead of each side keeping
+          // its own edit (or each side overwriting itself with the other's).
+          const mine = docVersionsRef.current.get(payload.tabId);
+          const incomingVer = payload.version || 0;
+          const outranks = !mine || incomingVer > mine.version ||
+            (incomingVer === mine.version && payload.instanceId < mine.instanceId);
+          if (!outranks) break;
+          docVersionsRef.current.set(payload.tabId, { version: incomingVer, instanceId: payload.instanceId });
           if (payload.tabId === activeTab) {
             activeEditorRef.current?._applyRemoteOp?.(payload.op, payload.fullCode);
           }
@@ -1990,6 +2026,7 @@ function Shell({ user, onLogout }) {
           setOpCnt(c => c + 1);
           setCrdt(p => [{ ...payload.op, from: payload.name, t: nowTs(), color: payload.color }, ...p].slice(0, 40));
           break;
+        }
         case "cursor":
           setCursors(prev => [...prev.filter(c => c.id !== payload.id), { ...payload, online: true }]);
           break;
@@ -2008,7 +2045,8 @@ function Shell({ user, onLogout }) {
             const tab = tabs.find(t => t.id === payload.tabId);
             const currentCode = (payload.tabId === activeTab) ? (activeEditorRef.current?._getText?.() || "") : (tab?.code || "");
             if (currentCode) {
-              const resp = { type: "stateResponse", payload: { tabId: payload.tabId, code: currentCode, toId: payload.requesterId, instanceId } };
+              const ver = docVersionsRef.current.get(payload.tabId);
+              const resp = { type: "stateResponse", payload: { tabId: payload.tabId, code: currentCode, toId: payload.requesterId, instanceId, version: ver?.version || 0, versionOwner: ver?.instanceId || instanceId } };
               bc.postMessage(resp);
               channel.send({ type: "broadcast", event: "stateResponse", payload: resp.payload });
             }
@@ -2016,6 +2054,10 @@ function Shell({ user, onLogout }) {
           break;
         case "stateResponse":
           if (payload.toId === me.id) {
+            const mine = docVersionsRef.current.get(payload.tabId);
+            if (!mine || (payload.version || 0) > mine.version) {
+              docVersionsRef.current.set(payload.tabId, { version: payload.version || 0, instanceId: payload.versionOwner || payload.instanceId });
+            }
             setTabs(prev => prev.map(t => t.id === payload.tabId ? { ...t, code: payload.code } : t));
           }
           break;
@@ -2132,7 +2174,13 @@ function Shell({ user, onLogout }) {
     setCursor({ line: loc.line, col: loc.col });
 
     const fullCode = activeEditorRef.current?._getText?.() || "";
-    const payload = { uid: me.id, instanceId, name: me.name, color: me.cursorColor, lang, op, tabId: activeTab, tabName: tabs.find(t => t.id === activeTab)?.name || "scratch", fullCode };
+    // Stamp this edit with the next version for this tab. Bumping our own
+    // version locally (not just on receipt) means our own subsequent edits
+    // keep counting up even before any broadcast round-trips back to us.
+    const prevVer = docVersionsRef.current.get(activeTab)?.version || 0;
+    const nextVer = prevVer + 1;
+    docVersionsRef.current.set(activeTab, { version: nextVer, instanceId });
+    const payload = { uid: me.id, instanceId, name: me.name, color: me.cursorColor, lang, op, tabId: activeTab, tabName: tabs.find(t => t.id === activeTab)?.name || "scratch", fullCode, version: nextVer };
     channelRef.current?.send({ type: "broadcast", event: "op", payload });
     new BroadcastChannel("ckc_os_sync").postMessage({ type: "op", payload });
 
