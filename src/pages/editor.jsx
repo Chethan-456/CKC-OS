@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabase.js";
 import { useAuth } from "./auth.jsx";
 import KnowledgeGraphEngine from "./Knowledge.jsx";
 import { SupabaseYjsProvider } from "../lib/SupabaseYjsProvider.js";
+import { WebrtcProvider } from "y-webrtc";
 import CMEditor from "../components/CMEditorYjs.jsx";
 
 import { authStore, PALETTE, LANGS, LK, initials, genSid } from "../constants.js";
@@ -1705,10 +1706,16 @@ function Shell({ user, onLogout }) {
   const toast = useCallback((msg, ms = 2500) => { clearTimeout(notifTmr.current); setNotif(msg); notifTmr.current = setTimeout(() => setNotif(null), ms); }, []);
 
   useEffect(() => {
+    // 1. Supabase Provider (for awareness and DB sync fallback)
     const provider = new SupabaseYjsProvider(supabase, currentRoom, ydocRef.current, {
       user: { name: me.name, color: me.cursorColor, bg: me.bg },
     });
     providerRef.current = provider;
+
+    // 2. WebRTC Provider (bulletproof P2P sync to prevent dropped keystrokes)
+    const rtcProvider = new WebrtcProvider(`ckcos-${currentRoom}`, ydocRef.current, {
+      signaling: ['wss://signaling.yjs.dev', 'wss://y-webrtc-signaling-eu.herokuapp.com']
+    });
 
     const updatePresence = () => {
       const states = Array.from(provider.awareness.getStates().entries());
@@ -1764,6 +1771,7 @@ function Shell({ user, onLogout }) {
       filesMap.unobserve(updateFiles);
       provider.awareness.off("change", updatePresence);
       provider.destroy();
+      rtcProvider.destroy();
       providerRef.current = null;
       setProviderReady(false);
     };
@@ -1966,6 +1974,11 @@ function Shell({ user, onLogout }) {
               <div style={{ color: b.color, fontSize: 10 }}>🔒 Ln {b.lockLine}</div>
             ) : (
               <div className="presence-pos" style={{ color: b.color }}>Ln {b.line} · Col {b.col}</div>
+            )}
+            {b.tabId && b.tabId !== activeTab && (
+              <div style={{ color: "var(--txt2)", fontSize: 9, marginTop: 2 }}>
+                in {tabs.find(t => t.id === b.tabId)?.name || b.tabId}
+              </div>
             )}
           </div>
         </div>
