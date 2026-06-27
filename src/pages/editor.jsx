@@ -1738,7 +1738,30 @@ function Shell({ user, onLogout }) {
     updatePresence();
     setProviderReady(true);
 
+    // ── Sync shared scratch files (tabs) ──
+    const filesMap = ydocRef.current.getMap("workspace_files");
+    const updateFiles = () => {
+      const shared = [];
+      filesMap.forEach((f) => shared.push(f));
+      
+      setTabs(prev => {
+        const next = [...prev];
+        let changed = false;
+        shared.forEach(f => {
+          if (!next.some(t => t.id === f.id)) {
+            next.push({ ...f, dirty: false });
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    };
+    filesMap.observe(updateFiles);
+    // Initial load
+    setTimeout(updateFiles, 500);
+
     return () => {
+      filesMap.unobserve(updateFiles);
       provider.awareness.off("change", updatePresence);
       provider.destroy();
       providerRef.current = null;
@@ -1798,12 +1821,26 @@ function Shell({ user, onLogout }) {
   }, [lang, activeTab, tabs, pyReady, triggerError]);
 
   const createNewEditor = useCallback(() => {
-    const id = "new-" + Date.now();
+    const id = "new-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
     const ext = LANGS[newEdLang]?.ext?.split(".")[1] || newEdLang;
     const shortName = me.name ? me.name.split(" ")[0].toLowerCase() : "user";
     const newTab = { id, name: `scratch-${shortName}.${ext}`, lang: newEdLang, dirty: false, isNew: true, code: "" };
+    
+    // Add locally immediately
     setTabs(p => [...p, newTab]);
-    setActiveTab(id); switchLang(newEdLang);
+    setActiveTab(id); 
+    switchLang(newEdLang);
+
+    // Broadcast file creation to other users
+    if (ydocRef.current) {
+      ydocRef.current.getMap("workspace_files").set(id, {
+        id,
+        name: newTab.name,
+        lang: newTab.lang,
+        isNew: true
+      });
+    }
+
     toast(`New ${LANGS[newEdLang]?.n} editor opened`);
   }, [newEdLang, switchLang, toast, me.name]);
 
