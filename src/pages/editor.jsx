@@ -1196,12 +1196,10 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;f
 `;
 
 // ═══════════ CODEMIRROR ═══════════
-const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, cursors, lineLocks, myId, fileKey, readOnly = false }, ref) => {
+const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, cursors, myId, fileKey, readOnly = false }, ref) => {
   const domRef = useRef(null), viewRef = useRef(null), modsRef = useRef(null);
   const inited = useRef(false), suppress = useRef(false), prevDoc = useRef(initText || "");
-  const lineLocksRef = useRef(lineLocks);
   const cursorsRef = useRef(cursors);
-  useEffect(() => { lineLocksRef.current = lineLocks; }, [lineLocks]);
   useEffect(() => { cursorsRef.current = cursors; }, [cursors]);
   
   useEffect(() => {
@@ -1273,29 +1271,36 @@ const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, cursors,
           ".cm-tooltip-autocomplete ul li[aria-selected]": { backgroundColor: "rgba(79,193,255,.15)" },
         }, { dark: true });
         
+        // ── LINE LOCKING (rewritten) ──
+        // A line is only locked-for-others while a DIFFERENT user is actively
+        // typing on that exact line — not merely because their cursor is
+        // parked there. Each remote cursor carries `typingUntil` (a short
+        // TTL timestamp, refreshed on every keystroke by its owner). We only
+        // honor locks that haven't expired, so two users who both happen to
+        // land on line 1 at file-open no longer block each other — only a
+        // line someone is *currently, actively* editing is protected, and
+        // only for the few hundred ms it takes the edit to land everywhere.
         const lockFilter = EditorState.transactionFilter.of(tr => {
           if (tr.docChanged && !suppress.current) {
             let lockedBy = null;
             let lockedLine = null;
+            const now = Date.now();
             tr.changes.iterChangedRanges((fromA, toA) => {
+              if (lockedBy) return;
               const startLine = tr.startState.doc.lineAt(fromA).number;
               const endLine = tr.startState.doc.lineAt(toA).number;
               for (let i = startLine; i <= endLine; i++) {
-                if (lineLocksRef.current) {
-                  const lock = lineLocksRef.current[i];
-                  if (lock && lock.user_id !== myId) {
-                    lockedBy = lock.user_name || "another user";
-                    lockedLine = i;
-                    break;
-                  }
-                }
-                if (cursorsRef.current) {
-                  const remoteCursor = cursorsRef.current.find(c => c.id !== myId && c.line === i && c.lang === lang && c.tabId === fileKey);
-                  if (remoteCursor) {
-                    lockedBy = remoteCursor.name || "another user";
-                    lockedLine = i;
-                    break;
-                  }
+                const remoteCursor = (cursorsRef.current || []).find(c =>
+                  c.id !== myId &&
+                  c.lang === lang &&
+                  c.tabId === fileKey &&
+                  c.line === i &&
+                  c.typingUntil && c.typingUntil > now
+                );
+                if (remoteCursor) {
+                  lockedBy = remoteCursor.name || "another user";
+                  lockedLine = i;
+                  break;
                 }
               }
             });
@@ -1317,9 +1322,16 @@ const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, cursors,
           let oe2 = oe, ne2 = ne;
           while (oe2 > i && ne2 > i && old[oe2 - 1] === newText[ne2 - 1]) { oe2--; ne2--; }
           const del = old.slice(i, oe2), ins = newText.slice(i, ne2);
-          if (del.length && ins.length) onLocalOp?.({ type: "replace", pos: i, len: del.length, chars: ins });
-          else if (del.length) onLocalOp?.({ type: "delete", pos: i, len: del.length });
-          else if (ins.length) onLocalOp?.({ type: "insert", pos: i, chars: ins });
+          // Compute the edit's line/col straight from the NEW doc state so
+          // the caller never has to rely on React cursor state that hasn't
+          // re-rendered yet (onCursorMove above only just queued a setState
+          // this same tick — reading it back synchronously would be stale).
+          const headPos = upd.state.selection.main.head;
+          const headLine = upd.state.doc.lineAt(headPos);
+          const editLoc = { line: headLine.number, col: headPos - headLine.from + 1 };
+          if (del.length && ins.length) onLocalOp?.({ type: "replace", pos: i, len: del.length, chars: ins }, editLoc);
+          else if (del.length) onLocalOp?.({ type: "delete", pos: i, len: del.length }, editLoc);
+          else if (ins.length) onLocalOp?.({ type: "insert", pos: i, chars: ins }, editLoc);
           prevDoc.current = newText;
         });
         modsRef.current = { EditorState, EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars, indentOnInput, history, historyKeymap, indentWithTab, searchKeymap, highlightSelectionMatches, autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, foldGutter, foldKeymap, bracketMatching, syntaxHighlighting, defaultHighlightStyle, oneDark, theme, lockFilter, listener, LM };
@@ -1342,9 +1354,14 @@ const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, cursors,
               let oe2 = oe, ne2 = ne;
               while (oe2 > i && ne2 > i && old[oe2 - 1] === nT[ne2 - 1]) { oe2--; ne2--; }
               const del = old.slice(i, oe2), ins = nT.slice(i, ne2);
-              if (del.length && ins.length) onLocalOp?.({ type: "replace", pos: i, len: del.length, chars: ins });
-              else if (del.length) onLocalOp?.({ type: "delete", pos: i, len: del.length });
-              else if (ins.length) onLocalOp?.({ type: "insert", pos: i, chars: ins });
+              const caret = ta.selectionStart ?? nT.length;
+              const upToCaret = nT.slice(0, caret);
+              const lineNum = (upToCaret.match(/\n/g) || []).length + 1;
+              const colNum = caret - upToCaret.lastIndexOf("\n") - 1;
+              const editLoc = { line: lineNum, col: colNum };
+              if (del.length && ins.length) onLocalOp?.({ type: "replace", pos: i, len: del.length, chars: ins }, editLoc);
+              else if (del.length) onLocalOp?.({ type: "delete", pos: i, len: del.length }, editLoc);
+              else if (ins.length) onLocalOp?.({ type: "insert", pos: i, chars: ins }, editLoc);
               prevDoc.current = nT;
             });
           }
@@ -1367,9 +1384,21 @@ const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, cursors,
     prevDoc.current = initText || "";
     suppress.current = false;
   }, [lang, fileKey]);
-  const activeLocks = { ...lineLocks };
+  // Force a re-render every 500ms so TTL-based locks visually expire even
+  // without new cursor/op traffic (otherwise a lock badge could stick around
+  // after the remote user stopped typing, since nothing would re-render).
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 500);
+    return () => clearInterval(id);
+  }, []);
+
+  const now = Date.now();
+  // A line is "locked" for display purposes only while its remote owner is
+  // inside their active-typing TTL window (see lockFilter above for why).
+  const activeLocks = {};
   if (cursors) {
-    cursors.filter(c => c.id !== myId && c.lang === lang && c.tabId === fileKey).forEach(c => {
+    cursors.filter(c => c.id !== myId && c.lang === lang && c.tabId === fileKey && c.typingUntil && c.typingUntil > now).forEach(c => {
       if (!activeLocks[c.line]) {
         activeLocks[c.line] = {
           line_number: c.line,
@@ -1896,7 +1925,6 @@ function Shell({ user, onLogout }) {
   const [newEdLang, setNewEdLang] = useState("ts");
   const [connectedCount, setConnectedCount] = useState(1);
   const [liveValidation, setLiveValidation] = useState(null);
-  const [lineLocks, setLineLocks] = useState({});
   const [showDebugRoom, setShowDebugRoom] = useState(false);
   const [showServerLogs, setShowServerLogs] = useState(false);
   const [mobilePanelTab, setMobilePanelTab] = useState("editor");
@@ -1915,6 +1943,11 @@ function Shell({ user, onLogout }) {
   const tabsRef = useRef(tabs);
   const activeTabRef = useRef(activeTab);
   const cursorRef = useRef(cursor);
+  // How long a line stays "locked for others" after the owner's last
+  // keystroke on it. Short enough that it never feels like a real lock to
+  // the person typing, long enough to cover the broadcast round-trip.
+  const LOCK_TTL_MS = 2500;
+  const typingUntilRef = useRef(0);
   useEffect(() => { tabsRef.current = tabs; }, [tabs]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   useEffect(() => { cursorRef.current = cursor; }, [cursor]);
@@ -1947,7 +1980,7 @@ function Shell({ user, onLogout }) {
 
       switch (type) {
         case "join":
-          bc.postMessage({ type: "presence", payload: { id: me.id, instanceId, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab } });
+          bc.postMessage({ type: "presence", payload: { id: me.id, instanceId, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab, typingUntil: typingUntilRef.current } });
           break;
         case "op":
           if (payload.tabId === activeTab) {
@@ -1955,7 +1988,7 @@ function Shell({ user, onLogout }) {
           }
           setTabs(prev => prev.map(t => t.id === payload.tabId ? { ...t, code: payload.fullCode ?? applyOpToString(t.code || "", payload.op) } : t));
           setOpCnt(c => c + 1);
-          setCrdt(p => [{ ...payload.op, from: payload.name, t: nowTs() }, ...p].slice(0, 40));
+          setCrdt(p => [{ ...payload.op, from: payload.name, t: nowTs(), color: payload.color }, ...p].slice(0, 40));
           break;
         case "cursor":
           setCursors(prev => [...prev.filter(c => c.id !== payload.id), { ...payload, online: true }]);
@@ -2004,21 +2037,13 @@ function Shell({ user, onLogout }) {
         const users = Object.values(state).flat();
         setConnectedCount(users.length);
         setCursors(prev => {
-          const remote = users.map(u => ({ id: u.user_id, name: u.name, color: u.color, line: u.line || 1, col: u.col || 1, tabId: u.tabId, online: true }));
-          const local = prev.filter(c => c.id.startsWith("guest_") && !users.find(u => u.user_id === c.id));
+          const remote = users.map(u => ({ id: u.user_id, name: u.name, color: u.color, line: u.line || 1, col: u.col || 1, tabId: u.tabId, lang: u.lang, typingUntil: u.typingUntil || 0, online: true }));
+          const onlineIds = new Set(users.map(u => u.user_id));
+          // Keep only guest cursors that are still genuinely online (came in
+          // via BroadcastChannel/local presence) — drop anything stale.
+          const local = prev.filter(c => c.id.startsWith("guest_") && !onlineIds.has(c.id));
           return [...remote, ...local];
         });
-        const onlineUserIds = users.map(u => u.user_id);
-        if (onlineUserIds.length > 0 && !me.id.startsWith("guest_")) {
-          supabase.from("line_locks").select("user_id").then(({ data }) => {
-            if (data) {
-              const staleUserIds = data.map(l => l.user_id).filter(id => !onlineUserIds.includes(id) && !id.startsWith("guest_"));
-              if (staleUserIds.length > 0) {
-                supabase.from("line_locks").delete().in("user_id", staleUserIds).then();
-              }
-            }
-          });
-        }
       })
       .on("broadcast", { event: "op" }, ({ payload }) => handleMessage({ type: "op", payload }))
       .on("broadcast", { event: "cursor" }, ({ payload }) => handleMessage({ type: "cursor", payload }))
@@ -2037,19 +2062,6 @@ function Shell({ user, onLogout }) {
         }
       });
 
-    const lockSub = supabase.channel("line_locks")
-      .on("postgres_changes", { event: "*", schema: "public", table: "line_locks" }, payload => {
-        if (payload.eventType === "DELETE") {
-          setLineLocks(prev => { const next = { ...prev }; delete next[payload.old.line_number]; return next; });
-        } else {
-          setLineLocks(prev => ({ ...prev, [payload.new.line_number]: payload.new }));
-        }
-      }).subscribe();
-
-    supabase.from("line_locks").select("*").then(({ data }) => {
-      if (data) { const locks = {}; data.forEach(l => locks[l.line_number] = l); setLineLocks(locks); }
-    });
-
     const handleLockToast = (e) => {
       const { line, userName } = e.detail;
       toast(`Line ${line} is locked by ${userName}`);
@@ -2058,17 +2070,14 @@ function Shell({ user, onLogout }) {
 
     return () => {
       channel.unsubscribe();
-      lockSub.unsubscribe();
       window.removeEventListener("line-locked-toast", handleLockToast);
-      if (!me.id.startsWith("guest_")) {
-        supabase.from("line_locks").delete().eq("user_id", me.id).then();
-      }
     };
   }, []); // ← mount once. Tab/activeTab changes no longer tear the channel down.
 
   // ── FIX: keep presence (cursor position / active tab) live WITHOUT
   // rebuilding the whole channel. This replaces what the old dependency
-  // array was (incorrectly) trying to accomplish.
+  // array was (incorrectly) trying to accomplish. It also carries `lang`
+  // and `typingUntil` now, since locking is derived from presence.
   useEffect(() => {
     if (!channelRef.current) return;
     channelRef.current.track({
@@ -2078,10 +2087,21 @@ function Shell({ user, onLogout }) {
       line: cursor.line,
       col: cursor.col,
       tabId: activeTab,
+      lang,
+      typingUntil: typingUntilRef.current,
       online: true,
       instanceId,
     });
-  }, [activeTab, cursor.line, cursor.col, me.id, me.name, me.cursorColor, instanceId]);
+  }, [activeTab, cursor.line, cursor.col, lang, me.id, me.name, me.cursorColor, instanceId]);
+
+  // Is `line` currently locked by someone ELSE actively typing on it, in
+  // the current tab/lang? Used both before sending a local op (so we never
+  // even try to send something another user's edit would race with) and
+  // mirrors the CMEditor-internal lockFilter so the two stay consistent.
+  const isLineLockedByOther = useCallback((line) => {
+    const now = Date.now();
+    return cursors.some(c => c.id !== me.id && c.lang === lang && c.tabId === activeTab && c.line === line && c.typingUntil && c.typingUntil > now);
+  }, [cursors, me.id, lang, activeTab]);
 
   const triggerLiveValidation = useCallback((code, lk) => {
     clearTimeout(liveValTimer.current);
@@ -2091,31 +2111,47 @@ function Shell({ user, onLogout }) {
     }, 600);
   }, []);
 
-  const handleLocalOp = useCallback(op => {
-    if (lineLocks[cursor.line] && lineLocks[cursor.line].user_id !== me.id) { toast("Line locked by " + lineLocks[cursor.line].user_name); return; }
+  const handleLocalOp = useCallback((op, editLoc) => {
+    // Prefer the exact location the editor just reported for this edit over
+    // React's `cursor` state, which can lag by one render when a keystroke
+    // both moves the caret and edits the doc in the same tick.
+    const loc = editLoc || cursor;
+    if (isLineLockedByOther(loc.line)) {
+      const lockedByCursor = cursors.find(c => c.id !== me.id && c.lang === lang && c.tabId === activeTab && c.line === loc.line);
+      toast("Line locked by " + (lockedByCursor?.name || "another user"));
+      return;
+    }
+    // Refresh our own typing TTL and broadcast it immediately as part of the
+    // cursor channel, so other clients see "this line is locked" within one
+    // round-trip instead of waiting for the next independent cursor move.
+    typingUntilRef.current = Date.now() + LOCK_TTL_MS;
+    const cursorPayload = { id: me.id, instanceId, name: me.name, color: me.cursorColor, line: loc.line, col: loc.col, lang, tabId: activeTab, typingUntil: typingUntilRef.current };
+    channelRef.current?.send({ type: "broadcast", event: "cursor", payload: cursorPayload });
+    new BroadcastChannel("ckc_os_sync").postMessage({ type: "cursor", payload: cursorPayload });
+    setCursors(prev => prev.map(c => c.id === me.id ? { ...c, ...cursorPayload, online: true } : c));
+    setCursor({ line: loc.line, col: loc.col });
+
     const fullCode = activeEditorRef.current?._getText?.() || "";
-    const payload = { uid: me.id, instanceId, name: me.name, lang, op, tabId: activeTab, tabName: tabs.find(t => t.id === activeTab)?.name || "scratch", fullCode };
+    const payload = { uid: me.id, instanceId, name: me.name, color: me.cursorColor, lang, op, tabId: activeTab, tabName: tabs.find(t => t.id === activeTab)?.name || "scratch", fullCode };
     channelRef.current?.send({ type: "broadcast", event: "op", payload });
     new BroadcastChannel("ckc_os_sync").postMessage({ type: "op", payload });
 
     setTabs(prev => prev.map(t => t.id === activeTab ? { ...t, code: fullCode, dirty: true } : t));
     setOpCnt(c => c + 1);
-    setCrdt(p => [{ ...op, from: "me", t: nowTs() }, ...p].slice(0, 40));
+    setCrdt(p => [{ ...op, from: "me", t: nowTs(), color: me.cursorColor }, ...p].slice(0, 40));
     triggerLiveValidation(fullCode, lang);
-  }, [lang, me, instanceId, cursor, lineLocks, toast, triggerLiveValidation, activeTab, tabs]);
+  }, [lang, me, instanceId, cursor, cursors, isLineLockedByOther, toast, triggerLiveValidation, activeTab, tabs]);
 
-  const handleCursorMove = useCallback(async (line, col) => {
+  const handleCursorMove = useCallback((line, col) => {
     setCursor({ line, col });
-    const payload = { id: me.id, instanceId, name: me.name, color: me.cursorColor, line, col, lang, tabId: activeTab };
+    // Moving the caret alone (no typing) never extends or creates a lock —
+    // we still report whatever typingUntil is currently active so a lock
+    // started by a keystroke a moment ago doesn't get clobbered to 0 by a
+    // subsequent plain cursor move, but we don't push it forward here.
+    const payload = { id: me.id, instanceId, name: me.name, color: me.cursorColor, line, col, lang, tabId: activeTab, typingUntil: typingUntilRef.current };
     channelRef.current?.send({ type: "broadcast", event: "cursor", payload });
     new BroadcastChannel("ckc_os_sync").postMessage({ type: "cursor", payload });
-
-    try {
-      if (!me.id.startsWith("guest_")) {
-        await supabase.from("line_locks").delete().eq("user_id", me.id);
-        await supabase.from("line_locks").insert({ document_id: lang, line_number: line, user_id: me.id, user_name: me.name, color: me.cursorColor });
-      }
-    } catch (err) { console.error("Lock error:", err); }
+    setCursors(prev => prev.map(c => c.id === me.id ? { ...c, ...payload, online: true } : c));
   }, [lang, me, instanceId, activeTab]);
 
   const switchLang = useCallback(lk => {
@@ -2391,7 +2427,6 @@ function Shell({ user, onLogout }) {
               onLocalOp={handleLocalOp}
               onCursorMove={handleCursorMove}
               cursors={activeCursors}
-              lineLocks={lineLocks}
               myId={me.id}
             />
           </div>
@@ -2436,7 +2471,9 @@ function Shell({ user, onLogout }) {
                 <div key={i} className={`op-card ${o.type}`}>
                   <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
                     <span className={`op-badge ${o.type}`}>{o.type.toUpperCase()}</span>
-                    <span style={{ fontSize: 9, color: "#4a5568", fontFamily: "var(--mono)" }}>{o.from} · {o.t}</span>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: o.color || (o.from === "me" ? me.cursorColor : "#4a5568"), flexShrink: 0 }} />
+                    <span style={{ fontSize: 9, color: o.color || (o.from === "me" ? me.cursorColor : "#4a5568"), fontFamily: "var(--mono)", fontWeight: 700 }}>{o.from === "me" ? me.name : o.from}</span>
+                    <span style={{ fontSize: 9, color: "#4a5568", fontFamily: "var(--mono)" }}>· {o.t}</span>
                   </div>
                   <div style={{ fontSize: 10, color: "#e0e0e0", fontFamily: "var(--mono)", wordBreak: "break-all" }}>
                     {o.type === "insert" ? `"${o.chars}" at ${o.pos}` : `len ${o.len} from ${o.pos}`}
