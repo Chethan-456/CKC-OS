@@ -2343,6 +2343,26 @@ function Shell({ user, onLogout }) {
                 </div>
               );
             })}
+            <div style={{ marginLeft: 8, paddingBottom: 6 }}>
+              <select 
+                style={{ background: "#1c1f28", color: "#8892a4", border: "1px solid var(--bdr)", borderRadius: 4, padding: "2px 6px", fontSize: 11, outline: "none", cursor: "pointer" }}
+                value=""
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  const newLang = e.target.value;
+                  const newId = `untitled-${Date.now()}.${newLang}`;
+                  setTabs(prev => [...prev, { id: newId, name: newId, lang: newLang, code: "" }]);
+                  setActiveTab(newId);
+                  setLang(newLang);
+                  e.target.value = "";
+                }}
+              >
+                <option value="" disabled>+ New File</option>
+                {LK.map(lk => (
+                  <option key={lk} value={lk}>{LANGS[lk].n}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="bc">
             <span>CKC-OS</span><span>›</span><span>workspace</span><span>›</span>
