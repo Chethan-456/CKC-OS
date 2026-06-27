@@ -5,42 +5,12 @@ import { useAuth } from "./auth.jsx";
 import KnowledgeGraphEngine from "./Knowledge.jsx";
 
 import { authStore, PALETTE, LANGS, LK, initials, genSid } from "../constants.js";
-import * as Y from "yjs";
-import { WebsocketProvider } from "y-websocket";
-import { yCollab } from "y-codemirror.next";
-import { EditorState } from "@codemirror/state";
-import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
-import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-import { foldGutter, foldKeymap, bracketMatching, syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
-import { javascript } from "@codemirror/lang-javascript";
-import { python } from "@codemirror/lang-python";
-import { java } from "@codemirror/lang-java";
-import { cpp } from "@codemirror/lang-cpp";
-import { rust } from "@codemirror/lang-rust";
-import { go } from "@codemirror/lang-go";
-import { sql } from "@codemirror/lang-sql";
-import { oneDark } from "@codemirror/theme-one-dark";
 
 
-// ═══════════ HELPERS ═══════════
-function nowTs() {
-  return new Date().toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-}
-
-function applyOpToString(str, op) {
-  if (!op) return str;
-  if (op.type === "insert") {
-    return str.slice(0, op.pos) + op.chars + str.slice(op.pos);
-  } else if (op.type === "delete") {
-    return str.slice(0, op.pos) + str.slice(op.pos + op.len);
-  } else if (op.type === "replace") {
-    return str.slice(0, op.pos) + op.chars + str.slice(op.pos + op.len);
-  }
-  return str;
-}
-
+import { nowTs, applyOpToString, generateBotAnnotation, genLogEntry } from "../utils/editor/helpers.js";
+import { validateCode, formatCode } from "../utils/editor/validator.js";
+import { validateAndRun } from "../utils/editor/runners.js";
+import { OTEngine } from "../utils/editor/legacyOT.js";
 // ═══════════ STARTERS ═══════════
 const STARTERS = {
   ts: ``,
@@ -54,1710 +24,17 @@ const STARTERS = {
 };
 
 // ═══════════════════════════════════════════════════════════════
-// ═══════════ COMPREHENSIVE MULTI-LANGUAGE VALIDATOR ═══════════
-// ═══════════════════════════════════════════════════════════════
-
-function validateCode(lang, code) {
-  const errors = [];
-  const warnings = [];
-  const lines = code.split("\n");
-  const trim = code.trim();
-
-  function countBalance(open, close) {
-    let depth = 0, inStr = false, strChar = "", inLineComment = false;
-    for (let i = 0; i < code.length; i++) {
-      const ch = code[i], prev = code[i - 1];
-      if (ch === "\n") { inLineComment = false; continue; }
-      if (inLineComment) continue;
-      if (!inStr) {
-        if (ch === "/" && code[i + 1] === "/") { inLineComment = true; i++; continue; }
-        if (lang === "py" && ch === "#") { inLineComment = true; continue; }
-      }
-      if (!inStr && (ch === '"' || ch === "'" || ch === "`")) { inStr = true; strChar = ch; continue; }
-      if (inStr && ch === strChar && prev !== "\\") { inStr = false; continue; }
-      if (inStr) continue;
-      if (ch === open) depth++;
-      if (ch === close) depth--;
-    }
-    return depth;
-  }
-
-  function hasUnclosedString() {
-    for (let li = 0; li < lines.length; li++) {
-      const l = lines[li].replace(/\\["'`]/g, "");
-      let singles = 0, doubles = 0, ticks = 0;
-      for (const ch of l) {
-        if (ch === "'") singles++;
-        if (ch === '"') doubles++;
-        if (ch === "`") ticks++;
-      }
-      if (singles % 2 !== 0) return { line: li + 1, char: "'" };
-      if (doubles % 2 !== 0) return { line: li + 1, char: '"' };
-    }
-    return null;
-  }
-
-  if (lang === "ts" || lang === "js") {
-    const braceDepth = countBalance("{", "}");
-    if (braceDepth > 0) errors.push(`SyntaxError: ${braceDepth} unclosed '{' brace(s) — missing '}'`);
-    if (braceDepth < 0) errors.push(`SyntaxError: ${Math.abs(braceDepth)} unexpected '}' — missing '{'`);
-    const parenDepth = countBalance("(", ")");
-    if (parenDepth > 0) errors.push(`SyntaxError: ${parenDepth} unclosed '(' — missing ')'`);
-    if (parenDepth < 0) errors.push(`SyntaxError: ${Math.abs(parenDepth)} unexpected ')' — missing '('`);
-    const sqDepth = countBalance("[", "]");
-    if (sqDepth > 0) errors.push(`SyntaxError: ${sqDepth} unclosed '[' — missing ']'`);
-    if (sqDepth < 0) errors.push(`SyntaxError: ${Math.abs(sqDepth)} unexpected ']' — missing '['`);
-    const strErr = hasUnclosedString();
-    if (strErr) errors.push(`SyntaxError: Unterminated string literal (line ${strErr.line}, char: ${strErr.char})`);
-    lines.forEach((l, i) => {
-      const stripped = l.trim();
-      if (/^(export\s+)?const\s+\w+\s*$/.test(stripped)) {
-        errors.push(`SyntaxError (line ${i + 1}): 'const' declaration missing initializer`);
-      }
-      if (/if\s*\([^)]*=[^>=][^)]*\)/.test(stripped) && !/if\s*\([^)]*[!=<>]=[^)]*\)/.test(stripped)) {
-        warnings.push(`Warning (line ${i + 1}): Possible assignment in condition — did you mean '==' or '==='?`);
-      }
-    });
-    if (lang === "ts") {
-      lines.forEach((l, i) => {
-        if (/^(export\s+)?interface\s+\w+\s*$/.test(l.trim())) {
-          errors.push(`SyntaxError (line ${i + 1}): Interface declaration missing body '{}'`);
-        }
-      });
-    }
-  }
-
-  if (lang === "py") {
-    lines.forEach((l, i) => {
-      const t = l.trim();
-      if (/^print\s+"/.test(t) || /^print\s+'/.test(t)) {
-        errors.push(`SyntaxError (line ${i + 1}): Python 3 requires print() function — use print("...") not print "..."`);
-      }
-      if (/^(def|class)\s+\w+\s*\(.*\)\s*$/.test(t)) {
-        errors.push(`SyntaxError (line ${i + 1}): Missing ':' at end of '${t.split("(")[0].trim()}' definition`);
-      } else if (/^(if|elif|for|while)\s+.+$/.test(t) && !t.includes(":")) {
-        errors.push(`SyntaxError (line ${i + 1}): Missing ':' at end of '${t.split(/\s/)[0]}' statement`);
-      }
-    });
-    const hasTabIndent = lines.some(l => /^\t/.test(l));
-    const hasSpaceIndent = lines.some(l => /^  /.test(l));
-    if (hasTabIndent && hasSpaceIndent) {
-      errors.push(`TabError: Mixed tabs and spaces for indentation — use spaces only (PEP 8)`);
-    }
-    const tripleDouble = (code.match(/"""/g) || []).length;
-    const tripleSingle = (code.match(/'''/g) || []).length;
-    if (tripleDouble % 2 !== 0) errors.push(`SyntaxError: Unterminated triple-quoted string (""")`);
-    if (tripleSingle % 2 !== 0) errors.push(`SyntaxError: Unterminated triple-quoted string (''')`);
-    const pyParen = countBalance("(", ")");
-    if (pyParen > 0) errors.push(`SyntaxError: ${pyParen} unclosed parenthesis '(' — missing ')'`);
-    if (pyParen < 0) errors.push(`SyntaxError: ${Math.abs(pyParen)} unexpected ')' — missing '('`);
-    lines.forEach((l, i) => {
-      if (/\/\s*0\b/.test(l) && !/\/\s*0\.\d/.test(l)) {
-        warnings.push(`Warning (line ${i + 1}): Division by zero detected`);
-      }
-    });
-  }
-
-  if (lang === "java") {
-    const classMatch = trim.match(/public\s+class\s+(\w+)/);
-    if (!classMatch) {
-      errors.push(`error: Class declaration must be 'public class ClassName { ... }'`);
-    }
-    if (!trim.includes("public static void main")) {
-      errors.push(`error: Main method not found — add 'public static void main(String[] args) { ... }'`);
-    } else {
-      if (!/public\s+static\s+void\s+main\s*\(\s*String\s*(\[\s*\]|\.\.\.)?\s*\w+\s*\)/.test(trim)) {
-        errors.push(`error: Invalid main signature — must be 'public static void main(String[] args)'`);
-      }
-    }
-    const javaBrace = countBalance("{", "}");
-    if (javaBrace > 0) errors.push(`error: ${javaBrace} unclosed '{' — missing '}'`);
-    if (javaBrace < 0) errors.push(`error: ${Math.abs(javaBrace)} extra '}' — missing '{'`);
-    const javaParen = countBalance("(", ")");
-    if (javaParen > 0) errors.push(`error: ${javaParen} unclosed '(' — missing ')'`);
-    if (javaParen < 0) errors.push(`error: ${Math.abs(javaParen)} extra ')' — missing '('`);
-    lines.forEach((l, i) => {
-      const t = l.trim();
-      if (!t || t.startsWith("//") || t.startsWith("*") || t.startsWith("@") ||
-        t.endsWith("{") || t.endsWith("}") || t.endsWith(",") || t.endsWith(";") ||
-        /^(public|private|protected|class|import|package|if|else|for|while|do|try|catch|finally|switch|case|default|return\s*$)/.test(t)) {
-        return;
-      }
-      if (/^(return\s+.+|[a-zA-Z_$][\w$.]*\s*(=|\(|\.)[^{]*)$/.test(t) && !t.endsWith(";")) {
-        errors.push(`error (line ${i + 1}): Missing semicolon ';' — '${t.slice(0, 40)}'`);
-      }
-    });
-    lines.forEach((l, i) => {
-      if (l.includes("system.out") || l.includes("System.Out")) {
-        errors.push(`error (line ${i + 1}): Incorrect capitalization — use 'System.out.println()'`);
-      }
-    });
-    const javaStrErr = hasUnclosedString();
-    if (javaStrErr) errors.push(`error (line ${javaStrErr.line}): Unterminated string literal`);
-  }
-
-  if (lang === "cpp") {
-    if (!/#include\s*[<"]/.test(trim)) {
-      errors.push(`fatal error: No #include directive found — add '#include <iostream>'`);
-    }
-    if (!/int\s+main\s*\(/.test(trim)) {
-      errors.push(`error: 'main' function not found — add 'int main() { ... return 0; }'`);
-    }
-    const cppBrace = countBalance("{", "}");
-    if (cppBrace > 0) errors.push(`error: ${cppBrace} unclosed '{' brace(s) — missing '}'`);
-    if (cppBrace < 0) errors.push(`error: ${Math.abs(cppBrace)} extra '}' — missing '{'`);
-    const cppParen = countBalance("(", ")");
-    if (cppParen > 0) errors.push(`error: ${cppParen} unclosed '(' — missing ')'`);
-    if (cppParen < 0) errors.push(`error: ${Math.abs(cppParen)} extra ')' — missing '('`);
-    if (trim.includes("cout") && !trim.includes("std::cout") && !trim.includes("using namespace std")) {
-      errors.push(`error: 'cout' not declared — add 'using namespace std;' or use 'std::cout'`);
-    }
-    if (trim.includes("cin") && !trim.includes("std::cin") && !trim.includes("using namespace std")) {
-      errors.push(`error: 'cin' not declared — add 'using namespace std;' or use 'std::cin'`);
-    }
-    if (trim.includes("endl") && !trim.includes("std::endl") && !trim.includes("using namespace std")) {
-      errors.push(`error: 'endl' not declared — add 'using namespace std;' or use 'std::endl'`);
-    }
-    lines.forEach((l, i) => {
-      const t = l.trim();
-      if (!t || t.startsWith("//") || t.startsWith("#") || t.startsWith("/*") || t.startsWith("*")) return;
-      if (t.endsWith("{") || t.endsWith("}") || t.endsWith(",") || t.endsWith(";") || t.endsWith("\\")) return;
-      if (/^(if|else|for|while|do|switch|class|struct|namespace|public:|private:|protected:)/.test(t)) return;
-      if (/^(int|void|char|float|double|bool|auto|string|long|short|unsigned)\s+\w+\s*\(/.test(t)) return;
-      if (/^(return\s+.+|cout\s*<<|cin\s*>>|[a-zA-Z_][\w:]*\s*(=|\(|\[))/.test(t)) {
-        errors.push(`error (line ${i + 1}): Expected ';' at end of statement — '${t.slice(0, 40)}'`);
-      }
-    });
-    if (/void\s+main\s*\(/.test(trim)) {
-      errors.push(`warning: 'main' should return 'int', not 'void' (undefined behavior)`);
-    }
-    if (!/return\s+0\s*;/.test(trim) && /int\s+main/.test(trim)) {
-      warnings.push(`warning: 'main' function missing 'return 0;'`);
-    }
-    const cppStrErr = hasUnclosedString();
-    if (cppStrErr) errors.push(`error (line ${cppStrErr.line}): Unterminated string literal`);
-  }
-
-  if (lang === "rs") {
-    if (!/fn\s+main\s*\(\s*\)/.test(trim)) {
-      errors.push(`error[E0601]: \`main\` function not found in crate — add 'fn main() { ... }'`);
-    }
-    const rsBrace = countBalance("{", "}");
-    if (rsBrace > 0) errors.push(`error: ${rsBrace} unclosed '{' — missing '}'`);
-    if (rsBrace < 0) errors.push(`error: ${Math.abs(rsBrace)} extra '}' — missing '{'`);
-    const rsParen = countBalance("(", ")");
-    if (rsParen > 0) errors.push(`error: ${rsParen} unclosed '(' — missing ')'`);
-    if (rsParen < 0) errors.push(`error: ${Math.abs(rsParen)} extra ')' — missing '('`);
-    lines.forEach((l, i) => {
-      const t = l.trim();
-      if (!t || t.startsWith("//") || t.startsWith("/*") || t.startsWith("*")) return;
-      if (t.endsWith("{") || t.endsWith("}") || t.endsWith(",") || t.endsWith(";") || t.endsWith("=>")) return;
-      if (/^(fn|let|struct|enum|impl|use|pub|mod|trait|type|const|static|if|else|for|while|loop|match|return$)/.test(t)) return;
-      if (/^let\s+(mut\s+)?\w+/.test(t) && !t.endsWith(";") && !t.endsWith("{") && !t.endsWith(",")) {
-        errors.push(`error (line ${i + 1}): Expected ';' after 'let' binding — '${t.slice(0, 40)}'`);
-      }
-    });
-    lines.forEach((l, i) => {
-      if (/println\s*\(/.test(l) && !/println!\s*\(/.test(l)) {
-        errors.push(`error (line ${i + 1}): 'println' is not a function — use 'println!()' macro`);
-      }
-      if (/print\s*\(/.test(l) && !/print!\s*\(/.test(l) && !/println/.test(l)) {
-        errors.push(`error (line ${i + 1}): 'print' is not a function — use 'print!()' macro`);
-      }
-    });
-    const rsStrErr = hasUnclosedString();
-    if (rsStrErr) errors.push(`error (line ${rsStrErr.line}): Unterminated string literal`);
-  }
-
-  if (lang === "go") {
-    const firstNonEmpty = lines.find(l => l.trim() && !l.trim().startsWith("//"));
-    if (!firstNonEmpty || !firstNonEmpty.trim().startsWith("package ")) {
-      errors.push(`./main.go:1:1: expected 'package', found '${(firstNonEmpty || "EOF").trim().slice(0, 20)}'`);
-    }
-    if (!/func\s+main\s*\(\s*\)/.test(trim)) {
-      errors.push(`./main.go: runtime error: 'func main()' not found — Go programs require a main function`);
-    }
-    const goBrace = countBalance("{", "}");
-    if (goBrace > 0) errors.push(`syntax error: ${goBrace} unclosed '{' — missing '}'`);
-    if (goBrace < 0) errors.push(`syntax error: ${Math.abs(goBrace)} extra '}' — missing '{'`);
-    const goParen = countBalance("(", ")");
-    if (goParen > 0) errors.push(`syntax error: ${goParen} unclosed '(' — missing ')'`);
-    if (goParen < 0) errors.push(`syntax error: ${Math.abs(goParen)} extra ')' — missing '('`);
-    lines.forEach((l, i) => {
-      const t = l.trim();
-      if (/^func\s+/.test(t) && !t.endsWith("{") && !t.endsWith(")") && !t.endsWith(",")) {
-        if (lines[i + 1] && lines[i + 1].trim() === "{") {
-          errors.push(`./main.go:${i + 2}: syntax error: unexpected '{' — opening brace must be on same line as function declaration`);
-        }
-      }
-    });
-    const imports = [];
-    let inImportBlock = false;
-    lines.forEach(l => {
-      const t = l.trim();
-      if (t === "import (") { inImportBlock = true; return; }
-      if (inImportBlock && t === ")") { inImportBlock = false; return; }
-      if (inImportBlock) {
-        const m = t.match(/["']([^"']+)["']/);
-        if (m) imports.push(m[1].split("/").pop());
-      }
-      if (/^import\s+"([^"]+)"/.test(t)) {
-        const m = t.match(/import\s+"([^"]+)"/);
-        if (m) imports.push(m[1].split("/").pop());
-      }
-    });
-    imports.forEach(pkg => {
-      const used = code.includes(pkg + ".") || code.includes(pkg + "(");
-      if (!used) {
-        errors.push(`./main.go: imported and not used: "${pkg}"`);
-      }
-    });
-    const goStrErr = hasUnclosedString();
-    if (goStrErr) errors.push(`./main.go:${goStrErr.line}: syntax error: unterminated string literal`);
-  }
-
-  if (lang === "sql") {
-    const sqlNoComments = code.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "").trim();
-    const selectStatements = sqlNoComments.match(/SELECT\b[^;]*/gi) || [];
-    selectStatements.forEach((stmt, i) => {
-      if (!/FROM\b/i.test(stmt) && !/SELECT\s+\d+\s*$/i.test(stmt) && !/SELECT\s+NULL/i.test(stmt)) {
-        errors.push(`SQL Error: SELECT statement #${i + 1} is missing FROM clause`);
-      }
-    });
-    const insertStatements = sqlNoComments.match(/INSERT\b[^;]*/gi) || [];
-    insertStatements.forEach((stmt, i) => {
-      if (!/VALUES\b/i.test(stmt) && !/SELECT\b/i.test(stmt)) {
-        errors.push(`SQL Error: INSERT statement #${i + 1} missing VALUES or SELECT clause`);
-      }
-    });
-    const updateStatements = sqlNoComments.match(/UPDATE\b[^;]*/gi) || [];
-    updateStatements.forEach((stmt, i) => {
-      if (!/SET\b/i.test(stmt)) {
-        errors.push(`SQL Error: UPDATE statement #${i + 1} missing SET clause`);
-      }
-    });
-    if (/\bUPDATE\b/i.test(sqlNoComments) && /\bWHERE\b/i.test(sqlNoComments)) {
-      // (logic unchanged)
-    }
-    if (/\bUPDATE\b/i.test(sqlNoComments) && !/\bWHERE\b/i.test(sqlNoComments)) {
-      warnings.push(`SQL Warning: UPDATE without WHERE clause will modify all rows`);
-    }
-    if (/\bDELETE\b/i.test(sqlNoComments) && !/\bWHERE\b/i.test(sqlNoComments)) {
-      warnings.push(`SQL Warning: DELETE without WHERE clause will delete all rows`);
-    }
-    const sqlParen = countBalance("(", ")");
-    if (sqlParen > 0) errors.push(`SQL Error: ${sqlParen} unclosed '(' in query`);
-    if (sqlParen < 0) errors.push(`SQL Error: ${Math.abs(sqlParen)} extra ')' in query`);
-    const joinMatches = sqlNoComments.match(/\b(INNER|LEFT|RIGHT|FULL)\s+(OUTER\s+)?JOIN\b[^;]*/gi) || [];
-    joinMatches.forEach((stmt, i) => {
-      if (!/\bON\b/i.test(stmt) && !/\bUSING\b/i.test(stmt)) {
-        errors.push(`SQL Error: JOIN #${i + 1} missing ON condition`);
-      }
-    });
-    const singleQuotes = (sqlNoComments.match(/'/g) || []).length;
-    if (singleQuotes % 2 !== 0) errors.push(`SQL Error: Unterminated string literal — unmatched single quote '`);
-  }
-
-  return {
-    hasError: errors.length > 0,
-    hasWarning: warnings.length > 0,
-    errors,
-    warnings,
-    output: errors.length > 0
-      ? [`❌ [${LANGS[lang].n}] Compilation failed with ${errors.length} error(s)${warnings.length ? ` and ${warnings.length} warning(s)` : ""}:`,
-        "",
-      ...errors.map(e => `  ✖ ${e}`),
-      ...(warnings.length ? ["", ...warnings.map(w => `  ⚠ ${w}`)] : []),
-        "",
-        "Fix the error(s) above and run again."
-      ].join("\n")
-      : warnings.length > 0
-        ? [`⚠ [${LANGS[lang].n}] ${warnings.length} warning(s):`, ...warnings.map(w => `  ⚠ ${w}`)].join("\n")
-        : null
-  };
-}
-
-// ═══════════ PYODIDE ═══════════
-const pyState = { py: null, loading: false, waiters: [] };
-async function loadPy() {
-  if (pyState.py) return pyState.py;
-  if (pyState.loading) return new Promise(r => pyState.waiters.push(r));
-  pyState.loading = true;
-  if (!document.getElementById("_pyscript")) {
-    await new Promise((res, rej) => {
-      const s = document.createElement("script"); s.id = "_pyscript";
-      s.src = "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js";
-      s.onload = res; s.onerror = rej; document.head.appendChild(s);
-    });
-  }
-  const py = await window.loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/" });
-  py.runPython(`import sys,io as _io\nclass _Cap(_io.StringIO):pass\n_sc=_Cap();_ec=_Cap()`);
-  pyState.py = py; pyState.waiters.forEach(r => r(py)); pyState.waiters = [];
-  return py;
-}
-
-async function runPython(code) {
-  const py = await loadPy();
-  py.runPython(`_sc=_Cap();_ec=_Cap();sys.stdout=_sc;sys.stderr=_ec`);
-  let hasError = false, errorMsg = "";
-  try { py.runPython(code); } catch (e) {
-    hasError = true;
-    errorMsg = String(e).replace(/^PythonError:\s*/i, "").split("\n")
-      .filter(l => !l.includes("pyodide") && !l.includes("    at ")).join("\n").trim();
-  }
-  const stdout = py.runPython("_sc.getvalue()");
-  const stderr = py.runPython("_ec.getvalue()");
-  py.runPython("sys.stdout=sys.__stdout__;sys.stderr=sys.__stderr__");
-  let output = "";
-  if (stdout) output += stdout;
-  if (stderr && !hasError) output += (output ? "\\n" : "") + stderr;
-  if (hasError) output += (output ? "\\n" : "") + errorMsg;
-  return { output: output.trim(), hasError, errorMsg: hasError ? errorMsg : "" };
-}
-
-// ═══════════ JS/TS RUNNER ═══════════
-function runJS(code, isTS) {
-  return new Promise(resolve => {
-    const logs = [], errors = [];
-    let src = code;
-    if (isTS) {
-      src = src
-        .replace(/^\s*import\s+.*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, "")
-        .replace(/interface\s+\w[\w\s]*\{[^}]*\}/gs, "")
-        .replace(/type\s+\w+\s*=\s*[^;{]+;/g, "")
-        .replace(/:\s*\w[\w<>\[\]|&\s,?]*/g, "")
-        .replace(/\bprivate\b|\bpublic\b|\bprotected\b|\breadonly\b|\bdeclare\b/g, "")
-        .replace(/<\w[\w\s,<>]*>/g, "")
-        .replace(/^\s*export\s+(default\s+)?/gm, "")
-        .replace(/^\s*abstract\s+/gm, "");
-    }
-    const iframe = document.createElement("iframe"); iframe.style.display = "none";
-    document.body.appendChild(iframe); const win = iframe.contentWindow;
-    win.console = {
-      log: (...a) => logs.push(a.map(x => typeof x === "object" ? JSON.stringify(x, null, 2) : String(x)).join(" ")),
-      error: (...a) => errors.push(a.map(String).join(" ")),
-      warn: (...a) => logs.push("⚠ " + a.map(String).join(" ")),
-      info: (...a) => logs.push(a.map(String).join(" ")),
-    };
-    let hasError = false, errorMsg = "";
-    try { win.eval(src); } catch (e) { hasError = true; errorMsg = e.stack || e.message || String(e); }
-    document.body.removeChild(iframe);
-    const out = [...logs]; if (hasError) out.push(errorMsg);
-    resolve({ output: out.join("\\n") || (hasError ? "" : "(no output)"), hasError, errorMsg });
-  });
-}
-
-// ═══════════ COMPILED LANGUAGE SIMULATORS ═══════════
-function simulateCompiled(lang, code) {
-  const lines = code.split("\n");
-  const outputs = [];
-
-  if (lang === "java") {
-    const classMatch = code.match(/public\s+class\s+(\w+)/);
-    const className = classMatch ? classMatch[1] : "Main";
-    outputs.push(`Compiled: ${className}.class`);
-    const printlns = code.match(/System\.out\.println\s*\(([^)]+)\)/g) || [];
-    printlns.forEach(p => {
-      const arg = p.replace(/System\.out\.println\s*\(\s*/, "").replace(/\)\s*$/, "").trim();
-      if (arg.startsWith('"') && arg.endsWith('"')) {
-        outputs.push(arg.slice(1, -1));
-      } else {
-        outputs.push(`[${arg}]`);
-      }
-    });
-    if (outputs.length === 1) outputs.push("Process finished with exit code 0");
-  }
-
-  if (lang === "cpp") {
-    outputs.push(`g++ -std=c++17 -o main main.cpp`);
-    const couts = code.match(/cout\s*<<\s*"([^"]+)"/g) || [];
-    couts.forEach(c => {
-      const m = c.match(/cout\s*<<\s*"([^"]+)"/);
-      if (m) outputs.push(m[1]);
-    });
-    const coutVars = code.match(/cout\s*<<\s*(\w+)\s*<<\s*endl/g) || [];
-    coutVars.forEach(c => {
-      const m = c.match(/cout\s*<<\s*(\w+)/);
-      if (m && !outputs.some(o => o.includes(m[1]))) outputs.push(`[${m[1]}]`);
-    });
-    outputs.push("Process finished with exit code 0");
-  }
-
-  if (lang === "rs") {
-    outputs.push(`   Compiling main v0.1.0`);
-    outputs.push(`    Finished release [optimized] target(s)`);
-    outputs.push(`     Running \`target/release/main\``);
-    const printlns = code.match(/println!\s*\("([^"]+)"[^)]*\)/g) || [];
-    printlns.forEach(p => {
-      const m = p.match(/println!\s*\("([^"]+)"/);
-      if (m) {
-        outputs.push(m[1].replace(/{}/g, "[value]").replace(/{:\??}/g, "[debug]"));
-      }
-    });
-    if (printlns.length === 0) outputs.push("(no output)");
-  }
-
-  if (lang === "go") {
-    outputs.push(`go build ./...`);
-    outputs.push(`go run main.go`);
-    const printlns = code.match(/fmt\.Println\s*\(([^)]+)\)/g) || [];
-    const printfs = code.match(/fmt\.Printf\s*\("([^"]+)"/g) || [];
-    printlns.forEach(p => {
-      const m = p.match(/fmt\.Println\s*\(\s*"([^"]+)"/);
-      if (m) outputs.push(m[1]);
-      else {
-        const vm = p.match(/fmt\.Println\s*\((.+)\)/);
-        if (vm) outputs.push(`[${vm[1].trim()}]`);
-      }
-    });
-    printfs.forEach(p => {
-      const m = p.match(/fmt\.Printf\s*\("([^"]+)"/);
-      if (m) outputs.push(m[1].replace(/\\n/g, "").replace(/%[dsfvq]/g, "[value]").trim());
-    });
-    if (outputs.length === 2) outputs.push("(no output)");
-    outputs.push("\nProcess finished with exit code 0");
-  }
-
-  if (lang === "sql") {
-    const stmts = code.split(";").map(s => s.trim()).filter(Boolean);
-    stmts.forEach(stmt => {
-      const upper = stmt.toUpperCase();
-      if (/^\\s*--/.test(stmt)) return;
-      if (/CREATE DATABASE/i.test(upper)) outputs.push(`Query OK, 1 row affected`);
-      else if (/CREATE TABLE/i.test(upper)) {
-        const m = stmt.match(/CREATE TABLE\\s+(\\w+)/i);
-        outputs.push(`Query OK, 0 rows affected — Table '${m ? m[1] : "table"}' created`);
-      }
-      else if (/INSERT/i.test(upper)) outputs.push(`Query OK, ${Math.floor(Math.random() * 5) + 1} row(s) affected`);
-      else if (/SELECT/i.test(upper)) {
-        const rows = Math.floor(Math.random() * 20) + 1;
-        outputs.push(`${rows} row(s) in set`);
-      }
-      else if (/UPDATE/i.test(upper)) outputs.push(`Query OK, ${Math.floor(Math.random() * 3) + 1} row(s) affected`);
-      else if (/DELETE/i.test(upper)) outputs.push(`Query OK, ${Math.floor(Math.random() * 3) + 1} row(s) affected`);
-      else if (/USE /i.test(upper)) outputs.push(`Database changed`);
-      else outputs.push(`Query OK`);
-    });
-  }
-
-  return { output: outputs.join("\\n"), hasError: false };
-}
-
-// ═══════════ UNIFIED RUNNER ═══════════
-export async function validateAndRun(lang, code, pyReady, setPyReady) {
-  const validation = validateCode(lang, code);
-  if (validation.hasError) {
-    return { output: validation.output, hasError: true, errorMsg: validation.output };
-  }
-  let result;
-  if (lang === "py") {
-    if (!pyReady) {
-      await loadPy();
-      setPyReady(true);
-    }
-    result = await runPython(code);
-  } else if (lang === "js" || lang === "ts") {
-    result = await runJS(code, lang === "ts");
-    if (validation.hasWarning && result.output) {
-      result = { ...result, output: validation.output + "\\n\\n" + result.output };
-    }
-  } else {
-    await new Promise(r => setTimeout(r, 350));
-    result = simulateCompiled(lang, code);
-    if (validation.hasWarning) {
-      result = { ...result, output: validation.output + "\\n\\n" + result.output };
-    }
-  }
-  return result;
-}
-
-// ═══════════ BOTS & DEBUG HELPERS ═══════════
-function generateBotAnnotation(error, lang) {
-  const suggestions = {
-    SyntaxError: [
-      "Check your brackets — one might be missing its pair!",
-      "Looks like a syntax issue. Double-check line endings.",
-      "Missing closing symbol. Try folding the code to spot it.",
-    ],
-    TypeError: [
-      "Type mismatch — make sure you're passing the right argument types.",
-      "Null reference? Consider adding a null check before this call.",
-    ],
-    NameError: [
-      "Variable not defined. Did you declare it in the right scope?",
-      "Check for typos in the variable name!",
-    ],
-    TabError: [
-      "Mixed indentation detected. Run auto-format to fix this quickly.",
-    ],
-    default: [
-      "Try isolating the problematic section into a smaller test.",
-      "Add console.log / print statements to trace the value here.",
-      "Have you tried rubber-duck debugging? 🦆",
-      "Check the docs for this function — it might have changed.",
-    ],
-  };
-  const key = Object.keys(suggestions).find(k => error.toLowerCase().includes(k.toLowerCase())) || "default";
-  const pool = suggestions[key];
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
-// ═══════════ LIVE SERVER LOGS ENGINE ═══════════
-const LOG_TEMPLATES = [
-  { level: "INFO", svc: "api-gateway", msg: "GET /api/status 200 12ms" },
-  { level: "INFO", svc: "ws-server", msg: "Client connected [id: {id}]" },
-  { level: "INFO", svc: "db-pool", msg: "Query executed in {n}ms — rows: {r}" },
-  { level: "SUCCESS", svc: "auth-svc", msg: "Token validated for user:{id}" },
-  { level: "INFO", svc: "cache", msg: "HIT ratio: {n}% — evictions: {r}" },
-  { level: "DEBUG", svc: "scheduler", msg: "Job run:{id} queued (next: {n}s)" },
-  { level: "WARN", svc: "api-gateway", msg: "Rate limit approaching — {n} req/s" },
-  { level: "WARN", svc: "db-pool", msg: "Slow query detected: {n}ms" },
-  { level: "ERROR", svc: "api-gateway", msg: "POST /api/ingest 500 — timeout after {n}ms" },
-  { level: "ERROR", svc: "auth-svc", msg: "Invalid token — revoked session:{id}" },
-  { level: "ERROR", svc: "db-pool", msg: "Connection pool exhausted — {n} waiting" },
-  { level: "INFO", svc: "ws-server", msg: "OT op broadcast — ver:{n} clients:{r}" },
-  { level: "SUCCESS", svc: "cache", msg: "Cache warmed — {n} keys loaded" },
-  { level: "DEBUG", svc: "scheduler", msg: "Health check OK — uptime {n}s" },
-];
-
-function genLogEntry() {
-  const t = LOG_TEMPLATES[Math.floor(Math.random() * LOG_TEMPLATES.length)];
-  const id = genSid();
-  const n = Math.floor(Math.random() * 900 + 10);
-  const r = Math.floor(Math.random() * 200 + 1);
-  const msg = t.msg.replace(/\{id\}/g, id).replace(/\{n\}/g, n).replace(/\{r\}/g, r);
-  return { level: t.level, svc: t.svc, msg, t: nowTs(), id: genSid() };
-}
-
 // ═══════════ CSS ═══════════
-const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-html,body,#root{height:100%;overflow:hidden;}
-body{font-family:'Inter',system-ui,sans-serif;background:#0d0f14;color:#e0e0e0;font-size:13px;}
-:root{
-  --bg:#0d0f14;--bg2:rgba(21,24,32,0.85);--bg3:rgba(28,31,40,0.92);
-  --bdr:rgba(255,255,255,.08);--bdr2:rgba(255,255,255,.05);
-  --txt:#e0e0e0;--txt2:#8892a4;--txt3:#4a5568;
-  --blue:#4FC1FF;--grn:#4EC9B0;--pink:#FF6B9D;--ylw:#DCDCAA;
-  --sel:rgba(79,193,255,.12);--mono:'JetBrains Mono',Consolas,monospace;
-  --topbar-h:48px;
-  --statusbar-h:24px;
-  --glass-bg:rgba(15,18,25,0.7);
-}
-::-webkit-scrollbar{width:5px;height:5px;}
-::-webkit-scrollbar-track{background:transparent;}
-::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:10px;border:1px solid transparent;background-clip:padding-box;}
-::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.2);border:1px solid transparent;background-clip:padding-box;}
+import "../assets/editor.css";
 
-/* ── TOPBAR ── */
-.topbar{height:var(--topbar-h);background:var(--bg2);backdrop-filter:blur(16px) saturate(180%);border-bottom:1px solid var(--bdr);display:flex;align-items:center;padding:0 12px;gap:8px;flex-shrink:0;overflow-x:auto;overflow-y:hidden;z-index:100;position:relative;}
-.topbar::-webkit-scrollbar{display:none;}
-.tb-logo{display:flex;align-items:center;gap:8px;font-weight:800;font-size:.9rem;color:#fff;padding:0 6px;white-space:nowrap;flex-shrink:0;letter-spacing:-0.02em;}
-.gem{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,#4FC1FF,#4EC9B0);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;box-shadow:0 0 15px rgba(79,193,255,0.3);}
-.lp{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:6px;cursor:pointer;font-family:var(--mono);font-size:11px;font-weight:700;border:1px solid transparent;transition:all .15s cubic-bezier(.4,0,.2,1);white-space:nowrap;color:var(--txt2);}
-.lp:hover{background:rgba(255,255,255,.08);color:#fff;transform:translateY(-1px);}
-.lp.on{border-color:rgba(79,193,255,.3);background:rgba(79,193,255,.08);color:#fff;}
-.dbg-badge{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:7px;background:rgba(255,107,157,.1);border:1px solid rgba(255,107,157,.2);color:#FF6B9D;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;flex-shrink:0;}
-.dbg-badge:hover{background:rgba(255,107,157,.18);border-color:rgba(255,107,157,.4);transform:scale(1.02);}
-.dbg-cnt{background:#FF6B9D;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;box-shadow:0 2px 8px rgba(255,107,157,0.4);}
-.av{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;cursor:pointer;font-family:var(--mono);border:2px solid transparent;transition:all .2s;flex-shrink:0;position:relative;background:var(--bg3);}
-.av:hover{transform:translateY(-3px) scale(1.05);z-index:2;box-shadow:0 5px 15px rgba(0,0,0,0.3);}
-.av.me{border-color:rgba(79,193,255,.5);box-shadow:0 0 10px rgba(79,193,255,0.2);}
-.av .online-dot{position:absolute;bottom:-3px;right:-3px;width:9px;height:9px;border-radius:50%;border:2px solid #151820;background:#4EC9B0;box-shadow:0 0 5px #4EC9B0;}
-.new-ed-btn{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:8px;background:rgba(79,193,255,.1);border:1px solid rgba(79,193,255,.2);color:#4FC1FF;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;white-space:nowrap;flex-shrink:0;}
-.new-ed-btn:hover{background:rgba(79,193,255,.18);border-color:rgba(79,193,255,.4);transform:translateY(-1px);}
-.run-btn{display:flex;align-items:center;gap:6px;padding:6px 16px;border-radius:8px;background:linear-gradient(135deg,rgba(78,201,176,.15),rgba(78,201,176,.05));border:1px solid rgba(78,201,176,.3);color:#4EC9B0;font-size:11px;font-weight:800;cursor:pointer;transition:all .2s cubic-bezier(.4,0,.2,1);font-family:'Inter',sans-serif;white-space:nowrap;flex-shrink:0;text-transform:uppercase;letter-spacing:0.04em;}
-.run-btn:hover:not(:disabled){background:rgba(78,201,176,.25);border-color:#4EC9B0;box-shadow:0 0 20px rgba(78,201,176,0.2);transform:translateY(-1px);}
-.run-btn.running{background:rgba(255,107,157,.12);border-color:rgba(255,107,157,.35);color:#FF6B9D;}
-.run-btn:disabled{opacity:.4;cursor:not-allowed;}
+import { CMEditor } from "../components/editor/CMEditor.jsx";
 
-/* ── SIDEBAR ── */
-.sidebar{width:250px;background:var(--bg2);backdrop-filter:blur(20px);border-right:1px solid var(--bdr);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;transition:all .25s cubic-bezier(.4,0,.2,1);z-index:90;}
-.sidebar:hover{width:260px;}
-.sec-hdr{padding:14px 16px 8px;font-size:10px;font-weight:800;letter-spacing:.15em;text-transform:uppercase;color:var(--txt3);}
-.ft{display:flex;align-items:center;gap:9px;height:32px;cursor:pointer;padding:0 12px;font-size:12.5px;white-space:nowrap;border-radius:8px;margin:1px 8px;transition:all .15s;}
-.ft:hover{background:rgba(255,255,255,.06);transform:translateX(3px);}
-.ft.sel{background:rgba(79,193,255,.1);color:#fff;font-weight:600;}
 
-/* ── PRESENCE CARDS ── */
-.presence-card{display:flex;align-items:center;gap:10px;padding:7px 12px;border-radius:10px;margin:2px 8px;transition:all .2s;cursor:default;border:1px solid transparent;}
-.presence-card:hover{background:rgba(255,255,255,.04);border-color:var(--bdr2);transform:translateX(3px);}
-.presence-av{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;font-family:var(--mono);flex-shrink:0;border:2px solid transparent;position:relative;box-shadow:0 4px 10px rgba(0,0,0,0.2);}
-.presence-av .pdot{position:absolute;bottom:-3px;right:-3px;width:10px;height:10px;border-radius:50%;border:2px solid #151820;}
-.presence-info{flex:1;min-width:0;}
-.presence-name{font-size:13px;color:#e0e0e0;font-weight:600;display:flex;align-items:center;gap:6px;}
-.presence-pos{font-size:10.5px;color:var(--txt2);margin-top:2px;font-family:var(--mono);}
-.presence-typing{display:flex;align-items:center;gap:3px;margin-top:2px;}
-.typing-dot{width:4px;height:4px;border-radius:50%;display:inline-block;animation:typingBounce 1.4s infinite ease-in-out;}
-
-/* ── TABS ── */
-.tab{display:flex;align-items:center;gap:7px;padding:0 14px 0 16px;height:40px;border-right:1px solid var(--bdr2);cursor:pointer;font-size:12.5px;white-space:nowrap;flex-shrink:0;max-width:200px;position:relative;font-family:var(--mono);transition:all .2s;}
-.tab.on{background:var(--bg);border-bottom:2px solid var(--blue);color:#fff;}
-.tab.on::after{content:'';position:absolute;bottom:0;left:0;right:0;height:4px;background:linear-gradient(to top, rgba(79,193,255,0.2), transparent);pointer-events:none;}
-.tab.off{background:rgba(21,24,32,0.4);color:var(--txt2);}
-.tab:hover{background:rgba(255,255,255,.03);color:#fff;}
-.tab:hover .tx{opacity:1;transform:scale(1);}
-.tx{opacity:0;width:16px;height:16px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;margin-left:auto;flex-shrink:0;color:var(--txt2);transition:all .15s;transform:scale(0.8);}
-.tx:hover{background:rgba(255,99,99,.15);color:#ff6363;}
-
-/* ── OUTPUT ── */
-.out-panel{background:#0a0c10;border-top:1px solid var(--bdr);display:flex;flex-direction:column;flex-shrink:0;}
-.out-hdr{display:flex;align-items:center;background:var(--bg3);border-bottom:1px solid var(--bdr);height:32px;flex-shrink:0;}
-.out-tab{padding:0 14px;height:100%;display:flex;align-items:center;cursor:pointer;font-size:11px;font-weight:600;color:var(--txt2);border-bottom:2px solid transparent;gap:5px;}
-.out-tab.on{color:#fff;border-bottom-color:var(--blue);}
-.out-tab:hover:not(.on){color:var(--txt);}
-.rp-tab{padding:5px 14px;cursor:pointer;font-size:11px;font-weight:600;color:var(--txt2);border-bottom:2px solid transparent;white-space:nowrap;}
-.rp-tab.on{color:var(--txt);border-bottom-color:var(--blue);}
-.rp-tab:hover:not(.on){color:var(--txt);}
-
-/* ── CRDT OPS ── */
-.op-card{border-radius:6px;padding:7px 10px;margin-bottom:5px;animation:fadeIn .2s ease both;}
-.op-card.insert{background:rgba(79,193,255,.08);border:1px solid rgba(79,193,255,.2);}
-.op-card.retain{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);}
-.op-card.delete{background:rgba(255,99,99,.07);border:1px solid rgba(255,99,99,.18);}
-.op-badge{font-size:9px;font-weight:700;letter-spacing:.08em;padding:2px 6px;border-radius:3px;}
-.op-badge.insert{background:rgba(79,193,255,.2);color:#4FC1FF;}
-.op-badge.retain{background:rgba(255,255,255,.08);color:var(--txt2);}
-.op-badge.delete{background:rgba(255,99,99,.15);color:#ff6363;}
-
-/* ── WS LOG ── */
-.ws-entry{font-family:var(--mono);font-size:10px;padding:4px 6px;border-radius:4px;margin-bottom:3px;border-left:2px solid;word-break:break-all;line-height:1.6;animation:fadeIn .2s ease both;}
-.ws-entry.in{background:rgba(78,201,176,.06);border-color:#4EC9B0;color:#4EC9B0bb;}
-.ws-entry.out{background:rgba(79,193,255,.06);border-color:#4FC1FF;color:#4FC1FFbb;}
-
-/* ── MISC ── */
-.bc{height:24px;display:flex;align-items:center;padding:0 14px;gap:5px;font-size:11px;color:var(--txt2);background:var(--bg);border-bottom:1px solid var(--bdr2);flex-shrink:0;font-family:var(--mono);}
-.statusbar{height:var(--statusbar-h);background:#080a0d;border-top:1px solid var(--bdr);display:flex;align-items:center;padding:0 4px;flex-shrink:0;font-size:11px;color:var(--txt2);font-family:var(--mono);overflow:hidden;}
-.st{display:flex;align-items:center;padding:0 8px;height:100%;cursor:pointer;gap:4px;white-space:nowrap;transition:background .1s;}
-.st:hover{background:rgba(255,255,255,.05);}
-.divider{height:1px;background:var(--bdr);margin:5px 0;}
-.mm{width:52px;background:#0a0c10;border-left:1px solid var(--bdr2);flex-shrink:0;overflow:hidden;position:relative;opacity:.6;}
-.py-badge{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:5px;font-size:11px;font-weight:600;white-space:nowrap;flex-shrink:0;}
-.new-tab-dot{width:6px;height:6px;border-radius:50%;background:#4EC9B0;box-shadow:0 0 6px #4EC9B0;display:inline-block;}
-
-/* ── LIVE BADGE ── */
-.live-badge{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;background:rgba(78,201,176,.08);border:1px solid rgba(78,201,176,.2);font-size:10px;font-weight:700;color:#4EC9B0;letter-spacing:.06em;white-space:nowrap;flex-shrink:0;}
-.live-dot{width:6px;height:6px;border-radius:50%;background:#4EC9B0;box-shadow:0 0 6px #4EC9B0;}
-
-/* ── ERROR POPUP ── */
-.err-ov{position:fixed;inset:0;z-index:800;display:flex;align-items:flex-start;justify-content:center;padding-top:54px;pointer-events:none;}
-.err-box{pointer-events:all;width:700px;max-width:calc(100vw - 20px);background:#120607;border:1.5px solid rgba(255,107,157,.55);border-radius:12px;overflow:hidden;box-shadow:0 0 0 1px rgba(255,107,157,.1),0 28px 70px rgba(0,0,0,.9);}
-.err-head{display:flex;align-items:center;gap:10px;padding:11px 15px;background:rgba(255,107,157,.08);border-bottom:1px solid rgba(255,107,157,.2);}
-.err-title{font-weight:700;font-size:13px;color:#FF6B9D;flex:1;}
-.err-lang-pill{font-size:10px;font-weight:700;font-family:var(--mono);padding:2px 9px;border-radius:100px;background:rgba(255,107,157,.15);color:#FF6B9D;border:1px solid rgba(255,107,157,.3);}
-.err-close{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#FF6B9D;font-size:13px;background:rgba(255,107,157,.1);border:1px solid rgba(255,107,157,.2);line-height:1;transition:all .15s;}
-.err-close:hover{background:rgba(255,107,157,.28);}
-.err-body{padding:13px 16px;font-family:var(--mono);font-size:12px;line-height:1.75;max-height:260px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;}
-.err-foot{padding:8px 15px;background:rgba(255,107,157,.04);border-top:1px solid rgba(255,107,157,.1);display:flex;align-items:center;justify-content:space-between;}
-.err-hint{font-size:10px;color:rgba(255,107,157,.45);}
-.err-view-btn{background:rgba(255,107,157,.12);border:1px solid rgba(255,107,157,.3);color:#FF6B9D;border-radius:5px;padding:3px 11px;font-size:11px;cursor:pointer;font-family:'Inter',sans-serif;font-weight:600;transition:all .15s;}
-.err-view-btn:hover{background:rgba(255,107,157,.22);}
-.ol-ok{color:#4EC9B0;}
-.ol-err{color:#FF6B9D;}
-.ol-warn{color:#DCDCAA;}
-.ol-info{color:#e0e0e0;}
-.ol-dim{color:#6a7a8a;}
-.ol-tb{color:#8892a4;}
-.ol-build{color:#4FC1FF;}
-.ol-success{color:#4EC9B0;}
-
-/* ── CMD PALETTE ── */
-.cp-ov{position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.6);display:flex;justify-content:center;padding-top:70px;}
-.cp-box{width:560px;max-height:400px;background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.7);}
-.cp-in{padding:10px 14px;font-size:13px;background:transparent;color:#fff;border:none;outline:none;border-bottom:1px solid var(--bdr);font-family:inherit;width:100%;}
-.cp-row{padding:7px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;font-size:12px;}
-.cp-row:hover,.cp-row.hi{background:var(--sel);}
-.toast{position:fixed;bottom:30px;right:14px;background:var(--bg3);border:1px solid var(--bdr);border-radius:6px;padding:8px 14px;font-size:12px;z-index:999;max-width:300px;box-shadow:0 6px 24px rgba(0,0,0,.5);animation:fadeIn .2s ease both;}
-
-/* ── NEW FILE MODAL ── */
-.nf-ov{position:fixed;inset:0;z-index:950;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;}
-.nf-box{width:520px;max-width:calc(100vw - 24px);background:#0e1117;border:1px solid rgba(79,193,255,.18);border-radius:14px;overflow:hidden;box-shadow:0 0 0 1px rgba(79,193,255,.06),0 32px 80px rgba(0,0,0,.9);animation:errSlide .2s cubic-bezier(.34,1.2,.64,1) both;}
-.nf-head{padding:14px 18px 10px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:10px;}
-.nf-title{font-size:14px;font-weight:700;color:#fff;flex:1;}
-.nf-close{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--txt2);font-size:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);transition:all .15s;}
-.nf-close:hover{background:rgba(255,99,99,.12);color:#ff6363;border-color:rgba(255,99,99,.2);}
-.nf-sub{font-size:11px;color:var(--txt2);padding:8px 18px 6px;}
-.nf-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px 18px 18px;}
-.nf-card{display:flex;flex-direction:column;align-items:center;gap:7px;padding:14px 8px 12px;border-radius:10px;cursor:pointer;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);transition:all .18s cubic-bezier(.34,1.2,.64,1);}
-.nf-card:hover{transform:translateY(-3px) scale(1.04);border-color:var(--lang-c);background:rgba(255,255,255,.05);box-shadow:0 8px 24px rgba(0,0,0,.4),0 0 0 1px var(--lang-c);}
-.nf-ic{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;font-family:var(--mono);flex-shrink:0;transition:all .18s;}
-.nf-card:hover .nf-ic{transform:scale(1.1);}
-.nf-name{font-size:11px;font-weight:600;color:var(--txt2);transition:color .15s;text-align:center;}
-.nf-card:hover .nf-name{color:#fff;}
-.nf-btn{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:6px;background:rgba(79,193,255,.1);border:1px solid rgba(79,193,255,.25);color:#4FC1FF;font-size:11px;font-weight:700;cursor:pointer;transition:all .18s;flex-shrink:0;white-space:nowrap;}
-.nf-btn:hover{background:rgba(79,193,255,.2);border-color:#4FC1FF;transform:translateY(-1px);box-shadow:0 4px 12px rgba(79,193,255,.15);}
-
-/* ── VALIDATION BADGE ── */
-.val-pass{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;background:rgba(78,201,176,.08);border:1px solid rgba(78,201,176,.2);font-size:10px;font-weight:700;color:#4EC9B0;flex-shrink:0;}
-.val-fail{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;background:rgba(255,107,157,.1);border:1px solid rgba(255,107,157,.25);font-size:10px;font-weight:700;color:#FF6B9D;flex-shrink:0;}
-.val-warn{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;background:rgba(220,220,170,.08);border:1px solid rgba(220,220,170,.2);font-size:10px;font-weight:700;color:#DCDCAA;flex-shrink:0;}
-
-/* ── ANIMATIONS ── */
-@keyframes fadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
-.fi{animation:fadeIn .18s cubic-bezier(.34,1.4,.64,1) both;}
-@keyframes errSlide{from{opacity:0;transform:translateY(-16px) scale(.97)}to{opacity:1;transform:none}}
-.err-slide{animation:errSlide .2s cubic-bezier(.34,1.2,.64,1) both;}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-.pulse{animation:pulse 1.8s ease-in-out infinite;}
-@keyframes spin{to{transform:rotate(360deg)}}
-.spin{animation:spin .7s linear infinite;}
-@keyframes typingBounce{0%,80%,100%{transform:scale(0);opacity:.5}40%{transform:scale(1);opacity:1}}
-@keyframes errShake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-4px)}40%,80%{transform:translateX(4px)}}
-.err-shake{animation:errShake .35s ease both;}
-@keyframes slideIn{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:none}}
-.slide-in{animation:slideIn .2s ease both;}
-@keyframes valPop{0%{transform:scale(.8);opacity:0}60%{transform:scale(1.05)}100%{transform:scale(1);opacity:1}}
-.val-pop{animation:valPop .25s cubic-bezier(.34,1.56,.64,1) both;}
-@keyframes logSlide{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
-.log-slide{animation:logSlide .18s ease both;}
-@keyframes announcePop{0%{opacity:0;transform:scale(.93) translateY(4px)}100%{opacity:1;transform:none}}
-.announce-pop{animation:announcePop .22s cubic-bezier(.34,1.4,.64,1) both;}
-
-/* ── DEBUGGING ROOM ── */
-.dbg-room-overlay{position:fixed;inset:0;z-index:850;display:flex;align-items:center;justify-content:center;background:rgba(5,7,12,.82);backdrop-filter:blur(4px);}
-.dbg-room{width:720px;max-width:calc(100vw - 24px);max-height:calc(100vh - 60px);background:#10131a;border:1.5px solid rgba(255,107,157,.3);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 1px rgba(255,107,157,.08),0 32px 80px rgba(0,0,0,.95);}
-.dbg-room-head{display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(255,107,157,.07);border-bottom:1px solid rgba(255,107,157,.18);flex-shrink:0;}
-.dbg-room-title{font-size:13px;font-weight:700;color:#FF6B9D;flex:1;}
-.dbg-room-body{display:flex;flex:1;min-height:0;overflow:hidden;}
-.dbg-errors-panel{width:240px;border-right:1px solid rgba(255,255,255,.06);overflow-y:auto;padding:8px;}
-.dbg-error-item{padding:7px 9px;border-radius:7px;margin-bottom:5px;cursor:pointer;transition:background .12s;border:1px solid transparent;}
-.dbg-error-item:hover{background:rgba(255,107,157,.07);border-color:rgba(255,107,157,.15);}
-.dbg-error-item.sel{background:rgba(255,107,157,.1);border-color:rgba(255,107,157,.3);}
-.dbg-chat-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;}
-.dbg-chat-messages{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:7px;}
-.dbg-msg{display:flex;gap:8px;animation:fadeIn .18s ease both;}
-.dbg-msg-bubble{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:8px 8px 8px 3px;padding:7px 10px;max-width:85%;font-size:12px;line-height:1.65;}
-.dbg-msg-bubble.me{background:rgba(79,193,255,.1);border-color:rgba(79,193,255,.2);border-radius:8px 8px 3px 8px;margin-left:auto;}
-.dbg-msg-bubble.bot{background:rgba(255,107,157,.07);border-color:rgba(255,107,157,.18);}
-.dbg-msg-time{font-size:9px;color:#4a5568;margin-top:3px;font-family:var(--mono);}
-.dbg-chat-input-row{display:flex;gap:6px;padding:8px 10px;border-top:1px solid rgba(255,255,255,.06);flex-shrink:0;}
-.dbg-chat-input{flex:1;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:7px 12px;color:#e0e0e0;font-size:12px;font-family:'Inter',sans-serif;outline:none;transition:border-color .15s;}
-.dbg-chat-input:focus{border-color:rgba(255,107,157,.4);}
-.dbg-send-btn{padding:7px 14px;border-radius:7px;background:rgba(255,107,157,.15);border:1px solid rgba(255,107,157,.35);color:#FF6B9D;font-size:11px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s;white-space:nowrap;}
-.dbg-send-btn:hover{background:rgba(255,107,157,.28);}
-.dbg-fix-btn{padding:3px 9px;border-radius:5px;background:rgba(78,201,176,.12);border:1px solid rgba(78,201,176,.3);color:#4EC9B0;font-size:10px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s;margin-top:4px;display:inline-flex;align-items:center;gap:4px;}
-.dbg-fix-btn:hover{background:rgba(78,201,176,.25);}
-.dbg-room-foot{display:flex;align-items:center;gap:10px;padding:8px 16px;border-top:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.015);flex-shrink:0;}
-.dbg-stat{font-size:10px;color:#4a5568;display:flex;align-items:center;gap:4px;}
-.dbg-stat span{color:#8892a4;}
-.err-type-badge{display:inline-flex;align-items:center;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;font-family:var(--mono);background:rgba(255,107,157,.15);color:#FF6B9D;border:1px solid rgba(255,107,157,.25);}
-.warn-type-badge{display:inline-flex;align-items:center;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;font-family:var(--mono);background:rgba(220,220,170,.12);color:#DCDCAA;border:1px solid rgba(220,220,170,.2);}
-
-/* ── LIVE SERVER LOGS ── */
-.logs-overlay{position:fixed;inset:0;z-index:860;display:flex;align-items:center;justify-content:center;background:rgba(5,7,12,.82);backdrop-filter:blur(4px);}
-.logs-panel{width:860px;max-width:calc(100vw - 24px);height:calc(100vh - 80px);background:#0a0c11;border:1.5px solid rgba(79,193,255,.25);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 1px rgba(79,193,255,.07),0 32px 80px rgba(0,0,0,.95);}
-.logs-head{display:flex;align-items:center;gap:10px;padding:11px 16px;background:rgba(79,193,255,.06);border-bottom:1px solid rgba(79,193,255,.15);flex-shrink:0;flex-wrap:wrap;}
-.logs-title{font-size:13px;font-weight:700;color:#4FC1FF;flex:1;white-space:nowrap;}
-.logs-controls{display:flex;align-items:center;gap:4px;flex-wrap:wrap;}
-.log-filter-btn{padding:3px 9px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--mono);border:1px solid transparent;transition:all .12s;background:rgba(255,255,255,.04);color:#4a5568;}
-.log-filter-btn.active-INFO{background:rgba(79,193,255,.15);border-color:rgba(79,193,255,.3);color:#4FC1FF;}
-.log-filter-btn.active-WARN{background:rgba(220,220,170,.1);border-color:rgba(220,220,170,.25);color:#DCDCAA;}
-.log-filter-btn.active-ERROR{background:rgba(255,107,157,.12);border-color:rgba(255,107,157,.3);color:#FF6B9D;}
-.log-filter-btn.active-DEBUG{background:rgba(197,134,192,.1);border-color:rgba(197,134,192,.25);color:#C586C0;}
-.log-filter-btn.active-SUCCESS{background:rgba(78,201,176,.1);border-color:rgba(78,201,176,.25);color:#4EC9B0;}
-.log-filter-btn.active-ALL{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18);color:#e0e0e0;}
-.logs-body{flex:1;overflow:hidden;display:flex;flex-direction:column;}
-.logs-stats-bar{display:flex;align-items:center;gap:0;border-bottom:1px solid rgba(255,255,255,.05);flex-shrink:0;background:rgba(255,255,255,.015);overflow-x:auto;}
-.logs-stat-item{padding:6px 14px;font-size:10px;font-weight:700;font-family:var(--mono);border-right:1px solid rgba(255,255,255,.05);display:flex;align-items:center;gap:5px;white-space:nowrap;}
-.logs-stream{flex:1;overflow-y:auto;padding:4px 0;}
-.log-entry{display:flex;align-items:flex-start;gap:0;padding:4px 14px;border-bottom:1px solid rgba(255,255,255,.025);font-family:var(--mono);font-size:11.5px;line-height:1.55;transition:background .1s;cursor:default;}
-.log-entry:hover{background:rgba(255,255,255,.025);}
-.log-entry.ERROR{border-left:2px solid rgba(255,107,157,.5);}
-.log-entry.WARN{border-left:2px solid rgba(220,220,170,.4);}
-.log-entry.SUCCESS{border-left:2px solid rgba(78,201,176,.4);}
-.log-entry.INFO{border-left:2px solid rgba(79,193,255,.2);}
-.log-entry.DEBUG{border-left:2px solid rgba(197,134,192,.25);}
-.log-ts{color:#2d3748;width:82px;flex-shrink:0;font-size:10px;padding-top:1px;}
-.log-level-pill{width:58px;flex-shrink:0;display:flex;align-items:center;}
-.log-level-inner{font-size:9px;font-weight:800;letter-spacing:.06em;padding:1px 5px;border-radius:3px;}
-.log-level-inner.INFO{background:rgba(79,193,255,.18);color:#4FC1FF;}
-.log-level-inner.WARN{background:rgba(220,220,170,.14);color:#DCDCAA;}
-.log-level-inner.ERROR{background:rgba(255,107,157,.18);color:#FF6B9D;}
-.log-level-inner.DEBUG{background:rgba(197,134,192,.14);color:#C586C0;}
-.log-level-inner.SUCCESS{background:rgba(78,201,176,.15);color:#4EC9B0;}
-.log-svc{width:90px;flex-shrink:0;font-size:10px;color:#4a5568;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-top:1px;}
-.log-msg{flex:1;color:#c0c8d8;word-break:break-all;}
-.log-msg.ERROR{color:#ff8090;}
-.log-msg.WARN{color:#DCDCAA;}
-.log-msg.SUCCESS{color:#4EC9B0;}
-.log-msg.DEBUG{color:#C586C0cc;}
-.logs-foot{display:flex;align-items:center;padding:6px 14px;border-top:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.01);gap:10px;flex-shrink:0;flex-wrap:wrap;}
-.logs-streaming-dot{width:7px;height:7px;border-radius:50%;background:#4EC9B0;box-shadow:0 0 6px #4EC9B0;flex-shrink:0;}
-.logs-streaming-dot.paused{background:#4a5568;box-shadow:none;}
-.log-search{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:5px;padding:4px 10px;color:#e0e0e0;font-size:11px;font-family:var(--mono);outline:none;width:180px;transition:border-color .15s;}
-.log-search:focus{border-color:rgba(79,193,255,.35);}
-.logs-pause-btn{padding:4px 12px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#8892a4;transition:all .15s;}
-.logs-pause-btn:hover{background:rgba(255,255,255,.08);}
-.logs-pause-btn.paused{background:rgba(78,201,176,.12);border-color:rgba(78,201,176,.3);color:#4EC9B0;}
-.logs-clear-btn{padding:4px 12px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;border:1px solid rgba(255,107,157,.2);background:rgba(255,107,157,.06);color:#FF6B9D66;transition:all .15s;}
-.logs-clear-btn:hover{background:rgba(255,107,157,.15);color:#FF6B9D;}
-
-/* ── TOOL BUTTONS ── */
-.tool-btn{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#8892a4;transition:all .15s;white-space:nowrap;flex-shrink:0;}
-.tool-btn:hover{background:rgba(255,255,255,.08);color:#e0e0e0;}
-.tool-btn.dbg{background:rgba(255,107,157,.08);border-color:rgba(255,107,157,.2);color:#FF6B9Daa;}
-.tool-btn.dbg:hover{background:rgba(255,107,157,.18);color:#FF6B9D;}
-.tool-btn.logs{background:rgba(79,193,255,.07);border-color:rgba(79,193,255,.18);color:#4FC1FFaa;}
-.tool-btn.logs:hover{background:rgba(79,193,255,.18);color:#4FC1FF;}
-
-/* ── RIGHT PANEL ── */
-.right-panel{width:210px;background:var(--bg2);border-left:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;}
-
-/* ── ACCESS TERMINAL ── */
-.access-terminal{height:100vh;display:flex;align-items:center;justify-content:center;background:#05070a;color:#fff;overflow:hidden;position:relative;font-family:'Inter',sans-serif;}
-.terminal-bg{display:none;}
-.grid-overlay{position:absolute;inset:0;background-image:linear-gradient(rgba(79,193,255,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(79,193,255,0.04) 1px,transparent 1px);background-size:50px 50px;opacity:.5;mask-image:radial-gradient(circle at center,black,transparent 80%);}
-.nebula{position:absolute;width:800px;height:800px;filter:blur(150px);opacity:.15;border-radius:50%;pointer-events:none;}
-.nebula.blue{background:radial-gradient(circle,#4FC1FF,transparent 70%);top:-300px;left:-200px;animation:float-nebula 25s infinite alternate;}
-.nebula.pink{background:radial-gradient(circle,#FF6B9D,transparent 70%);bottom:-300px;right:-200px;animation:float-nebula 30s infinite alternate-reverse;}
-@keyframes float-nebula{0%{transform:translate(0,0) scale(1)}100%{transform:translate(150px,100px) scale(1.1)}}
-.terminal-container{position:relative;z-index:10;width:400px;background:rgba(15,18,25,.85);border:1px solid rgba(255,255,255,.12);border-radius:28px;padding:32px;backdrop-filter:blur(40px) saturate(180%);box-shadow:0 40px 100px rgba(0,0,0,.9),inset 0 0 0 1px rgba(255,255,255,.05);transition:all .5s cubic-bezier(.34,1.56,.64,1);}
-.terminal-container:hover{transform:translateY(-5px);border-color:rgba(255,255,255,.15);}
-.terminal-header{text-align:center;margin-bottom:28px;}
-.terminal-brand{display:flex;flex-direction:column;align-items:center;gap:16px;}
-.brand-icon{font-size:48px;filter:drop-shadow(0 0 20px rgba(79,193,255,.6));animation:icon-glow 3s infinite alternate;}
-@keyframes icon-glow{from{filter:drop-shadow(0 0 10px rgba(79,193,255,.4))}to{filter:drop-shadow(0 0 25px rgba(79,193,255,.8));transform:scale(1.05)}}
-.brand-text h1{font-size:36px;font-weight:800;letter-spacing:-2px;background:linear-gradient(135deg,#fff 30%,#4FC1FF);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin:0;}
-.brand-text span{font-size:11px;color:rgba(255,255,255,.4);letter-spacing:5px;font-weight:700;text-transform:uppercase;display:block;margin-top:4px;}
-.terminal-status{font-size:10px;color:#4EC9B0;display:inline-flex;align-items:center;gap:8px;padding:4px 14px;background:rgba(78,201,176,.08);border-radius:100px;border:1px solid rgba(78,201,176,.2);font-weight:700;margin-top:16px;}
-.pulse-dot{width:8px;height:8px;border-radius:50%;background:#4EC9B0;box-shadow:0 0 12px #4EC9B0;animation:pulse-ring 2s infinite;}
-@keyframes pulse-ring{0%{transform:scale(.95);box-shadow:0 0 0 0 rgba(78,201,176,.7)}70%{transform:scale(1);box-shadow:0 0 0 10px rgba(78,201,176,0)}100%{transform:scale(.95);box-shadow:0 0 0 0 rgba(78,201,176,0)}}
-.terminal-nav{display:flex;background:rgba(255,255,255,.04);border-radius:16px;padding:5px;margin-bottom:24px;border:1px solid rgba(255,255,255,.06);position:relative;}
-.nav-item{flex:1;padding:12px;border:none;background:none;color:rgba(255,255,255,.4);font-size:12px;font-weight:700;cursor:pointer;transition:all .3s;border-radius:12px;z-index:2;position:relative;}
-.nav-item.active{color:#fff;}
-.nav-indicator{position:absolute;top:5px;left:5px;height:calc(100% - 10px);width:calc(50% - 5px);background:rgba(255,255,255,.1);border-radius:12px;transition:transform .5s cubic-bezier(.34,1.56,.64,1);border:1px solid rgba(255,255,255,.15);box-shadow:0 4px 15px rgba(0,0,0,.3);}
-.terminal-input-group{margin-bottom:16px;}
-.terminal-input-group label{display:block;font-size:10px;color:rgba(255,255,255,.5);margin-bottom:6px;font-weight:700;letter-spacing:1px;text-transform:uppercase;}
-.input-wrapper{position:relative;}
-.input-wrapper input{width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);padding:12px 18px;border-radius:14px;color:#fff;font-size:14px;outline:none;transition:all .3s;}
-.input-wrapper input:focus{background:rgba(255,255,255,.06);border-color:rgba(79,193,255,.6);box-shadow:0 0 25px rgba(79,193,255,.15);transform:scale(1.02);}
-.terminal-submit{width:100%;padding:16px;background:linear-gradient(135deg,#fff,#e0e0e0);border:none;border-radius:14px;color:#000;font-weight:900;font-size:14px;cursor:pointer;transition:all .3s cubic-bezier(.4,0,.2,1);margin-top:8px;box-shadow:0 15px 35px rgba(0,0,0,.3);text-transform:uppercase;letter-spacing:1px;}
-.terminal-submit:hover:not(:disabled){transform:translateY(-3px) scale(1.02);box-shadow:0 20px 45px rgba(255,255,255,.2);background:#fff;}
-.terminal-submit:active:not(:disabled){transform:translateY(-1px) scale(.98);}
-.terminal-submit:disabled{opacity:.3;cursor:not-allowed;filter:grayscale(1);}
-.terminal-footer{margin-top:24px;text-align:center;}
-.footer-line{height:1px;background:linear-gradient(to right,transparent,rgba(255,255,255,.1),transparent);margin-bottom:14px;}
-.footer-content{display:flex;justify-content:center;gap:24px;font-size:10px;color:rgba(255,255,255,.25);font-weight:700;letter-spacing:2px;}
-.terminal-alert{display:flex;align-items:center;gap:14px;padding:16px;border-radius:16px;margin-bottom:24px;font-size:13px;line-height:1.4;backdrop-filter:blur(10px);}
-.terminal-alert.error{background:rgba(255,107,157,.15);border:1px solid rgba(255,107,157,.3);color:#FFB3CD;}
-.terminal-alert.warning{background:rgba(220,220,170,.15);border:1px solid rgba(220,220,170,.3);color:#F0F0C0;display:flex;flex-direction:column;gap:12px;}
-.local-bypass-btn{width:100%;padding:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;}
-.local-bypass-btn:hover{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.4);}
-.terminal-alert.info{background:rgba(79,193,255,.15);border:1px solid rgba(79,193,255,.3);color:#A5E0FF;}
-.fi-pop{animation:fi-pop .6s cubic-bezier(.34,1.56,.64,1) both;}
-@keyframes fi-pop{from{opacity:0;transform:scale(.9) translateY(20px)}to{opacity:1;transform:scale(1) translateY(0)}}
-
-/* ── MOBILE BOTTOM BAR ── */
-.mobile-bottom-bar{display:none;position:fixed;bottom:0;left:0;right:0;height:52px;background:var(--bg2);border-top:1px solid var(--bdr);z-index:100;align-items:center;justify-content:space-around;padding:0 4px;}
-.mbb-btn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 10px;border-radius:8px;cursor:pointer;border:none;background:transparent;color:#4a5568;font-size:9px;font-weight:700;font-family:'Inter',sans-serif;transition:all .15s;min-width:52px;}
-.mbb-btn.active{color:#4FC1FF;background:rgba(79,193,255,.1);}
-.mbb-btn:hover{background:rgba(255,255,255,.06);color:#8892a4;}
-.mbb-icon{font-size:18px;line-height:1;}
-.mobile-sidebar-overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);}
-.mobile-sidebar-drawer{position:fixed;left:0;top:0;bottom:0;width:280px;background:var(--bg2);border-right:1px solid var(--bdr);z-index:201;overflow-y:auto;transform:translateX(-100%);transition:transform .25s cubic-bezier(.34,1.2,.64,1);}
-.mobile-sidebar-drawer.open{transform:translateX(0);}
-
-/* ════════════════════════════════════════════════════ */
-/* ══════════  MEDIA QUERIES — FULLY RESPONSIVE  ══════ */
-/* ════════════════════════════════════════════════════ */
-
-/* ── 0. Large Desktop & Ultrawide ≥ 1600px ── */
-@media screen and (min-width:1600px){
-  .sidebar{width:280px;}
-  .right-panel{width:260px;}
-  body{font-size:14px;}
-  .topbar{height:52px;padding:0 20px;}
-  .tab{font-size:13px;height:40px;padding:0 18px;}
-}
-
-/* ── 1. Large Tablets & Small Laptops ≤ 1024px ── */
-@media screen and (max-width:1024px){
-  .sidebar{width:60px;min-width:60px;}
-  .sidebar .presence-info,.sidebar .sec-hdr,.sidebar .divider,.sidebar .presence-pos{display:none;}
-  .ft{padding:8px;justify-content:center;}
-  .ft span:last-child{display:none;}
-  .right-panel{width:60px;min-width:60px;}
-  .right-panel > *:not(.ot-hdr){display:none;}
-  .tool-btn span:last-child{display:none;}
-  .tool-btn{padding:4px 6px;}
-}
-
-/* ── 2. Tablets ≤ 768px ── */
-@media screen and (max-width:768px){
-  :root{--topbar-h:42px;}
-  .topbar{padding:0 8px;gap:4px;}
-  .tb-logo{font-size:.8rem;}
-  .tb-logo span:last-child{display:none;}
-  .live-badge{font-size:9px;padding:2px 7px;}
-  .val-pass,.val-fail,.val-warn{display:none;}
-  .py-badge{display:none;}
-  .tool-btn.dbg,.tool-btn.logs{display:none !important;}
-  .sb-tool{display:none !important;}
-  .dbg-badge span:not(.dbg-cnt){display:none;}
-  .dbg-badge{padding:4px 8px;}
-  .tab{padding:0 10px;font-size:11px;height:32px;}
-  .bc{padding:4px 10px;font-size:10px;}
-  .out-hdr{height:30px;}
-  .out-tab{padding:0 10px;font-size:10px;}
-  /* collapse sidebar to icon strip */
-  .sidebar{width:48px;min-width:48px;}
-  .sidebar .presence-card,.sidebar .sec-hdr,.sidebar .divider,.sidebar .session-info,.sidebar .tools-section{display:none;}
-  .ft{padding:6px;justify-content:center;}
-  .ft > span:not(:first-child){display:none;}
-  /* right panel hidden */
-  .right-panel{display:none;}
-  .mm{display:none;}
-  .terminal-container{width:92%;padding:24px;border-radius:20px;}
-  .brand-text h1{font-size:28px;}
-}
-
-/* ── iPhone SE, Newer iPhones with safe areas & Android Modern ── */
-@media screen and (max-width: 600px) {
-  :root {
-    --topbar-h: 44px;
-    --statusbar-h: 0px;
-    --safe-bottom: env(safe-area-inset-bottom, 0px);
-    --safe-top: env(safe-area-inset-top, 0px);
-    --safe-left: env(safe-area-inset-left, 0px);
-    --safe-right: env(safe-area-inset-right, 0px);
-  }
-
-  body {
-    overscroll-behavior-y: contain; /* Android pull-to-refresh fix */
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .topbar {
-    padding: var(--safe-top) calc(6px + var(--safe-right)) 0 calc(6px + var(--safe-left));
-    gap: 4px;
-    height: calc(var(--topbar-h) + var(--safe-top));
-    overflow: hidden;
-  }
-  
-  .divider-v { display: none !important; }
-
-  .editor-main-area {
-    padding-bottom: calc(52px + var(--safe-bottom));
-  }
-
-  .mobile-bottom-bar {
-    display: flex !important;
-    height: calc(52px + var(--safe-bottom));
-    padding-bottom: var(--safe-bottom);
-    padding-left: var(--safe-left);
-    padding-right: var(--safe-right);
-    backdrop-filter: blur(20px);
-    background: rgba(21, 24, 32, 0.85);
-  }
-
-  /* hide heavy panels */
-  .sidebar{display:none !important;}
-  .right-panel{display:none !important;}
-  .mm{display:none !important;}
-  .statusbar{display:none !important;}
-  .tool-btn{display:none !important;}
-  .dbg-badge{display:none !important;}
-  .live-badge{display:none !important;}
-  .py-badge{display:none !important;}
-  .val-pass,.val-fail,.val-warn{display:none !important;}
-
-  /* topbar — keep only essentials */
-  .tb-logo .gem{width:20px;height:20px;font-size:10px;}
-  .tb-logo{font-size:.8rem;padding:0 4px;}
-
-  /* hide lang switcher text, keep icons */
-  .lp span:last-child{display:none;}
-  .lp{padding:4px 7px; min-height: 32px; display: flex; align-items: center;}
-
-  /* lang switcher scroll */
-  .lang-switcher-row{overflow-x:auto;-webkit-overflow-scrolling:touch;}
-  .lang-switcher-row::-webkit-scrollbar{display:none;}
-
-  /* new editor controls — hide select, simplify */
-  .new-ed-select{display:none !important;}
-  .new-ed-btn{padding:5px 12px;font-size:10px; min-height: 32px;}
-
-  /* run button compact */
-  .run-btn{padding:5px 14px;font-size:11px; min-height: 32px;}
-  .run-btn span:not(.spin){display:none;}
-
-  /* avatars — show only 2 */
-  .av-group .av:nth-child(n+3){display:none;}
-
-  /* tab bar */
-  .tab{min-width:70px;max-width:130px;font-size:11px;padding:0 8px;height:32px;}
-
-  /* breadcrumb */
-  .bc{padding:3px 10px;font-size:10px;}
-  .bc span:nth-child(n+4){display:none;}
-
-  /* output panel compact */
-  .out-panel{height:180px !important;}
-  .out-hdr{height:28px;}
-  .out-tab{padding:0 10px;font-size:10px;}
-
-  /* modals full screen */
-  .dbg-room{width:100vw !important;height:calc(100vh - 44px) !important;border-radius:0 !important;max-width:100vw !important;max-height:calc(100vh - 44px) !important;}
-  .dbg-room-overlay{align-items:flex-end;padding:0;}
-  .dbg-room-body{flex-direction:column;}
-  .dbg-errors-panel{width:100% !important;height:160px !important;border-right:none !important;border-bottom:1px solid rgba(255,255,255,.05);}
-  .logs-panel{width:100vw !important;height:calc(100vh - 44px) !important;border-radius:0 !important;max-width:100vw !important;}
-  .logs-overlay{align-items:flex-end;padding:0;}
-  .logs-head{padding:8px 12px;gap:6px;}
-  .logs-title{font-size:12px;}
-  .logs-controls{gap:3px;}
-  .log-filter-btn{padding:2px 6px;font-size:9px;}
-  .log-ts{width:60px;font-size:9px;}
-  .log-svc{width:70px;font-size:9px;}
-  .log-entry{font-size:10.5px;padding:3px 10px;}
-
-  /* cmd palette */
-  .cp-box{width:calc(100vw - 16px);max-width:calc(100vw - 16px);}
-  .cp-ov{padding-top:50px;padding-left:8px;padding-right:8px;}
-
-  /* error popup */
-  .err-ov{padding-top:50px;padding-left:8px;padding-right:8px;}
-  .err-body{max-height:180px;font-size:11px;}
-
-  /* toast */
-  .toast{right:8px;left:8px;max-width:100%;bottom:calc(62px + var(--safe-bottom));}
-
-  /* terminal */
-  .terminal-container{width:calc(100vw - 24px);padding:20px 18px;border-radius:20px;}
-  .brand-icon{font-size:36px;}
-  .brand-text h1{font-size:26px;letter-spacing:-1px;}
-  .brand-text span{font-size:9px;letter-spacing:3px;}
-  .terminal-nav{margin-bottom:16px;}
-  .nav-item{padding:10px 6px;font-size:11px;}
-  .terminal-submit{padding:13px;font-size:13px;}
-  .footer-content{gap:12px;font-size:9px;}
-  .input-wrapper input{padding:10px 14px;font-size:13px;}
-  .terminal-alert{padding:12px;font-size:12px;gap:10px;}
-}
-
-/* ── 4. Small phones ≤ 390px (iPhone SE 1st gen, older Androids) ── */
-@media screen and (max-width:390px){
-  :root{--topbar-h:40px;}
-  .tb-logo{display:none;}
-  .lp{padding:3px 5px;}
-  .run-btn{padding:4px 10px;}
-  .tab{min-width:60px;max-width:110px;font-size:10px;padding:0 6px;}
-  .brand-text h1{font-size:22px;}
-  .terminal-container{padding:16px 14px;}
-  .footer-content span:last-child{display:none;}
-  .out-panel{height:150px !important;}
-  .mbb-btn{min-width:44px;padding:5px 6px;font-size:8px;}
-}
-
-/* ── 5. Landscape mode on phones ── */
-@media screen and (max-width:900px) and (orientation:landscape){
-  :root{--topbar-h:36px;}
-  .topbar{height:var(--topbar-h);}
-  .out-panel{height:140px !important;}
-  .mobile-bottom-bar{height:44px;}
-  .mbb-icon{font-size:15px;}
-  .mbb-btn{font-size:8px;padding:4px 8px;}
-  .terminal-container{padding:16px 20px;}
-  .terminal-header{margin-bottom:14px;}
-  .brand-icon{font-size:28px;}
-  .brand-text h1{font-size:22px;}
-  .terminal-nav{margin-bottom:12px;}
-  .terminal-input-group{margin-bottom:10px;}
-  .input-wrapper input{padding:8px 14px;font-size:13px;}
-  .terminal-submit{padding:11px;}
-  .terminal-footer{margin-top:12px;}
-}
-
-/* ── 6. Foldables & large phones 600–768px ── */
-@media screen and (min-width:601px) and (max-width:768px){
-  .sidebar{width:52px;min-width:52px;}
-  .right-panel{display:none;}
-  .mm{display:none;}
-  .tool-btn span{display:none;}
-  .tool-btn{padding:4px 7px;}
-}
-
-/* ── 7. Touch Device Optimizations (Global) ── */
-@media (pointer: coarse) {
-  .ft, .tab, .lp, .new-ed-btn, .run-btn, .mbb-btn {
-    min-height: 38px;
-  }
-  .tx {
-    width: 24px;
-    height: 24px;
-    opacity: 0.8;
-  }
-}
-`;
-
-// ═══════════ CODEMIRROR (Yjs) ═══════════
-const LM = {
-  ts: javascript({ typescript: true }),
-  js: javascript(),
-  py: python(),
-  java: java(),
-  cpp: cpp(),
-  rs: rust(),
-  go: go(),
-  sql: sql()
-};
-
-const theme = EditorView.theme({
-  "&": { backgroundColor: "#0d0f14", color: "#d4d4d4", height: "100%", fontSize: "13.5px" },
-  ".cm-content": { caretColor: "#4FC1FF", fontFamily: "'JetBrains Mono',Consolas,monospace", fontSize: "13.5px", lineHeight: "21px" },
-  ".cm-cursor,.cm-dropCursor": { borderLeftColor: "#4FC1FF", borderLeftWidth: "2px" },
-  ".cm-activeLine": { backgroundColor: "rgba(79,193,255,.04)" },
-  ".cm-selectionBackground": { backgroundColor: "rgba(79,193,255,.18) !important" },
-  "&.cm-focused .cm-selectionBackground": { backgroundColor: "rgba(79,193,255,.22) !important" },
-  ".cm-gutters": { backgroundColor: "#0d0f14", borderRight: "1px solid rgba(255,255,255,.05)", color: "#4a5568", minWidth: "48px" },
-  ".cm-lineNumbers .cm-gutterElement": { minWidth: "38px", textAlign: "right", paddingRight: "10px" },
-  ".cm-activeLineGutter": { backgroundColor: "rgba(79,193,255,.04)", color: "#8892a4" },
-  ".cm-matchingBracket": { backgroundColor: "rgba(79,193,255,.15)", color: "#fff !important" },
-  ".cm-tooltip": { backgroundColor: "#1c1f28", border: "1px solid rgba(255,255,255,.1)", borderRadius: "6px", color: "#e0e0e0" },
-  ".cm-tooltip-autocomplete ul li[aria-selected]": { backgroundColor: "rgba(79,193,255,.15)" },
-  ".cm-ySelectionInfo": { color: "#fff !important", fontFamily: "var(--mono) !important", fontWeight: "700 !important", opacity: "1 !important" }
-}, { dark: true });
-
-const CMEditor = forwardRef(({ lang, initText, onLocalOp, onCursorMove, cursors, myId, fileKey, readOnly = false, me }, ref) => {
-  const domRef = useRef(null);
-  const viewRef = useRef(null);
-  const providerRef = useRef(null);
-
-  useEffect(() => {
-    if (!domRef.current) return;
-    
-    // Create Yjs doc
-    const ydoc = new Y.Doc();
-    const ytext = ydoc.getText('codemirror');
-    
-    // Set initial text if empty
-    if (initText && ytext.length === 0) {
-      ytext.insert(0, initText);
-    }
-    
-    // Websocket provider
-    const roomName = "ckc-os-" + fileKey;
-    const provider = new WebsocketProvider('ws://localhost:4000/yjs', roomName, ydoc, { connect: true });
-    providerRef.current = provider;
-    
-    // Awareness (cursors & user presence)
-    if (me) {
-      provider.awareness.setLocalStateField('user', {
-        name: me.name,
-        color: me.cursorColor || '#4FC1FF',
-        colorLight: (me.cursorColor || '#4FC1FF') + '33' // 20% opacity
-      });
-    }
-
-    // CodeMirror state
-    const state = EditorState.create({
-      doc: ytext.toString(),
-      extensions: [
-        lineNumbers(), highlightActiveLine(), highlightActiveLineGutter(), highlightSpecialChars(),
-        history(), foldGutter(), drawSelection(), dropCursor(), bracketMatching(), closeBrackets(),
-        autocompletion(), rectangularSelection(), crosshairCursor(), highlightSelectionMatches(),
-        indentOnInput(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        keymap.of([indentWithTab, ...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap]),
-        LM[lang] || LM.ts, oneDark, theme, EditorView.lineWrapping,
-        yCollab(ytext, provider.awareness, { undoManager: new Y.UndoManager(ytext) }),
-        EditorView.updateListener.of(upd => {
-          if (upd.selectionSet && onCursorMove) {
-            const pos = upd.state.selection.main.head;
-            const ln = upd.state.doc.lineAt(pos);
-            onCursorMove(ln.number, pos - ln.from + 1, pos);
-          }
-        }),
-        readOnly ? EditorView.editable.of(false) : []
-      ]
-    });
-
-    const view = new EditorView({
-      state,
-      parent: domRef.current
-    });
-    viewRef.current = view;
-
-    // API for parent components (like debugging room fixes)
-    if (ref) {
-      const api = {
-        _getText: () => ytext.toString(),
-        _applyRemoteOp: (op, fullCode) => {
-          // If Debugging room sets full code:
-          if (fullCode !== undefined) {
-            ydoc.transact(() => {
-              ytext.delete(0, ytext.length);
-              ytext.insert(0, fullCode);
-            });
-          } else if (op) {
-             const dl = ytext.length;
-             ydoc.transact(() => {
-                if (op.type === "insert") ytext.insert(Math.max(0, Math.min(op.pos, dl)), op.chars);
-                else if (op.type === "delete") {
-                  const f = Math.max(0, Math.min(op.pos, dl));
-                  const t = Math.min(f + op.len, dl);
-                  if (t > f) ytext.delete(f, t - f);
-                }
-                else if (op.type === "replace") {
-                  const f = Math.max(0, Math.min(op.pos, dl));
-                  const t = Math.min(f + op.len, dl);
-                  if (t > f) ytext.delete(f, t - f);
-                  ytext.insert(f, op.chars);
-                }
-             });
-          }
-        }
-      };
-      if (typeof ref === "function") ref(api);
-      else ref.current = api;
-    }
-
-    return () => {
-      provider.destroy();
-      ydoc.destroy();
-      view.destroy();
-      viewRef.current = null;
-    };
-  }, [fileKey, lang, readOnly, me]); 
-
-  return <div ref={domRef} style={{ width: "100%", height: "100%", position: "relative", zIndex: 10 }} />;
-});
-
-// ═══════════ ERROR POPUP ═══════════
-function ErrorPopup({ error, lang, onClose, onOpenOutput }) {
-  if (!error) return null;
-  const lines = error.split("\n");
-  const langName = LANGS[lang]?.n || lang;
-  const langColor = LANGS[lang]?.c || "#FF6B9D";
-  const firstMeaningful = lines.find(l => /error|warning|failed/i.test(l)) || lines[0] || "";
-  let errType = "Error";
-  if (/syntaxerror/i.test(firstMeaningful)) errType = "SyntaxError";
-  else if (/nameerror/i.test(firstMeaningful)) errType = "NameError";
-  else if (/typeerror/i.test(firstMeaningful)) errType = "TypeError";
-  else if (/valueerror/i.test(firstMeaningful)) errType = "ValueError";
-  else if (/tabError/i.test(firstMeaningful)) errType = "TabError";
-  else if (/traceback/i.test(lines[0])) errType = "Runtime Error";
-  else if (/compilation failed|build failed/i.test(error)) errType = "Build Failed";
-  else if (/error\[e\d+\]/i.test(firstMeaningful)) errType = "Rust Error";
-  else if (/\\.go:/i.test(firstMeaningful)) errType = "Go Error";
-  else if (/sql error/i.test(firstMeaningful)) errType = "SQL Error";
-  else if (/fatal error/i.test(firstMeaningful)) errType = "Fatal Error";
-  else if (/error:/i.test(firstMeaningful)) errType = "Compilation Error";
-  return (
-    <div className="err-ov">
-      <div className="err-box err-slide">
-        <div className="err-head">
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#FF6B9D", boxShadow: "0 0 8px #FF6B9D", display: "inline-block", flexShrink: 0 }} className="pulse" />
-          <div className="err-title">⊗ {errType}</div>
-          <span className="err-lang-pill" style={{ background: `${langColor}22`, color: langColor, borderColor: `${langColor}44` }}>{langName}</span>
-          <button className="err-close" onClick={onClose}>✕</button>
-        </div>
-        <div className="err-body">
-          {lines.map((line, i) => {
-            let color = "#ffb3c0";
-            if (/^❌/.test(line)) color = "#FF6B9D";
-            else if (/^⚠/.test(line)) color = "#DCDCAA";
-            else if (/^\s*✖/.test(line)) color = "#ff8090";
-            else if (/Fix the error/i.test(line)) color = "#6a7585";
-            else if (/^traceback/i.test(line)) color = "#DCDCAA";
-            else if (/^\s+file /i.test(line)) color = "#8892a4";
-            else if (/^\s+\^+\s*$/.test(line)) color = "#FF6B9D";
-            else if (/^(\w+error|\w+exception)/i.test(line.trim())) color = "#ff6060";
-            else if (/^(error(\[e\d+\])?:|sql error|compilation failed)/i.test(line.trim())) color = "#ff6060";
-            else if (/^warning/i.test(line.trim())) color = "#DCDCAA";
-            else if (/^\s+/.test(line) && line.trim()) color = "#8892a4";
-            return <div key={i} style={{ color, fontFamily: "var(--mono)", fontSize: 12, lineHeight: 1.75 }}>{line || "\u00A0"}</div>;
-          })}
-        </div>
-        <div className="err-foot">
-          <span className="err-hint">Fix errors and press ▶ Run · Esc to dismiss</span>
-          <button className="err-view-btn" onClick={() => { onOpenOutput(); onClose(); }}>View in Output →</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════ TYPING INDICATOR ═══════════
-function TypingIndicator({ color }) {
-  return (
-    <span className="presence-typing">
-      {[0, 1, 2].map(i => (
-        <span key={i} className="typing-dot" style={{ background: color, animation: `typingBounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />
-      ))}
-    </span>
-  );
-}
-
-// ═══════════ DEBUGGING ROOM ═══════════
-function DebuggingRoom({ errors, warnings, lang, me, onLocalOp, onClose }) {
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const [messages, setMessages] = useState([]);
-  const [inputVal, setInputVal] = useState("");
-  const messagesEndRef = useRef(null);
-  const botTypingRef = useRef(null);
-  const channelRef = useRef(null);
-
-  const allIssues = [
-    ...errors.map(e => ({ type: "error", text: e })),
-    ...warnings.map(w => ({ type: "warning", text: w })),
-  ];
-
-  useEffect(() => {
-    if (allIssues.length === 0) return;
-    const issue = allIssues[selectedIdx];
-    if (!issue) return;
-    const sysMsg = { id: Math.random().toString(36).slice(2), from: "system", text: `🔍 Debugging: ${issue.text.slice(0, 80)}${issue.text.length > 80 ? "…" : ""}`, t: nowTs() };
-    setMessages([sysMsg]);
-    clearTimeout(botTypingRef.current);
-    botTypingRef.current = setTimeout(() => {
-      const bot = BOTS[0];
-      const suggestion = generateBotAnnotation(issue.text, lang);
-      setMessages(prev => [...prev, { id: Math.random().toString(36).slice(2), from: bot.name, color: bot.color, bg: bot.bg, inits: bot.inits, text: suggestion, t: nowTs(), isBot: true }]);
-      setTimeout(() => {
-        const bot2 = BOTS[1];
-        const langHint = `In ${LANGS[lang]?.n || lang}: ${issue.text.includes("line") ? "check the highlighted line first." : "validate your syntax tree structure."}`;
-        setMessages(prev => [...prev, { id: Math.random().toString(36).slice(2), from: bot2.name, color: bot2.color, bg: bot2.bg, inits: bot2.inits, text: langHint, t: nowTs(), isBot: true }]);
-      }, 1600);
-    }, 700);
-    return () => clearTimeout(botTypingRef.current);
-  }, [selectedIdx, lang]);
-
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
-
-  useEffect(() => {
-    const channel = supabase.channel(`debug:${lang}`);
-    channelRef.current = channel;
-    channel.on("broadcast", { event: "msg" }, ({ payload }) => { setMessages(prev => [...prev, payload]); }).subscribe();
-    return () => channel.unsubscribe();
-  }, [lang]);
-
-  const sendMessage = (txt = inputVal.trim()) => {
-    if (!txt) return;
-    const msg = { id: Math.random().toString(36).slice(2), from: me.name, color: me.cursorColor, bg: me.bg, inits: initials(me.name), text: txt, t: nowTs(), isMe: true };
-    setMessages(prev => [...prev, msg]);
-    channelRef.current?.send({ type: "broadcast", event: "msg", payload: { ...msg, isMe: false } });
-    setInputVal("");
-  };
-
-  const totalIssues = allIssues.length;
-
-  return (
-    <div className="dbg-room-overlay" onClick={onClose}>
-      <div className="dbg-room announce-pop" onClick={e => e.stopPropagation()}>
-        <div className="dbg-room-head">
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#FF6B9D", boxShadow: "0 0 8px #FF6B9D", display: "inline-block", flexShrink: 0 }} className="pulse" />
-          <div className="dbg-room-title">🐛 Real-Time Debugging Room</div>
-          <span style={{ fontSize: 10, color: "#4a5568", fontFamily: "var(--mono)", background: "rgba(255,255,255,.04)", padding: "2px 8px", borderRadius: 4 }}>
-            ${LANGS[lang]?.n || lang} · ${totalIssues} issue${totalIssues !== 1 ? "s" : ""}
-          </span>
-          <button className="err-close" onClick={onClose} style={{ marginLeft: 4 }}>✕</button>
-        </div>
-        <div className="dbg-room-body">
-          <div className="dbg-errors-panel">
-            <div style={{ fontSize: 9, color: "#4a5568", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", padding: "2px 4px 6px" }}>Issues</div>
-            {allIssues.length === 0 && (
-              <div style={{ fontSize: 11, color: "#4a5568", textAlign: "center", padding: "20px 8px" }}>✓ No issues<br /><span style={{ fontSize: 10, color: "#2d3748" }}>Code looks clean!</span></div>
-            )}
-            {allIssues.map((issue, i) => (
-              <div key={i} className={`dbg-error-item${selectedIdx === i ? " sel" : ""}`} onClick={() => setSelectedIdx(i)}>
-                <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 3 }}>
-                  {issue.type === "error" ? <span className="err-type-badge">ERR</span> : <span className="warn-type-badge">WARN</span>}
-                  <span style={{ fontSize: 9, color: "#4a5568", fontFamily: "var(--mono)", marginLeft: "auto" }}>#${i + 1}</span>
-                </div>
-                <div style={{ fontSize: 10, color: issue.type === "error" ? "#ff8090" : "#DCDCAA", fontFamily: "var(--mono)", lineHeight: 1.5, wordBreak: "break-word" }}>
-                  {issue.text.slice(0, 70)}{issue.text.length > 70 ? "…" : ""}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="dbg-chat-panel">
-            <div className="dbg-chat-messages">
-              {messages.map(msg => {
-                if (msg.from === "system") return (
-                  <div key={msg.id} style={{ textAlign: "center", padding: "4px 0" }}>
-                    <span style={{ fontSize: 10, color: "#4a5568", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 100, padding: "2px 10px", fontFamily: "var(--mono)" }}>{msg.text}</span>
-                  </div>
-                );
-                return (
-                  <div key={msg.id} className="dbg-msg" style={{ flexDirection: msg.isMe ? "row-reverse" : "row" }}>
-                    <div style={{ width: 26, height: 26, borderRadius: 8, background: msg.bg || "rgba(79,193,255,.18)", color: msg.color || "#4FC1FF", fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--mono)", flexShrink: 0, border: `1.5px solid ${msg.color || "#4FC1FF"}44` }}>{msg.inits || initials(msg.from)}</div>
-                    <div style={{ maxWidth: "78%" }}>
-                      <div style={{ fontSize: 9, color: "#4a5568", marginBottom: 2, textAlign: msg.isMe ? "right" : "left" }}>{msg.from}</div>
-                      <div className={`dbg-msg-bubble${msg.isMe ? " me" : msg.isBot ? " bot" : ""}`}>
-                        <span style={{ color: msg.isMe ? "#a8d8ff" : msg.isBot ? "#ffb3c6" : "#e0e0e0" }}>{msg.text}</span>
-                        {msg.isBot && (<div><button className="dbg-fix-btn">✓ Mark as helpful</button></div>)}
-                      </div>
-                      <div className="dbg-msg-time" style={{ textAlign: msg.isMe ? "right" : "left" }}>{msg.t}</div>
-                    </div>
-                  </div>
-                );
-              })}
-              <div ref={messagesEndRef} />
-            </div>
-            <div className="dbg-chat-input-row">
-              <input className="dbg-chat-input" value={inputVal} onChange={e => setInputVal(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Describe what you're seeing, ask the team…" />
-              <button className="dbg-send-btn" onClick={() => sendMessage()}>Send ↑</button>
-            </div>
-          </div>
-        </div>
-        <div className="dbg-room-foot">
-          <div style={{ flex: 1 }} />
-          <div className="dbg-stat">Errors: <span style={{ color: "#FF6B9D" }}>{errors.length}</span></div>
-          <div className="dbg-stat">Warnings: <span style={{ color: "#DCDCAA" }}>{warnings.length}</span></div>
-          <div className="dbg-stat">Lang: <span>{LANGS[lang]?.n || lang}</span></div>
-          <div style={{ flex: 1 }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "#4EC9B0" }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#4EC9B0", boxShadow: "0 0 5px #4EC9B0" }} />
-            {1 + BOTS.length} in room
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════ LIVE SERVER LOGS ═══════════
-function LiveServerLogs({ onClose }) {
-  const [logs, setLogs] = useState(() => Array.from({ length: 18 }, genLogEntry).reverse());
-  const [paused, setPaused] = useState(false);
-  const [filter, setFilter] = useState("ALL");
-  const [search, setSearch] = useState("");
-  const streamRef = useRef(null);
-  const logsEndRef = useRef(null);
-  const [autoScroll, setAutoScroll] = useState(true);
-  const pausedRef = useRef(false);
-
-  useEffect(() => { pausedRef.current = paused; }, [paused]);
-
-  useEffect(() => {
-    streamRef.current = setInterval(() => {
-      if (pausedRef.current) return;
-      const count = Math.random() > 0.65 ? 2 : 1;
-      setLogs(prev => [...Array.from({ length: count }, genLogEntry), ...prev].slice(0, 300));
-    }, 1200);
-    return () => clearInterval(streamRef.current);
-  }, []);
-
-  useEffect(() => {
-    if (autoScroll && logsEndRef.current && !paused) logsEndRef.current.scrollIntoView({ behavior: "smooth" });
-  }, [logs, autoScroll, paused]);
-
-  const filteredLogs = logs.filter(e => {
-    const matchesFilter = filter === "ALL" || e.level === filter;
-    const matchesSearch = !search || e.msg.toLowerCase().includes(search.toLowerCase()) || e.svc.includes(search.toLowerCase());
-    return matchesFilter && matchesSearch;
-  });
-
-  const counts = logs.reduce((acc, e) => { acc[e.level] = (acc[e.level] || 0) + 1; return acc; }, {});
-  const errRate = ((counts.ERROR || 0) / Math.max(logs.length, 1) * 100).toFixed(1);
-
-  return (
-    <div className="logs-overlay" onClick={onClose}>
-      <div className="logs-panel announce-pop" onClick={e => e.stopPropagation()}>
-        <div className="logs-head">
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: paused ? "#4a5568" : "#4EC9B0", boxShadow: paused ? "none" : "0 0 8px #4EC9B0", flexShrink: 0, transition: "all .3s" }} className={paused ? "" : "pulse"} />
-          <div className="logs-title">📡 Live Server Logs</div>
-          <div className="logs-controls">
-            {["ALL", "INFO", "SUCCESS", "WARN", "ERROR", "DEBUG"].map(lv => (
-              <button key={lv} className={`log-filter-btn${filter === lv ? ` active-${lv}` : ""}`} onClick={() => setFilter(lv)}>
-                {lv === "ALL" ? "All" : lv}{lv !== "ALL" && counts[lv] ? <span style={{ marginLeft: 3, opacity: .7 }}>({counts[lv] || 0})</span> : null}
-              </button>
-            ))}
-          </div>
-          <button className="err-close" onClick={onClose} style={{ marginLeft: 8, color: "#4a5568", background: "rgba(255,255,255,.05)", borderColor: "rgba(255,255,255,.1)", flexShrink: 0 }}>✕</button>
-        </div>
-        <div className="logs-body">
-          <div className="logs-stats-bar">
-            {[["ERROR","#FF6B9D"],["WARN","#DCDCAA"],["SUCCESS","#4EC9B0"],["INFO","#4FC1FF"],["DEBUG","#C586C0"]].map(([lv,col]) => (
-              <div key={lv} className="logs-stat-item" style={{ color: col }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: col, display: "inline-block" }} />
-                <span style={{ color: "#4a5568" }}>{lv.slice(0,3)}</span> {counts[lv] || 0}
-              </div>
-            ))}
-            <div className="logs-stat-item" style={{ marginLeft: "auto", color: "#4a5568" }}>Total: <span style={{ color: "#e0e0e0" }}>{logs.length}</span></div>
-            <div className="logs-stat-item" style={{ color: parseFloat(errRate) > 5 ? "#FF6B9D" : "#4a5568" }}>Err%: <span style={{ color: parseFloat(errRate) > 5 ? "#FF6B9D" : "#4EC9B0" }}>{errRate}%</span></div>
-          </div>
-          <div className="logs-stream" onScroll={e => { const el = e.target; setAutoScroll(el.scrollHeight - el.scrollTop - el.clientHeight < 40); }}>
-            <div style={{ display: "flex", padding: "3px 14px", borderBottom: "1px solid rgba(255,255,255,.04)", position: "sticky", top: 0, background: "#0a0c11", zIndex: 2 }}>
-              <span style={{ width: 82, fontSize: 9, color: "#2d3748", fontFamily: "var(--mono)", fontWeight: 700, textTransform: "uppercase" }}>Time</span>
-              <span style={{ width: 58, fontSize: 9, color: "#2d3748", fontFamily: "var(--mono)", fontWeight: 700, textTransform: "uppercase" }}>Level</span>
-              <span style={{ width: 90, fontSize: 9, color: "#2d3748", fontFamily: "var(--mono)", fontWeight: 700, textTransform: "uppercase" }}>Service</span>
-              <span style={{ flex: 1, fontSize: 9, color: "#2d3748", fontFamily: "var(--mono)", fontWeight: 700, textTransform: "uppercase" }}>Message</span>
-            </div>
-            {filteredLogs.length === 0 && <div style={{ padding: "30px", textAlign: "center", color: "#4a5568", fontSize: 12 }}>No matching log entries</div>}
-            {[...filteredLogs].reverse().map((entry, i) => (
-              <div key={entry.id} className={`log-entry ${entry.level} log-slide`} style={{ animationDelay: `${Math.min(i * 0.02, 0.3)}s` }}>
-                <span className="log-ts">{entry.t}</span>
-                <span className="log-level-pill"><span className={`log-level-inner ${entry.level}`}>{entry.level}</span></span>
-                <span className="log-svc" title={entry.svc}>{entry.svc}</span>
-                <span className={`log-msg ${entry.level}`}>
-                  {search ? entry.msg.split(new RegExp(`(${search})`, "gi")).map((part, pi) =>
-                    part.toLowerCase() === search.toLowerCase()
-                      ? <mark key={pi} style={{ background: "rgba(220,220,170,.3)", color: "#DCDCAA", borderRadius: 2 }}>{part}</mark>
-                      : part
-                  ) : entry.msg}
-                </span>
-              </div>
-            ))}
-            <div ref={logsEndRef} />
-          </div>
-        </div>
-        <div className="logs-foot">
-          <div className={`logs-streaming-dot${paused ? " paused" : ""}`} />
-          <span style={{ fontSize: 10, color: paused ? "#4a5568" : "#4EC9B0", fontWeight: 700 }}>{paused ? "PAUSED" : "STREAMING"}</span>
-          <input className="log-search" placeholder="Search logs…" value={search} onChange={e => setSearch(e.target.value)} />
-          <div style={{ flex: 1 }} />
-          <span style={{ fontSize: 10, color: "#4a5568" }}>{filteredLogs.length}/{logs.length}</span>
-          <button className={`logs-pause-btn${paused ? " paused" : ""}`} onClick={() => setPaused(p => !p)}>{paused ? "▶ Resume" : "⏸ Pause"}</button>
-          <button className="logs-clear-btn" onClick={() => setLogs([])}>Clear</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════ ACCESS TERMINAL ═══════════
-function AccessTerminal() {
-  const { login, loginLocal, loginGuest } = useAuth();
-  const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("login");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [colorIdx, setColorIdx] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [autoBypassCounter, setAutoBypassCounter] = useState(3);
-  const isConfigured = !!import.meta.env.VITE_SUPABASE_URL;
-
-  useEffect(() => {
-    if (!isConfigured && autoBypassCounter > 0) {
-      const timer = setTimeout(() => setAutoBypassCounter(c => c - 1), 1000);
-      return () => clearTimeout(timer);
-    }
-    if (!isConfigured && autoBypassCounter === 0) { loginGuest(); navigate("/editor"); }
-  }, [isConfigured, autoBypassCounter, loginGuest, navigate]);
-
-  const handleLogin = async (e) => {
-    e.preventDefault(); setLoading(true); setError(null);
-    try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      navigate("/editor");
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
-  };
-
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    if (!name || !email || !password) return;
-    setLoading(true); setError(null);
-    try {
-      const chosen = PALETTE[colorIdx];
-      const { data, error: signUpError } = await supabase.auth.signUp({ email, password, options: { data: { full_name: name || email.split("@")[0], cursor_color: chosen.hex } } });
-      if (signUpError) throw signUpError;
-      if (data?.user && !data.session) { setError("Activation required. Check your inbox."); }
-      else { navigate("/editor"); }
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
-  };
-
-  return (
-    <div className="access-terminal">
-      <div className="grid-overlay" />
-      <div className="nebula blue" />
-      <div className="nebula pink" />
-      <div className="terminal-container fi-pop">
-        <div className="terminal-header">
-          <div className="terminal-brand">
-            <div className="brand-icon">⚡</div>
-            <div className="brand-text">
-              <h1>CKC-OS</h1>
-              <span>COLLABORATIVE OPERATING SYSTEM</span>
-            </div>
-          </div>
-          <div className="terminal-status">
-            <span className="pulse-dot" />
-            {isConfigured ? "SYSTEM_ACTIVE_v4.2" : "CONFIG_REQUIRED"}
-          </div>
-        </div>
-        {!isConfigured && (
-          <div className="terminal-alert warning" style={{ marginBottom: 20 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span>⚠</span>
-              <div>
-                <div style={{ fontWeight: 700 }}>Supabase not configured.</div>
-                <div style={{ fontSize: 10, opacity: .8, marginTop: 4 }}>Auto-rectifying to Local Mode in {autoBypassCounter}s...</div>
-              </div>
-            </div>
-            <button className="local-bypass-btn" onClick={() => { loginGuest(); navigate("/editor"); }}>Enter Local Mode Now</button>
-          </div>
-        )}
-        <div className="terminal-nav">
-          <div className="nav-indicator" style={{ transform: `translateX(${activeTab === "login" ? "0" : "100%"})` }} />
-          <button className={`nav-item ${activeTab === "login" ? "active" : ""}`} onClick={() => setActiveTab("login")}>ACCESS</button>
-          <button className={`nav-item ${activeTab === "register" ? "active" : ""}`} onClick={() => setActiveTab("register")}>REGISTER</button>
-        </div>
-        {error && (
-          <div className={`terminal-alert ${error.includes("Activation") ? "info" : "error"}`}>
-            <span>{error.includes("Activation") ? "✉" : "⚠"}</span>
-            <span>{error}</span>
-          </div>
-        )}
-        <form onSubmit={activeTab === "login" ? handleLogin : handleRegister}>
-          {activeTab === "register" && (
-            <div className="terminal-input-group">
-              <label>INITIAL_ID</label>
-              <div className="input-wrapper"><input value={name} onChange={e => setName(e.target.value)} placeholder="Enter name..." required /></div>
-            </div>
-          )}
-          <div className="terminal-input-group">
-            <label>UPLINK_EMAIL</label>
-            <div className="input-wrapper"><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="user@ckc-os.io" required /></div>
-          </div>
-          <div className="terminal-input-group">
-            <label>ACCESS_KEY</label>
-            <div className="input-wrapper"><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required /></div>
-          </div>
-          {activeTab === "register" && (
-            <div className="terminal-input-group">
-              <label>WORKSPACE_HUE</label>
-              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                {PALETTE.map((p, i) => (
-                  <div key={i} onClick={() => setColorIdx(i)} style={{ width: 28, height: 28, borderRadius: 8, background: p.bg, border: `2px solid ${colorIdx === i ? p.hex : "transparent"}`, cursor: "pointer", transition: "all .15s", boxShadow: colorIdx === i ? `0 0 10px ${p.hex}66` : "none" }} />
-                ))}
-              </div>
-            </div>
-          )}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
-            <button className="terminal-submit" disabled={loading} style={{ width: "100%" }}>
-              {loading ? "•••" : (activeTab === "login" ? "ESTABLISH CONNECTION →" : "INITIALIZE NODE →")}
-            </button>
-            <button type="button" className="local-bypass-btn" style={{ width: "100%", margin: 0, textTransform: "uppercase" }} onClick={() => {
-              const guestName = name || (activeTab === "login" && email ? email.split("@")[0] : "") || `Guest_${Math.floor(1000 + Math.random() * 9000)}`;
-              loginLocal({
-                email: email || `${guestName.toLowerCase().replace(/\s+/g, "_")}@ckc-os.io`,
-                name: guestName,
-                cursorColor: PALETTE[colorIdx]?.hex || "#00d4ff",
-                bg: PALETTE[colorIdx]?.bg || "rgba(0,212,255,0.15)",
-                isGuest: true,
-              });
-              navigate("/editor");
-            }}>
-              ⚡ Bypass with Local Guest Session
-            </button>
-          </div>
-        </form>
-        <div className="terminal-footer">
-          <div className="footer-line" />
-          <div className="footer-content">
-            <span>SECURE</span><span>v4.2.1</span><span>SUPABASE</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
+import { ErrorPopup } from "../components/editor/ErrorPopup.jsx";
+import { TypingIndicator } from "../components/editor/TypingIndicator.jsx";
+import { DebuggingRoom } from "../components/editor/DebuggingRoom.jsx";
+import { LiveServerLogs } from "../components/editor/LiveServerLogs.jsx";
+import { AccessTerminal } from "../components/editor/AccessTerminal.jsx";
 // ═══════════ MAIN APP ═══════════
 export default function EditorPage() {
   const { user, loading: authLoading, logout } = useAuth();
@@ -1810,8 +87,8 @@ function Shell({ user, onLogout }) {
   const [newEdLang, setNewEdLang] = useState("ts");
   const [connectedCount, setConnectedCount] = useState(1);
   const [liveValidation, setLiveValidation] = useState(null);
+  const [lineLocks, setLineLocks] = useState({});
   const [showDebugRoom, setShowDebugRoom] = useState(false);
-  const [showNewFileModal, setShowNewFileModal] = useState(false);
   const [showServerLogs, setShowServerLogs] = useState(false);
   const [mobilePanelTab, setMobilePanelTab] = useState("editor");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -1822,60 +99,9 @@ function Shell({ user, onLogout }) {
   const activeEditorRef = useRef(null);
   const notifTmr = useRef(null);
 
-  // Refs so realtime handlers always see the LATEST tabs/activeTab/cursor
-  // without needing them in the channel effect's dependency array. This is
-  // what lets the channel stay mounted across tab opens/switches (see the
-  // fix note on the effect below).
-  const tabsRef = useRef(tabs);
-  const activeTabRef = useRef(activeTab);
-  const cursorRef = useRef(cursor);
-  // ── Per-tab document version (fixes a real divergence bug) ──
-  // The old sync model had each client diff its OWN current text against an
-  // incoming `fullCode` and patch toward it. Under concurrent edits this is
-  // not safe: if A and B each start from "d" and type "f"/"g" in the same
-  // instant, A ends up applying B's "dg" on top of its own "df" (and vice
-  // versa for B) — both documents change to match what the OTHER person
-  // typed, discarding their own keystroke, and the two clients end up with
-  // different, swapped text forever (exactly the "hii" vs "dfg" divergence
-  // seen in testing). A diff-based merge cannot detect that two updates
-  // both descended from the same base text and silently picks whichever
-  // arrived most recently — with no way to tell which is "right" for either
-  // side.
-  //
-  // The fix: every change to a tab is stamped with a strictly increasing
-  // version. A client only ever advances a tab to a STRICTLY higher version
-  // than the one it already has, and ties (the literal concurrent-edit case
-  // above) are broken the same way on every client — by comparing
-  // instanceId — so every client converges on the exact same winning text,
-  // deterministically, instead of each independently overwriting the other.
-  // This guarantees convergence; the line-lock TTL is what keeps real
-  // collisions rare in the first place.
-  const docVersionsRef = useRef(new Map()); // tabId -> { version, instanceId }
-
-  // How long a line stays "locked for others" after the owner's last
-  // keystroke on it. Short enough that it never feels like a real lock to
-  // the person typing, long enough to cover the broadcast round-trip.
-  const LOCK_TTL_MS = 2500;
-  const typingUntilRef = useRef(0);
-  useEffect(() => { tabsRef.current = tabs; }, [tabs]);
-  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
-  useEffect(() => { cursorRef.current = cursor; }, [cursor]);
-
   const getEng = useCallback((lk) => WS.eng(lk), []);
   const toast = useCallback((msg, ms = 2500) => { clearTimeout(notifTmr.current); setNotif(msg); notifTmr.current = setTimeout(() => setNotif(null), ms); }, []);
 
-  // ── FIX: mount the realtime channel + BroadcastChannel ONCE. ──
-  // The original effect was declared with `}, [activeTab, tabs.length])`.
-  // Opening a new tab on ANY client broadcasts "tabSync", which every other
-  // client receives and applies via setTabs(...), bumping THEIR tabs.length
-  // too. That re-ran this effect on every connected client, tearing down and
-  // recreating supabase.channel("global-workspace") (a real websocket
-  // round-trip). Any "op" broadcast sent by another user while that
-  // resubscribe was in flight was silently dropped — which is exactly why a
-  // newline + the next line of typed code never reached the other browsers
-  // even though earlier single-character ops had gone through fine.
-  // Switching activeTab tore the channel down too, which is also why cursor
-  // position (presence) looked frozen for everyone.
   useEffect(() => {
     const channel = supabase.channel("global-workspace");
     channelRef.current = channel;
@@ -1883,36 +109,19 @@ function Shell({ user, onLogout }) {
 
     const handleMessage = ({ type, payload }) => {
       if (payload.instanceId === instanceId) return;
-      const tabs = tabsRef.current;
-      const activeTab = activeTabRef.current;
-      const cursor = cursorRef.current;
-
+      
       switch (type) {
         case "join":
-          bc.postMessage({ type: "presence", payload: { id: me.id, instanceId, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab, typingUntil: typingUntilRef.current } });
+          bc.postMessage({ type: "presence", payload: { id: me.id, instanceId, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab } });
           break;
-        case "op": {
-          // Deterministic convergence: only accept this remote edit if it
-          // outranks whatever version we've already applied to this tab.
-          // Higher version always wins; on a true tie (both clients edited
-          // from the same base at once) every client breaks the tie the
-          // same way — lower instanceId wins — so everyone ends up applying
-          // the exact same side of the race instead of each side keeping
-          // its own edit (or each side overwriting itself with the other's).
-          const mine = docVersionsRef.current.get(payload.tabId);
-          const incomingVer = payload.version || 0;
-          const outranks = !mine || incomingVer > mine.version ||
-            (incomingVer === mine.version && payload.instanceId < mine.instanceId);
-          if (!outranks) break;
-          docVersionsRef.current.set(payload.tabId, { version: incomingVer, instanceId: payload.instanceId });
+        case "op":
           if (payload.tabId === activeTab) {
             activeEditorRef.current?._applyRemoteOp?.(payload.op, payload.fullCode);
           }
           setTabs(prev => prev.map(t => t.id === payload.tabId ? { ...t, code: payload.fullCode ?? applyOpToString(t.code || "", payload.op) } : t));
           setOpCnt(c => c + 1);
-          setCrdt(p => [{ ...payload.op, from: payload.name, t: nowTs(), color: payload.color }, ...p].slice(0, 40));
+          setCrdt(p => [{ ...payload.op, from: payload.name, t: nowTs() }, ...p].slice(0, 40));
           break;
-        }
         case "cursor":
           setCursors(prev => [...prev.filter(c => c.id !== payload.id), { ...payload, online: true }]);
           break;
@@ -1931,8 +140,7 @@ function Shell({ user, onLogout }) {
             const tab = tabs.find(t => t.id === payload.tabId);
             const currentCode = (payload.tabId === activeTab) ? (activeEditorRef.current?._getText?.() || "") : (tab?.code || "");
             if (currentCode) {
-              const ver = docVersionsRef.current.get(payload.tabId);
-              const resp = { type: "stateResponse", payload: { tabId: payload.tabId, code: currentCode, toId: payload.requesterId, instanceId, version: ver?.version || 0, versionOwner: ver?.instanceId || instanceId } };
+              const resp = { type: "stateResponse", payload: { tabId: payload.tabId, code: currentCode, toId: payload.requesterId, instanceId } };
               bc.postMessage(resp);
               channel.send({ type: "broadcast", event: "stateResponse", payload: resp.payload });
             }
@@ -1940,10 +148,6 @@ function Shell({ user, onLogout }) {
           break;
         case "stateResponse":
           if (payload.toId === me.id) {
-            const mine = docVersionsRef.current.get(payload.tabId);
-            if (!mine || (payload.version || 0) > mine.version) {
-              docVersionsRef.current.set(payload.tabId, { version: payload.version || 0, instanceId: payload.versionOwner || payload.instanceId });
-            }
             setTabs(prev => prev.map(t => t.id === payload.tabId ? { ...t, code: payload.code } : t));
           }
           break;
@@ -1965,13 +169,21 @@ function Shell({ user, onLogout }) {
         const users = Object.values(state).flat();
         setConnectedCount(users.length);
         setCursors(prev => {
-          const remote = users.map(u => ({ id: u.user_id, name: u.name, color: u.color, line: u.line || 1, col: u.col || 1, tabId: u.tabId, lang: u.lang, typingUntil: u.typingUntil || 0, online: true }));
-          const onlineIds = new Set(users.map(u => u.user_id));
-          // Keep only guest cursors that are still genuinely online (came in
-          // via BroadcastChannel/local presence) — drop anything stale.
-          const local = prev.filter(c => c.id.startsWith("guest_") && !onlineIds.has(c.id));
+          const remote = users.map(u => ({ id: u.user_id, name: u.name, color: u.color, line: u.line || 1, col: u.col || 1, tabId: u.tabId, online: true }));
+          const local = prev.filter(c => c.id.startsWith("guest_") && !users.find(u => u.user_id === c.id));
           return [...remote, ...local];
         });
+        const onlineUserIds = users.map(u => u.user_id);
+        if (onlineUserIds.length > 0 && !me.id.startsWith("guest_")) {
+          supabase.from("line_locks").select("user_id").then(({ data }) => {
+            if (data) {
+              const staleUserIds = data.map(l => l.user_id).filter(id => !onlineUserIds.includes(id) && !id.startsWith("guest_"));
+              if (staleUserIds.length > 0) {
+                supabase.from("line_locks").delete().in("user_id", staleUserIds).then();
+              }
+            }
+          });
+        }
       })
       .on("broadcast", { event: "op" }, ({ payload }) => handleMessage({ type: "op", payload }))
       .on("broadcast", { event: "cursor" }, ({ payload }) => handleMessage({ type: "cursor", payload }))
@@ -1980,15 +192,28 @@ function Shell({ user, onLogout }) {
       .on("broadcast", { event: "stateResponse" }, ({ payload }) => handleMessage({ type: "stateResponse", payload }))
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
-          await channel.track({ user_id: me.id, name: me.name, color: me.cursorColor, line: cursorRef.current.line, col: cursorRef.current.col, tabId: activeTabRef.current, online: true, instanceId });
+          await channel.track({ user_id: me.id, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab, online: true, instanceId });
           bc.postMessage({ type: "join", payload: { id: me.id, instanceId } });
-          bc.postMessage({ type: "presence", payload: { id: me.id, instanceId, name: me.name, color: me.cursorColor, line: cursorRef.current.line, col: cursorRef.current.col, tabId: activeTabRef.current } });
-          tabsRef.current.forEach(t => {
+          bc.postMessage({ type: "presence", payload: { id: me.id, instanceId, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab } });
+          tabs.forEach(t => {
             channel.send({ type: "broadcast", event: "stateRequest", payload: { tabId: t.id, requesterId: me.id, instanceId } });
             bc.postMessage({ type: "stateRequest", payload: { tabId: t.id, requesterId: me.id, instanceId } });
           });
         }
       });
+
+    const lockSub = supabase.channel("line_locks")
+      .on("postgres_changes", { event: "*", schema: "public", table: "line_locks" }, payload => {
+        if (payload.eventType === "DELETE") {
+          setLineLocks(prev => { const next = { ...prev }; delete next[payload.old.line_number]; return next; });
+        } else {
+          setLineLocks(prev => ({ ...prev, [payload.new.line_number]: payload.new }));
+        }
+      }).subscribe();
+
+    supabase.from("line_locks").select("*").then(({ data }) => {
+      if (data) { const locks = {}; data.forEach(l => locks[l.line_number] = l); setLineLocks(locks); }
+    });
 
     const handleLockToast = (e) => {
       const { line, userName } = e.detail;
@@ -1996,40 +221,15 @@ function Shell({ user, onLogout }) {
     };
     window.addEventListener("line-locked-toast", handleLockToast);
 
-    return () => {
-      channel.unsubscribe();
+    return () => { 
+      channel.unsubscribe(); 
+      lockSub.unsubscribe(); 
       window.removeEventListener("line-locked-toast", handleLockToast);
+      if (!me.id.startsWith("guest_")) {
+        supabase.from("line_locks").delete().eq("user_id", me.id).then();
+      }
     };
-  }, []); // ← mount once. Tab/activeTab changes no longer tear the channel down.
-
-  // ── FIX: keep presence (cursor position / active tab) live WITHOUT
-  // rebuilding the whole channel. This replaces what the old dependency
-  // array was (incorrectly) trying to accomplish. It also carries `lang`
-  // and `typingUntil` now, since locking is derived from presence.
-  useEffect(() => {
-    if (!channelRef.current) return;
-    channelRef.current.track({
-      user_id: me.id,
-      name: me.name,
-      color: me.cursorColor,
-      line: cursor.line,
-      col: cursor.col,
-      tabId: activeTab,
-      lang,
-      typingUntil: typingUntilRef.current,
-      online: true,
-      instanceId,
-    });
-  }, [activeTab, cursor.line, cursor.col, lang, me.id, me.name, me.cursorColor, instanceId]);
-
-  // Is `line` currently locked by someone ELSE actively typing on it, in
-  // the current tab/lang? Used both before sending a local op (so we never
-  // even try to send something another user's edit would race with) and
-  // mirrors the CMEditor-internal lockFilter so the two stay consistent.
-  const isLineLockedByOther = useCallback((line) => {
-    const now = Date.now();
-    return cursors.some(c => c.id !== me.id && c.lang === lang && c.tabId === activeTab && c.line === line && c.typingUntil && c.typingUntil > now);
-  }, [cursors, me.id, lang, activeTab]);
+  }, [activeTab, tabs.length]);
 
   const triggerLiveValidation = useCallback((code, lk) => {
     clearTimeout(liveValTimer.current);
@@ -2039,53 +239,31 @@ function Shell({ user, onLogout }) {
     }, 600);
   }, []);
 
-  const handleLocalOp = useCallback((op, editLoc) => {
-    // Prefer the exact location the editor just reported for this edit over
-    // React's `cursor` state, which can lag by one render when a keystroke
-    // both moves the caret and edits the doc in the same tick.
-    const loc = editLoc || cursor;
-    if (isLineLockedByOther(loc.line)) {
-      const lockedByCursor = cursors.find(c => c.id !== me.id && c.lang === lang && c.tabId === activeTab && c.line === loc.line);
-      toast("Line locked by " + (lockedByCursor?.name || "another user"));
-      return;
-    }
-    // Refresh our own typing TTL and broadcast it immediately as part of the
-    // cursor channel, so other clients see "this line is locked" within one
-    // round-trip instead of waiting for the next independent cursor move.
-    typingUntilRef.current = Date.now() + LOCK_TTL_MS;
-    const cursorPayload = { id: me.id, instanceId, name: me.name, color: me.cursorColor, line: loc.line, col: loc.col, lang, tabId: activeTab, typingUntil: typingUntilRef.current };
-    channelRef.current?.send({ type: "broadcast", event: "cursor", payload: cursorPayload });
-    new BroadcastChannel("ckc_os_sync").postMessage({ type: "cursor", payload: cursorPayload });
-    setCursors(prev => prev.map(c => c.id === me.id ? { ...c, ...cursorPayload, online: true } : c));
-    setCursor({ line: loc.line, col: loc.col });
-
+  const handleLocalOp = useCallback(op => {
+    if (lineLocks[cursor.line] && lineLocks[cursor.line].user_id !== me.id) { toast("Line locked by " + lineLocks[cursor.line].user_name); return; }
     const fullCode = activeEditorRef.current?._getText?.() || "";
-    // Stamp this edit with the next version for this tab. Bumping our own
-    // version locally (not just on receipt) means our own subsequent edits
-    // keep counting up even before any broadcast round-trips back to us.
-    const prevVer = docVersionsRef.current.get(activeTab)?.version || 0;
-    const nextVer = prevVer + 1;
-    docVersionsRef.current.set(activeTab, { version: nextVer, instanceId });
-    const payload = { uid: me.id, instanceId, name: me.name, color: me.cursorColor, lang, op, tabId: activeTab, tabName: tabs.find(t => t.id === activeTab)?.name || "scratch", fullCode, version: nextVer };
+    const payload = { uid: me.id, instanceId, name: me.name, lang, op, tabId: activeTab, tabName: tabs.find(t => t.id === activeTab)?.name || "scratch", fullCode };
     channelRef.current?.send({ type: "broadcast", event: "op", payload });
     new BroadcastChannel("ckc_os_sync").postMessage({ type: "op", payload });
 
     setTabs(prev => prev.map(t => t.id === activeTab ? { ...t, code: fullCode, dirty: true } : t));
     setOpCnt(c => c + 1);
-    setCrdt(p => [{ ...op, from: "me", t: nowTs(), color: me.cursorColor }, ...p].slice(0, 40));
+    setCrdt(p => [{ ...op, from: "me", t: nowTs() }, ...p].slice(0, 40));
     triggerLiveValidation(fullCode, lang);
-  }, [lang, me, instanceId, cursor, cursors, isLineLockedByOther, toast, triggerLiveValidation, activeTab, tabs]);
+  }, [lang, me, instanceId, cursor, lineLocks, toast, triggerLiveValidation, activeTab, tabs]);
 
-  const handleCursorMove = useCallback((line, col) => {
+  const handleCursorMove = useCallback(async (line, col) => {
     setCursor({ line, col });
-    // Moving the caret alone (no typing) never extends or creates a lock —
-    // we still report whatever typingUntil is currently active so a lock
-    // started by a keystroke a moment ago doesn't get clobbered to 0 by a
-    // subsequent plain cursor move, but we don't push it forward here.
-    const payload = { id: me.id, instanceId, name: me.name, color: me.cursorColor, line, col, lang, tabId: activeTab, typingUntil: typingUntilRef.current };
+    const payload = { id: me.id, instanceId, name: me.name, color: me.cursorColor, line, col, lang, tabId: activeTab };
     channelRef.current?.send({ type: "broadcast", event: "cursor", payload });
     new BroadcastChannel("ckc_os_sync").postMessage({ type: "cursor", payload });
-    setCursors(prev => prev.map(c => c.id === me.id ? { ...c, ...payload, online: true } : c));
+
+    try {
+      if (!me.id.startsWith("guest_")) {
+        await supabase.from("line_locks").delete().eq("user_id", me.id);
+        await supabase.from("line_locks").insert({ document_id: lang, line_number: line, user_id: me.id, user_name: me.name, color: me.cursorColor });
+      }
+    } catch (err) { console.error("Lock error:", err); }
   }, [lang, me, instanceId, activeTab]);
 
   const switchLang = useCallback(lk => {
@@ -2275,43 +453,10 @@ function Shell({ user, onLogout }) {
 
   return (
     <>
-      <style>{CSS}</style>
+      
       <ErrorPopup error={errPopup?.msg || null} lang={errPopup?.lang || lang} onClose={() => setErrPopup(null)} onOpenOutput={() => { setOutOpen(true); setOutTab("output"); }} />
       {showDebugRoom && <DebuggingRoom errors={liveValidation?.errors || []} warnings={liveValidation?.warnings || []} lang={lang} me={me} onLocalOp={handleLocalOp} onClose={() => setShowDebugRoom(false)} />}
       {showServerLogs && <LiveServerLogs onClose={() => setShowServerLogs(false)} />}
-      {showNewFileModal && (
-        <div className="nf-ov" onClick={() => setShowNewFileModal(false)}>
-          <div className="nf-box" onClick={e => e.stopPropagation()}>
-            <div className="nf-head">
-              <div className="nf-title">📄 Create New File</div>
-              <div className="nf-close" onClick={() => setShowNewFileModal(false)}>✕</div>
-            </div>
-            <div className="nf-sub">Choose a language to open a new collaborative editor</div>
-            <div className="nf-grid">
-              {LK.map(lk => {
-                const l = LANGS[lk];
-                return (
-                  <div
-                    key={lk}
-                    className="nf-card"
-                    style={{ "--lang-c": l.c }}
-                    onClick={() => {
-                      const newId = `untitled-${Date.now()}.${lk}`;
-                      setTabs(prev => [...prev, { id: newId, name: newId, lang: lk, code: "" }]);
-                      setActiveTab(newId);
-                      setLang(lk);
-                      setShowNewFileModal(false);
-                    }}
-                  >
-                    <div className="nf-ic" style={{ background: l.bg, color: l.c }}>{l.ic}</div>
-                    <div className="nf-name">{l.n}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="topbar">
         <div className="tb-logo"><div className="gem">⚡</div><span>CKC-OS</span></div>
@@ -2377,11 +522,6 @@ function Shell({ user, onLogout }) {
                 </div>
               );
             })}
-            <div style={{ display: "flex", alignItems: "center", paddingBottom: 6, marginLeft: 6, flexShrink: 0 }}>
-              <button className="nf-btn" onClick={() => setShowNewFileModal(true)}>
-                <span style={{ fontSize: 14, lineHeight: 1 }}>+</span> New File
-              </button>
-            </div>
           </div>
           <div className="bc">
             <span>CKC-OS</span><span>›</span><span>workspace</span><span>›</span>
@@ -2399,8 +539,8 @@ function Shell({ user, onLogout }) {
               onLocalOp={handleLocalOp}
               onCursorMove={handleCursorMove}
               cursors={activeCursors}
+              lineLocks={lineLocks}
               myId={me.id}
-              me={me}
             />
           </div>
           <div className="out-panel" style={{ height: outOpen ? (outTab === "knowledge" ? 450 : 220) : 32 }}>
@@ -2444,9 +584,7 @@ function Shell({ user, onLogout }) {
                 <div key={i} className={`op-card ${o.type}`}>
                   <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
                     <span className={`op-badge ${o.type}`}>{o.type.toUpperCase()}</span>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: o.color || (o.from === "me" ? me.cursorColor : "#4a5568"), flexShrink: 0 }} />
-                    <span style={{ fontSize: 9, color: o.color || (o.from === "me" ? me.cursorColor : "#4a5568"), fontFamily: "var(--mono)", fontWeight: 700 }}>{o.from === "me" ? me.name : o.from}</span>
-                    <span style={{ fontSize: 9, color: "#4a5568", fontFamily: "var(--mono)" }}>· {o.t}</span>
+                    <span style={{ fontSize: 9, color: "#4a5568", fontFamily: "var(--mono)" }}>{o.from} · {o.t}</span>
                   </div>
                   <div style={{ fontSize: 10, color: "#e0e0e0", fontFamily: "var(--mono)", wordBreak: "break-all" }}>
                     {o.type === "insert" ? `"${o.chars}" at ${o.pos}` : `len ${o.len} from ${o.pos}`}
