@@ -1908,9 +1908,32 @@ function Shell({ user, onLogout }) {
   const activeEditorRef = useRef(null);
   const notifTmr = useRef(null);
 
+  // Refs so realtime handlers always see the LATEST tabs/activeTab/cursor
+  // without needing them in the channel effect's dependency array. This is
+  // what lets the channel stay mounted across tab opens/switches (see the
+  // fix note on the effect below).
+  const tabsRef = useRef(tabs);
+  const activeTabRef = useRef(activeTab);
+  const cursorRef = useRef(cursor);
+  useEffect(() => { tabsRef.current = tabs; }, [tabs]);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+  useEffect(() => { cursorRef.current = cursor; }, [cursor]);
+
   const getEng = useCallback((lk) => WS.eng(lk), []);
   const toast = useCallback((msg, ms = 2500) => { clearTimeout(notifTmr.current); setNotif(msg); notifTmr.current = setTimeout(() => setNotif(null), ms); }, []);
 
+  // ── FIX: mount the realtime channel + BroadcastChannel ONCE. ──
+  // The original effect was declared with `}, [activeTab, tabs.length])`.
+  // Opening a new tab on ANY client broadcasts "tabSync", which every other
+  // client receives and applies via setTabs(...), bumping THEIR tabs.length
+  // too. That re-ran this effect on every connected client, tearing down and
+  // recreating supabase.channel("global-workspace") (a real websocket
+  // round-trip). Any "op" broadcast sent by another user while that
+  // resubscribe was in flight was silently dropped — which is exactly why a
+  // newline + the next line of typed code never reached the other browsers
+  // even though earlier single-character ops had gone through fine.
+  // Switching activeTab tore the channel down too, which is also why cursor
+  // position (presence) looked frozen for everyone.
   useEffect(() => {
     const channel = supabase.channel("global-workspace");
     channelRef.current = channel;
@@ -1918,7 +1941,10 @@ function Shell({ user, onLogout }) {
 
     const handleMessage = ({ type, payload }) => {
       if (payload.instanceId === instanceId) return;
-      
+      const tabs = tabsRef.current;
+      const activeTab = activeTabRef.current;
+      const cursor = cursorRef.current;
+
       switch (type) {
         case "join":
           bc.postMessage({ type: "presence", payload: { id: me.id, instanceId, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab } });
@@ -2001,10 +2027,10 @@ function Shell({ user, onLogout }) {
       .on("broadcast", { event: "stateResponse" }, ({ payload }) => handleMessage({ type: "stateResponse", payload }))
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
-          await channel.track({ user_id: me.id, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab, online: true, instanceId });
+          await channel.track({ user_id: me.id, name: me.name, color: me.cursorColor, line: cursorRef.current.line, col: cursorRef.current.col, tabId: activeTabRef.current, online: true, instanceId });
           bc.postMessage({ type: "join", payload: { id: me.id, instanceId } });
-          bc.postMessage({ type: "presence", payload: { id: me.id, instanceId, name: me.name, color: me.cursorColor, line: cursor.line, col: cursor.col, tabId: activeTab } });
-          tabs.forEach(t => {
+          bc.postMessage({ type: "presence", payload: { id: me.id, instanceId, name: me.name, color: me.cursorColor, line: cursorRef.current.line, col: cursorRef.current.col, tabId: activeTabRef.current } });
+          tabsRef.current.forEach(t => {
             channel.send({ type: "broadcast", event: "stateRequest", payload: { tabId: t.id, requesterId: me.id, instanceId } });
             bc.postMessage({ type: "stateRequest", payload: { tabId: t.id, requesterId: me.id, instanceId } });
           });
@@ -2030,15 +2056,32 @@ function Shell({ user, onLogout }) {
     };
     window.addEventListener("line-locked-toast", handleLockToast);
 
-    return () => { 
-      channel.unsubscribe(); 
-      lockSub.unsubscribe(); 
+    return () => {
+      channel.unsubscribe();
+      lockSub.unsubscribe();
       window.removeEventListener("line-locked-toast", handleLockToast);
       if (!me.id.startsWith("guest_")) {
         supabase.from("line_locks").delete().eq("user_id", me.id).then();
       }
     };
-  }, [activeTab, tabs.length]);
+  }, []); // ← mount once. Tab/activeTab changes no longer tear the channel down.
+
+  // ── FIX: keep presence (cursor position / active tab) live WITHOUT
+  // rebuilding the whole channel. This replaces what the old dependency
+  // array was (incorrectly) trying to accomplish.
+  useEffect(() => {
+    if (!channelRef.current) return;
+    channelRef.current.track({
+      user_id: me.id,
+      name: me.name,
+      color: me.cursorColor,
+      line: cursor.line,
+      col: cursor.col,
+      tabId: activeTab,
+      online: true,
+      instanceId,
+    });
+  }, [activeTab, cursor.line, cursor.col, me.id, me.name, me.cursorColor, instanceId]);
 
   const triggerLiveValidation = useCallback((code, lk) => {
     clearTimeout(liveValTimer.current);
