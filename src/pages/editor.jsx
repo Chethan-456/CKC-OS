@@ -14,6 +14,26 @@ function nowTs() {
   return new Date().toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+// ═══════════ USER COLOR PALETTE (VS Code Live Share inspired) ═══════════
+const USER_COLORS = [
+  { hex: "#3B82F6", bg: "rgba(59,130,246,.2)"  },  // Blue
+  { hex: "#22C55E", bg: "rgba(34,197,94,.2)"   },  // Green
+  { hex: "#F97316", bg: "rgba(249,115,22,.2)"  },  // Orange
+  { hex: "#A855F7", bg: "rgba(168,85,247,.2)"  },  // Purple
+  { hex: "#EC4899", bg: "rgba(236,72,153,.2)"  },  // Pink
+  { hex: "#06B6D4", bg: "rgba(6,182,212,.2)"   },  // Cyan
+  { hex: "#EAB308", bg: "rgba(234,179,8,.2)"   },  // Yellow
+  { hex: "#EF4444", bg: "rgba(239,68,68,.2)"   },  // Red
+];
+
+/** Deterministic color from a user-id string — same user always same color */
+function hashColor(str) {
+  let h = 5381;
+  for (let i = 0; i < (str || "").length; i++)
+    h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  return USER_COLORS[Math.abs(h) % USER_COLORS.length];
+}
+
 // ═══════════ STARTERS ═══════════
 const STARTERS = {
   ts: ``,
@@ -1601,24 +1621,40 @@ export default function EditorPage() {
 
 // ═══════════ SHELL ═══════════
 function Shell({ user, onLogout }) {
+  // ── Deterministic color from user id ─────────────────────────────────
+  const { hex: myHex, bg: myBg } = hashColor(user?.id || user?.email || "dev");
+
   const me = {
-    name: user?.name || "Developer",
-    color: user?.cursorColor || "#4FC1FF",
-    cursorColor: user?.cursorColor || "#4FC1FF",
-    bg: user?.bg || "rgba(79,193,255,0.15)",
-    inits: user?.inits || "D",
-    id: user?.id || "anon",
+    name: user?.user_metadata?.username ||
+          user?.user_metadata?.full_name ||
+          user?.name ||
+          user?.email?.split("@")[0] ||
+          "Developer",
+    color:       user?.user_metadata?.cursor_color || user?.cursorColor || myHex,
+    cursorColor: user?.user_metadata?.cursor_color || user?.cursorColor || myHex,
+    bg:          user?.user_metadata?.bg           || user?.bg          || myBg,
+    inits: (user?.user_metadata?.username ||
+            user?.user_metadata?.full_name ||
+            user?.name ||
+            user?.email?.split("@")[0] ||
+            "D").slice(0, 2).toUpperCase(),
+    id:    user?.id    || "anon",
     email: user?.email || "",
   };
-  const sid = user?.sid || "default-session";
-  const [currentRoom, setCurrentRoom] = useState(() => {
+
+  // ── Save status ─────────────────────────────────────────────────────────
+  const [saveStatus, setSaveStatus]   = useState("saved"); // "saving" | "saved"
+  const saveStatusTimer               = useRef(null);
+
+  // Room is read ONLY from the URL ?room= param.
+  // Every user on the same URL => same Yjs room => real-time sync.
+  const [currentRoom] = useState(() => {
     const query = new URLSearchParams(window.location.search);
-    const r = query.get("room") || query.get("session");
+    const r = query.get("room");
     if (r) return r;
-    // Generate a secure, unique room code if none is provided in the URL
-    const newRoom = user?.sid || Math.random().toString(36).substring(7);
-    const newUrl = `${window.location.pathname}?room=${newRoom}`;
-    window.history.replaceState(null, "", newUrl);
+    // First person in — generate a stable room and stamp it into the URL
+    const newRoom = Math.random().toString(36).slice(2, 9);
+    window.history.replaceState(null, "", `${window.location.pathname}?room=${newRoom}`);
     return newRoom;
   });
   const myId = useRef(user.id);
@@ -1669,11 +1705,10 @@ function Shell({ user, onLogout }) {
   const toast = useCallback((msg, ms = 2500) => { clearTimeout(notifTmr.current); setNotif(msg); notifTmr.current = setTimeout(() => setNotif(null), ms); }, []);
 
   useEffect(() => {
-    const provider = new SupabaseYjsProvider(supabase, `session-${currentRoom}`, ydocRef.current, {
+    const provider = new SupabaseYjsProvider(supabase, currentRoom, ydocRef.current, {
       user: { name: me.name, color: me.cursorColor, bg: me.bg },
     });
     providerRef.current = provider;
-    setProviderReady(true);
 
     const updatePresence = () => {
       const states = Array.from(provider.awareness.getStates().entries());
@@ -1681,27 +1716,35 @@ function Shell({ user, onLogout }) {
       setCursors(
         states
           .filter(([clientId]) => clientId !== provider.awareness.clientID)
-          .map(([clientId, s]) => ({
-            id: String(clientId),
-            name: s.user?.name,
-            color: s.user?.color,
-            line: s.cursor?.line || 1,
-            col: s.cursor?.col || 1,
-            lang: s.cursor?.lang,
-            tabId: s.cursor?.tabId,
-            bg: s.user?.bg,
-          }))
+          .map(([clientId, s]) => {
+            // Assign deterministic color from palette if user color not set
+            const { hex: fallHex, bg: fallBg } = hashColor(String(clientId));
+            return {
+              id:      String(clientId),
+              name:    s.user?.name    || "Anonymous",
+              color:   s.user?.color   || fallHex,
+              bg:      s.user?.bg      || fallBg,
+              line:    s.cursor?.line  || 1,
+              col:     s.cursor?.col   || 1,
+              lang:    s.cursor?.lang,
+              tabId:   s.cursor?.tabId,
+              typing:  s.typing        || false,
+              lockLine: (s.lock?.active && s.lock?.tabId) ? s.cursor?.line : null,
+            };
+          })
       );
     };
     provider.awareness.on("change", updatePresence);
     updatePresence();
+    setProviderReady(true);
 
     return () => {
       provider.awareness.off("change", updatePresence);
       provider.destroy();
+      providerRef.current = null;
       setProviderReady(false);
     };
-  }, [currentRoom]);
+  }, [currentRoom]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Mirror Y.Doc updates into the OT/CRDT side panel (cosmetic)
   useEffect(() => {
@@ -1870,13 +1913,23 @@ function Shell({ user, onLogout }) {
         </div>
       </div>
       {cursors.filter(c => c.id !== me.id).map((b, i) => (
-        <div key={i} className="presence-card">
-          <div className="presence-av" style={{ background: b.bg || "rgba(255,255,255,.05)", color: b.color, borderColor: b.color + "66" }}>
-            {initials(b.name)}<div className="pdot" style={{ background: "#4EC9B0" }} />
+        <div key={i} className="presence-card" style={{ borderLeft: `3px solid ${b.color}44`, paddingLeft: 4 }}>
+          <div className="presence-av" style={{ background: b.bg || "rgba(255,255,255,.05)", color: b.color, borderColor: b.color + "88" }}>
+            {initials(b.name)}
+            <div className="pdot" style={{ background: b.typing ? b.color : "#4EC9B0", boxShadow: b.typing ? `0 0 6px ${b.color}` : "none" }} />
           </div>
-          <div className="presence-info">
-            <div className="presence-name" style={{ color: "#c0c8d8" }}>{b.name}</div>
-            <div className="presence-pos" style={{ color: b.color }}>Ln {b.line} · Col {b.col}</div>
+          <div className="presence-info" style={{ flex: 1 }}>
+            <div className="presence-name" style={{ color: b.color, fontWeight: 600 }}>{b.name}</div>
+            {b.typing ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 4, color: b.color, fontSize: 10 }}>
+                <span style={{ animation: "ckc-blink 0.8s step-end infinite" }}>●</span>
+                <span>typing…</span>
+              </div>
+            ) : b.lockLine ? (
+              <div style={{ color: b.color, fontSize: 10 }}>🔒 Ln {b.lockLine}</div>
+            ) : (
+              <div className="presence-pos" style={{ color: b.color }}>Ln {b.line} · Col {b.col}</div>
+            )}
           </div>
         </div>
       ))}
@@ -2014,8 +2067,18 @@ function Shell({ user, onLogout }) {
                 fileKey={activeTab}
                 ytext={getYText(activeTab)}
                 awareness={providerRef.current?.awareness}
-                onTextChange={(code) => { triggerLiveValidation(code, lang); setTabs(prev => prev.map(t => t.id === activeTab ? { ...t, dirty: true } : t)); }}
+                onTextChange={(code) => {
+                  triggerLiveValidation(code, lang);
+                  setTabs(prev => prev.map(t => t.id === activeTab ? { ...t, dirty: true } : t));
+                  // Auto-save indicator
+                  setSaveStatus("saving");
+                  clearTimeout(saveStatusTimer.current);
+                  saveStatusTimer.current = setTimeout(() => setSaveStatus("saved"), 1200);
+                }}
                 onCursorMove={handleCursorMove}
+                onTyping={(isTyping) => {
+                  providerRef.current?.awareness.setLocalStateField("typing", isTyping);
+                }}
               />
             )}
           </div>
@@ -2070,6 +2133,14 @@ function Shell({ user, onLogout }) {
         <SB c="#4EC9B0">⬡ {connectedCount} online</SB>
         <SB c={errCount > 0 ? "#FF6B9D" : "#4a5568"} onClick={() => { setOutOpen(true); setOutTab("problems"); }}>⊗ {errCount} · ⚠ {warnCount}</SB>
         <SB c="#4FC1FF">Yjs · {opCnt} ops</SB>
+        {/* Auto-save indicator */}
+        <SB c={saveStatus === "saving" ? "#EAB308" : "#4EC9B0"}>
+          {saveStatus === "saving" ? "↻ Saving…" : "✓ Saved"}
+        </SB>
+        {/* Active locks */}
+        {cursors.some(c => c.lockLine) && (
+          <SB c="#F97316">🔒 {cursors.filter(c => c.lockLine).length} locked</SB>
+        )}
         <div style={{ flex: 1 }} />
         <SB onClick={() => setShowDebugRoom(true)} c="#FF6B9D" className="sb-tool">🔬 Debug Room</SB>
         <SB onClick={() => setShowServerLogs(true)} c="#4FC1FF" className="sb-tool">📡 Server Logs</SB>

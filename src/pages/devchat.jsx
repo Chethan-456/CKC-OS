@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { useChat } from "../hooks/useChat";
 import { usePresence } from "../hooks/usePresence";
@@ -805,7 +805,7 @@ export default function DevChat() {
       <span style={{ animation: 'p 1.6s ease infinite' }}>CONNECTING…</span>
     </div>
   );
-  if (!user) return <Navigate to="/login" />;
+  if (!user) return <Navigate to="/login?redirect=%2Fdevchat" replace />;
 
   const handleInput = e => {
     const v = e.target.value;
