@@ -8,12 +8,16 @@ dotenv.config({ path: path.join(__dirname, ".env") });
 
 import express  from "express";
 import cors     from "cors";
+import os       from "os";
+import fs       from "fs";
 import fetch    from "node-fetch";
 import helmet   from "helmet";
 import neo4j    from "neo4j-driver";
 import { v4 as uuidv4 } from "uuid";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
+import { WebSocketServer } from "ws";
+import { initChatServer } from "./chat.js";
 
 // ─── Startup diagnostics ──────────────────────────────────────────────────────
 console.log("─────────────────────────────────────────────");
