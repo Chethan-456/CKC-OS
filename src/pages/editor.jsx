@@ -1691,6 +1691,7 @@ function Shell({ user, onLogout }) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [knowledgeCode, setKnowledgeCode] = useState("");
   const [providerReady, setProviderReady] = useState(false);
+  const [explOpen, setExplOpen] = useState(true);
 
   const liveValTimer = useRef(null);
   const activeEditorRef = useRef(null);
@@ -1832,7 +1833,16 @@ function Shell({ user, onLogout }) {
     const id = "new-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
     const ext = LANGS[newEdLang]?.ext?.split(".")[1] || newEdLang;
     const shortName = me.name ? me.name.split(" ")[0].toLowerCase() : "user";
-    const newTab = { id, name: `scratch-${shortName}.${ext}`, lang: newEdLang, dirty: false, isNew: true, code: "" };
+    
+    // Make name unique
+    let count = 1;
+    let newName = `scratch-${shortName}.${ext}`;
+    while (tabs.some(t => t.name === newName) || Array.from(ydocRef.current?.getMap("workspace_files")?.values() || []).some(f => f.name === newName)) {
+      count++;
+      newName = `scratch-${shortName}-${count}.${ext}`;
+    }
+
+    const newTab = { id, name: newName, lang: newEdLang, dirty: false, isNew: true, code: "" };
     
     // Add locally immediately
     setTabs(p => [...p, newTab]);
@@ -1937,7 +1947,7 @@ function Shell({ user, onLogout }) {
           {f.lang && LANGS[f.lang] && <span style={{ fontSize: 9, fontWeight: 700, color: LANGS[f.lang]?.c, fontFamily: "var(--mono)", flexShrink: 0 }}>{LANGS[f.lang]?.ic}</span>}
         </div>
       ))}
-      {tabs.filter(t => t.isNew).map(t => (
+      {[...tabs].filter(t => t.isNew).sort((a, b) => a.name.localeCompare(b.name)).map(t => (
         <div key={t.id} className={`ft${activeTab === t.id ? " sel" : ""}`} onClick={() => { setActiveTab(t.id); switchLang(t.lang); setMobileSidebarOpen(false); }}>
           <span className="new-tab-dot" style={{ flexShrink: 0 }} />
           <span style={{ color: "#4EC9B0", flex: 1, overflow: "hidden", textOverflow: "ellipsis", fontSize: 12 }}>{t.name}</span>
