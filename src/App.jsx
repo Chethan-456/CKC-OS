@@ -20,7 +20,7 @@ import Cognitive          from "./pages/cognitive.jsx";
 import Gitbridge          from "./pages/Gitbridge.jsx";
 import AIPair             from "./pages/AIPair.jsx";
 
-// ── After login, send user to where they originally wanted to go ──────────────
+// ── /login and /auth: if already logged in, go to editor ─────────────────────
 function LoginWithRedirect() {
   const { user } = useAuth();
   const location = useLocation();
@@ -28,19 +28,10 @@ function LoginWithRedirect() {
   if (user) return <Navigate to={destination} replace />;
   return <Login />;
 }
-
-// /auth also shows the login page — same redirect logic
-function AuthWithRedirect() {
-  const { user } = useAuth();
-  const location = useLocation();
-  const destination = location.state?.from || "/editor";
-  if (user) return <Navigate to={destination} replace />;
-  return <Login />;   // ← LOGIN page, not the debug Auth component
-}
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AppRoutes() {
-  const { user, loading } = useAuth();
+  const { loading } = useAuth();
 
   if (loading) {
     return (
@@ -53,70 +44,28 @@ function AppRoutes() {
 
   return (
     <Routes>
-      {/* ── Public ── */}
-      <Route path="/"      element={<Index />} />
-      <Route path="/login" element={<LoginWithRedirect />} />
-      <Route path="/auth"  element={<AuthWithRedirect />} />
+      {/* ── Public — no login needed ── */}
+      <Route path="/"           element={<Index />} />
+      <Route path="/login"      element={<LoginWithRedirect />} />
+      <Route path="/auth"       element={<LoginWithRedirect />} />
+      <Route path="/chat"       element={<SupabaseChat />} />
+      <Route path="/devchat"    element={<Dashboard />} />
+      <Route path="/dashboard"  element={<Dashboard />} />
+      <Route path="/sandbox"    element={<SandBox />} />
+      <Route path="/api"        element={<ApiTesting />} />
+      <Route path="/performance"element={<PerformanceMonitor />} />
+      <Route path="/behavior"   element={<Behavior />} />
+      <Route path="/knowledge"  element={<Knowledge />} />
+      <Route path="/aimentor"   element={<AiMentor />} />
+      <Route path="/debug"      element={<Debug />} />
+      <Route path="/logs"       element={<Logs />} />
+      <Route path="/cognitive"  element={<Cognitive />} />
+      <Route path="/gitbridge"  element={<Gitbridge />} />
+      <Route path="/aipair"     element={<AIPair />} />
 
-      {/* ── Protected ── */}
-      <Route path="/chat" element={
-        <ProtectedRoute><SupabaseChat /></ProtectedRoute>
-      } />
-
-      <Route path="/devchat" element={
-        <ProtectedRoute><Dashboard /></ProtectedRoute>
-      } />
-
-      <Route path="/dashboard" element={
-        <ProtectedRoute><Dashboard /></ProtectedRoute>
-      } />
-
+      {/* ── Protected — login required only for editor ── */}
       <Route path="/editor" element={
         <ProtectedRoute><Ckcossupabase /></ProtectedRoute>
-      } />
-
-      <Route path="/sandbox" element={
-        <ProtectedRoute><SandBox /></ProtectedRoute>
-      } />
-
-      <Route path="/api" element={
-        <ProtectedRoute><ApiTesting /></ProtectedRoute>
-      } />
-
-      <Route path="/performance" element={
-        <ProtectedRoute><PerformanceMonitor /></ProtectedRoute>
-      } />
-
-      <Route path="/behavior" element={
-        <ProtectedRoute><Behavior /></ProtectedRoute>
-      } />
-
-      <Route path="/knowledge" element={
-        <ProtectedRoute><Knowledge /></ProtectedRoute>
-      } />
-
-      <Route path="/aimentor" element={
-        <ProtectedRoute><AiMentor /></ProtectedRoute>
-      } />
-
-      <Route path="/debug" element={
-        <ProtectedRoute><Debug /></ProtectedRoute>
-      } />
-
-      <Route path="/logs" element={
-        <ProtectedRoute><Logs /></ProtectedRoute>
-      } />
-
-      <Route path="/cognitive" element={
-        <ProtectedRoute><Cognitive /></ProtectedRoute>
-      } />
-
-      <Route path="/gitbridge" element={
-        <ProtectedRoute><Gitbridge /></ProtectedRoute>
-      } />
-
-      <Route path="/aipair" element={
-        <ProtectedRoute><AIPair /></ProtectedRoute>
       } />
 
       {/* ── 404 ── */}
