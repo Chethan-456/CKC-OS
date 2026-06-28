@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, forwardRef } from "react";
-import { EditorState, StateField, StateEffect, RangeSetBuilder } from "@codemirror/state";
+import { EditorState, StateField, StateEffect, RangeSetBuilder, Transaction } from "@codemirror/state";
 import {
   EditorView,
   keymap,
@@ -316,6 +316,17 @@ const CMEditorYjs = forwardRef(
       // ── 4. Transaction filter — block edits on remotely-locked lines ───────
       const lineLockFilter = EditorState.transactionFilter.of((tr) => {
         if (!tr.docChanged) return tr;
+        // Do NOT block transactions that come from remote syncing (Yjs / yCollab / remote changes)
+        if (tr.annotation(Transaction.remote)) return tr;
+        
+        // Also check if there's any Yjs specific annotation to be safe
+        const isRemoteYjs = tr.annotations.some(ann => {
+          try {
+            return ann.value === "y-sync" || (ann.value && ann.value.constructor && ann.value.constructor.name === "YSyncAnnotation");
+          } catch { return false; }
+        });
+        if (isRemoteYjs) return tr;
+
         const locks = tr.startState.field(locksField);
         if (!locks.size) return tr;
         let blocked = false;
